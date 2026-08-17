@@ -4,6 +4,7 @@ public sealed class CollectionImport
 {
     public long Id { get; set; }
     public long? ParticipantId { get; set; }
+    public long RequestedByTelegramUserId { get; set; }
     public ImportTarget Target { get; set; }
     public ExternalGameProvider Provider { get; set; }
     public string ExternalUsername { get; set; } = string.Empty;

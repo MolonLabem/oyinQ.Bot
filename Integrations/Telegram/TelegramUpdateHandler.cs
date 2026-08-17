@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Games;
+using oyinQ.Bot.Features.Interests;
+using oyinQ.Bot.Features.Registration;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -9,10 +13,14 @@ namespace oyinQ.Bot.Integrations.Telegram;
 public sealed class TelegramUpdateHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
+    RegistrationHandler registrationHandler,
+    CollectionsHandler collectionsHandler,
+    GamesHandler gamesHandler,
+    InterestsHandler interestsHandler,
     ILogger<TelegramUpdateHandler> logger)
 {
-    private static readonly string[] CallbackPrefixes =
-        ["game:", "interest:", "copy:", "session:", "reg:", "admin:"];
+    private static readonly string[] DeferredCallbackPrefixes =
+        ["session:", "admin:"];
 
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
@@ -32,7 +40,7 @@ public sealed class TelegramUpdateHandler(
         var command = GetCommand(update.Message?.Text);
         var participant = await dbContext.Participants
             .SingleOrDefaultAsync(
-                x => x.TelegramUserId == telegramUser.Id,
+                value => value.TelegramUserId == telegramUser.Id,
                 cancellationToken);
 
         if (participant is null && command == "/start")
@@ -62,7 +70,7 @@ public sealed class TelegramUpdateHandler(
 
         var conversationState = await dbContext.ParticipantConversationStates
             .SingleOrDefaultAsync(
-                x => x.ParticipantId == participant.Id,
+                value => value.ParticipantId == participant.Id,
                 cancellationToken);
 
         if (conversationState is not null
@@ -73,34 +81,192 @@ public sealed class TelegramUpdateHandler(
             conversationState = null;
         }
 
-        if (command is not null)
+        if (command is not null && update.Message is { } commandMessage)
         {
-            logger.LogDebug(
-                "Command {Command} is awaiting a Phase 2+ feature handler.",
-                command);
+            switch (command)
+            {
+                case "/start":
+                    await registrationHandler.HandleStartAsync(
+                        participant,
+                        commandMessage,
+                        cancellationToken);
+                    return;
+
+                case "/menu":
+                    await registrationHandler.HandleMenuAsync(
+                        participant,
+                        commandMessage,
+                        cancellationToken);
+                    return;
+            }
+
+            if (IsGameCommand(command) && !IsRegistrationComplete(participant))
+            {
+                await SendRegistrationRequiredAsync(commandMessage.Chat.Id, cancellationToken);
+                return;
+            }
+
+            if (await gamesHandler.TryHandleMessageAsync(
+                    commandMessage,
+                    telegramUser.Id,
+                    conversationState,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            logger.LogDebug("Ignoring unknown command {Command}.", command);
             return;
         }
 
-        if (update.CallbackQuery?.Data is { } callbackData)
+        if (update.CallbackQuery is { } callback)
         {
-            var prefix = CallbackPrefixes.FirstOrDefault(
-                value => callbackData.StartsWith(value, StringComparison.Ordinal));
+            if (IsGameCallback(callback.Data) && !IsRegistrationComplete(participant))
+            {
+                var chatId = callback.Message?.Chat.Id ?? telegramUser.Id;
+                await SendRegistrationRequiredAsync(chatId, cancellationToken);
+                return;
+            }
 
+            if (callback.Data?.StartsWith("collection:", StringComparison.Ordinal) == true
+                && await collectionsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            if (callback.Data?.StartsWith("interest:", StringComparison.Ordinal) == true
+                && await interestsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            if ((callback.Data?.StartsWith("game:", StringComparison.Ordinal) == true
+                    || callback.Data?.StartsWith("copy:", StringComparison.Ordinal) == true)
+                && await gamesHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            if (callback.Data?.StartsWith("reg:", StringComparison.Ordinal) == true)
+            {
+                await registrationHandler.HandleCallbackAsync(
+                    participant,
+                    callback,
+                    callback.Data,
+                    cancellationToken);
+                return;
+            }
+
+            var prefix = DeferredCallbackPrefixes.FirstOrDefault(value =>
+                callback.Data?.StartsWith(value, StringComparison.Ordinal) == true);
             logger.LogDebug(
                 prefix is null
                     ? "Ignoring unknown callback payload."
-                    : "Callback prefix {Prefix} is awaiting a Phase 2+ feature handler.",
+                    : "Callback prefix {Prefix} is awaiting a later feature handler.",
                 prefix);
             return;
         }
 
-        if (update.Message?.Text is not null && conversationState is not null)
+        if (update.Message is { Text: { } text } message)
         {
-            logger.LogDebug(
-                "Conversation state {State} is awaiting a Phase 2+ feature handler.",
-                conversationState.State);
+            if (text == "👤 Моё")
+            {
+                await registrationHandler.HandleProfileAsync(
+                    participant,
+                    message,
+                    cancellationToken);
+                return;
+            }
+
+            if (IsGameMenuText(text) && !IsRegistrationComplete(participant))
+            {
+                await SendRegistrationRequiredAsync(message.Chat.Id, cancellationToken);
+                return;
+            }
+
+            if (await collectionsHandler.TryHandleMessageAsync(
+                    message,
+                    telegramUser.Id,
+                    conversationState,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            if (await gamesHandler.TryHandleMessageAsync(
+                    message,
+                    telegramUser.Id,
+                    conversationState,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            if (conversationState is not null)
+            {
+                var handled = await registrationHandler.HandleConversationTextAsync(
+                    participant,
+                    conversationState,
+                    message,
+                    cancellationToken);
+                if (handled)
+                {
+                    return;
+                }
+            }
+
+            if (text == "▶️ Собрать игру")
+            {
+                await botClient.SendMessage(
+                    message.Chat.Id,
+                    "Этот раздел появится позже.",
+                    replyMarkup: Keyboards.MainMenu,
+                    cancellationToken: cancellationToken);
+            }
         }
     }
+
+    private async Task SendRegistrationRequiredAsync(
+        long chatId,
+        CancellationToken cancellationToken)
+    {
+        await botClient.SendMessage(
+            chatId,
+            "Сначала завершите регистрацию.",
+            replyMarkup: Keyboards.RegistrationDays,
+            cancellationToken: cancellationToken);
+    }
+
+    private static bool IsRegistrationComplete(Participant participant) =>
+        participant.DaysStaying is >= 1 and <= 3
+        && participant.NeedsAccommodation.HasValue;
+
+    private static bool IsGameCallback(string? callbackData) =>
+        callbackData?.StartsWith("game:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("interest:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("copy:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("collection:", StringComparison.Ordinal) == true;
+
+    private static bool IsGameCommand(string command) =>
+        command is "/games" or "/addgame" or "/wanted" or "/mygames";
+
+    private static bool IsGameMenuText(string text) =>
+        text is "🎲 Игры"
+            or "➕ Добавить игры"
+            or "🔥 Хочу сыграть"
+            or "Мои игры"
+            or "🎲 Мои игры"
+            or "Мои хотелки"
+            or "🔥 Мои хотелки";
 
     private static string? GetCommand(string? text)
     {

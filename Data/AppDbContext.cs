@@ -45,6 +45,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("GameCopies");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.GameId, x.OwnerParticipantId }).IsUnique();
+            entity.HasIndex(x => x.GameId)
+                .IsUnique()
+                .HasDatabaseName("IX_GameCopies_GameId_Club")
+                .HasFilter("\"OwnerParticipantId\" IS NULL AND \"Source\" = 1");
 
             entity.HasOne(x => x.Game)
                 .WithMany(x => x.Copies)
@@ -121,6 +125,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 x.Status
             });
             entity.HasIndex(x => new { x.Status, x.CreatedAt });
+            entity.HasIndex(x => x.RequestedByTelegramUserId);
 
             entity.Property(x => x.ExternalUsername).HasMaxLength(200);
             entity.Property(x => x.ProgressJson).HasColumnType("jsonb");
