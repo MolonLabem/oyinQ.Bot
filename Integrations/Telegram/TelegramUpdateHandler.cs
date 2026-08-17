@@ -98,6 +98,12 @@ public sealed class TelegramUpdateHandler(
                     return;
             }
 
+            if (IsGameCommand(command) && !IsRegistrationComplete(participant))
+            {
+                await SendRegistrationRequiredAsync(commandMessage.Chat.Id, cancellationToken);
+                return;
+            }
+
             if (await gamesHandler.TryHandleMessageAsync(
                     commandMessage,
                     telegramUser.Id,
@@ -113,6 +119,13 @@ public sealed class TelegramUpdateHandler(
 
         if (update.CallbackQuery is { } callback)
         {
+            if (IsGameCallback(callback.Data) && !IsRegistrationComplete(participant))
+            {
+                var chatId = callback.Message?.Chat.Id ?? telegramUser.Id;
+                await SendRegistrationRequiredAsync(chatId, cancellationToken);
+                return;
+            }
+
             if (callback.Data?.StartsWith("interest:", StringComparison.Ordinal) == true
                 && await interestsHandler.TryHandleCallbackAsync(
                     callback,
@@ -163,6 +176,12 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
+            if (IsGameMenuText(text) && !IsRegistrationComplete(participant))
+            {
+                await SendRegistrationRequiredAsync(message.Chat.Id, cancellationToken);
+                return;
+            }
+
             if (await gamesHandler.TryHandleMessageAsync(
                     message,
                     telegramUser.Id,
@@ -195,6 +214,38 @@ public sealed class TelegramUpdateHandler(
             }
         }
     }
+
+    private async Task SendRegistrationRequiredAsync(
+        long chatId,
+        CancellationToken cancellationToken)
+    {
+        await botClient.SendMessage(
+            chatId,
+            "Сначала завершите регистрацию.",
+            replyMarkup: Keyboards.RegistrationDays,
+            cancellationToken: cancellationToken);
+    }
+
+    private static bool IsRegistrationComplete(Participant participant) =>
+        participant.DaysStaying is >= 1 and <= 3
+        && participant.NeedsAccommodation.HasValue;
+
+    private static bool IsGameCallback(string? callbackData) =>
+        callbackData?.StartsWith("game:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("interest:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("copy:", StringComparison.Ordinal) == true;
+
+    private static bool IsGameCommand(string command) =>
+        command is "/games" or "/addgame" or "/wanted" or "/mygames";
+
+    private static bool IsGameMenuText(string text) =>
+        text is "🎲 Игры"
+            or "➕ Добавить игры"
+            or "🔥 Хочу сыграть"
+            or "Мои игры"
+            or "🎲 Мои игры"
+            or "Мои хотелки"
+            or "🔥 Мои хотелки";
 
     private static string? GetCommand(string? text)
     {
