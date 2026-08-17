@@ -108,8 +108,14 @@ public sealed class BoardGameGeekClient(
             }
 
             using var response = await httpClient.SendAsync(request, cancellationToken);
-            if (response.StatusCode == HttpStatusCode.Accepted && attempt < MaxAttempts)
+            if (response.StatusCode == HttpStatusCode.Accepted)
             {
+                if (attempt == MaxAttempts)
+                {
+                    throw new HttpRequestException(
+                        "BGG did not finish preparing the response after all retries.");
+                }
+
                 logger.LogDebug(
                     "BGG returned HTTP 202 for {Url}; retry {Attempt}/{MaxAttempts}.",
                     relativeUrl,
