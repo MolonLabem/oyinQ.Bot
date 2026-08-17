@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -13,6 +16,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Apply remaining source fix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("Features/Games/GamesHandler.cs")
+          text = path.read_text()
+          old = '''    private static bool TryParseBggId(string value, out long bggId)\n    {\n        var match = BggUrlRegex().Match(value.Trim());\n        return match.Success && long.TryParse(match.Groups[1].Value, out bggId);\n    }'''
+          new = '''    private static bool TryParseBggId(string value, out long bggId)\n    {\n        bggId = default;\n        var match = BggUrlRegex().Match(value.Trim());\n        return match.Success && long.TryParse(match.Groups[1].Value, out bggId);\n    }'''
+          if old not in text:
+              raise SystemExit("Expected TryParseBggId implementation was not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit source fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Features/Games/GamesHandler.cs
+          git commit -m "Fix BGG id definite assignment"
+          git push origin HEAD:${{ github.head_ref }}
 
       - name: Setup .NET 10 SDK
         uses: actions/setup-dotnet@v4
