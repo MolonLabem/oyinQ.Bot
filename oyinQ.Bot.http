@@ -1,0 +1,6 @@
+@oyinQ.Bot_HostAddress = http://localhost:5267
+
+GET {{oyinQ.Bot_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
