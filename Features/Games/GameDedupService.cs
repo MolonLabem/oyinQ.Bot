@@ -36,9 +36,11 @@ public sealed class GameDedupService(
                 cancellationToken);
         }
 
-        game ??= await dbContext.Games.SingleOrDefaultAsync(
-            value => value.NormalizedName == normalizedName,
-            cancellationToken);
+        game ??= await dbContext.Games
+            .OrderBy(value => value.Id)
+            .FirstOrDefaultAsync(
+                value => value.NormalizedName == normalizedName,
+                cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         if (game is null)
@@ -90,25 +92,44 @@ public sealed class GameDedupService(
                 && value.Source == GameCopySource.Personal,
             cancellationToken);
 
-        if (copy is null)
-        {
-            copy = new GameCopy
-            {
-                GameId = gameId,
-                OwnerParticipantId = participant.Id,
-                Source = GameCopySource.Personal,
-                BringStatus = bringStatus,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-
-            dbContext.GameCopies.Add(copy);
-        }
-        else
+        if (copy is not null)
         {
             copy.BringStatus = bringStatus;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return copy;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return copy;
+        copy = new GameCopy
+        {
+            GameId = gameId,
+            OwnerParticipantId = participant.Id,
+            Source = GameCopySource.Personal,
+            BringStatus = bringStatus,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        dbContext.GameCopies.Add(copy);
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return copy;
+        }
+        catch (DbUpdateException)
+        {
+            dbContext.Entry(copy).State = EntityState.Detached;
+            var existing = await dbContext.GameCopies.SingleOrDefaultAsync(
+                value => value.GameId == gameId
+                    && value.OwnerParticipantId == participant.Id
+                    && value.Source == GameCopySource.Personal,
+                cancellationToken);
+            if (existing is null)
+            {
+                throw;
+            }
+
+            existing.BringStatus = bringStatus;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return existing;
+        }
     }
 }
