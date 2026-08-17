@@ -1036,6 +1036,7 @@ public sealed partial class GamesHandler(
 
     private static bool TryParseBggId(string value, out long bggId)
     {
+        bggId = default;
         var match = BggUrlRegex().Match(value.Trim());
         return match.Success && long.TryParse(match.Groups[1].Value, out bggId);
     }
