@@ -1,23 +1,74 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using oyinQ.Bot.Common.Options;
+using oyinQ.Bot.Data;
+using oyinQ.Bot.Integrations.Telegram;
+using Telegram.Bot;
+using Telegram.Bot.Types;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+var connectionString = builder.Configuration["CONNECTION_STRING"]?.Trim();
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException("CONNECTION_STRING is required.");
+}
 
-builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+var botOptions = BotOptions.FromConfiguration(builder.Configuration);
+var campOptions = CampOptions.FromConfiguration(builder.Configuration);
+var bggOptions = BggOptions.FromConfiguration(builder.Configuration);
+
+builder.Services.AddSingleton(Options.Create(botOptions));
+builder.Services.AddSingleton(Options.Create(campOptions));
+builder.Services.AddSingleton(Options.Create(bggOptions));
+
+builder.Services.AddDbContext<AppDbContext>(
+    options => options.UseNpgsql(connectionString));
+
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<ITelegramBotClient>(
+    _ => new TelegramBotClient(botOptions.Token));
+
+builder.Services.AddScoped<TelegramUpdateHandler>();
+
+if (botOptions.UseLongPolling)
+{
+    builder.Services.AddHostedService<TelegramPollingService>();
+}
+else
+{
+    builder.Services.AddHostedService<TelegramWebhookSetupService>();
+}
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+await using (var scope = app.Services.CreateAsyncScope())
 {
-    app.MapOpenApi();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await dbContext.Database.MigrateAsync();
 }
 
-app.UseHttpsRedirection();
+app.MapGet("/health", static () => Results.Ok());
 
-app.UseAuthorization();
+app.MapPost(
+    "/telegram/webhook/{secret}",
+    async Task<IResult> (
+        string secret,
+        Update update,
+        IOptions<BotOptions> options,
+        TelegramUpdateHandler handler,
+        CancellationToken cancellationToken) =>
+    {
+        if (!string.Equals(
+                secret,
+                options.Value.WebhookSecret,
+                StringComparison.Ordinal))
+        {
+            return Results.NotFound();
+        }
 
-app.MapControllers();
+        await handler.HandleAsync(update, cancellationToken);
+        return Results.Ok();
+    });
 
 app.Run();
