@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Normalization;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
@@ -57,6 +58,8 @@ builder.Services.AddScoped<InterestsHandler>();
 builder.Services.AddScoped<SessionsHandler>();
 builder.Services.AddScoped<CollectionImportService>();
 builder.Services.AddScoped<CollectionsHandler>();
+builder.Services.AddScoped<CsvExportService>();
+builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
 builder.Services.AddHostedService<CollectionImportWorker>();
 
