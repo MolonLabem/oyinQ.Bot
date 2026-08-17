@@ -7,6 +7,7 @@ using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
 using oyinQ.Bot.Features.Registration;
+using oyinQ.Bot.Features.Sessions;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
 using oyinQ.Bot.Integrations.Tesera;
@@ -47,11 +48,13 @@ builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
 builder.Services.AddSingleton<GameNameNormalizer>();
+builder.Services.AddSingleton<SessionMessageFormatter>();
 builder.Services.AddScoped<RegistrationHandler>();
 builder.Services.AddScoped<GameDedupService>();
 builder.Services.AddScoped<GameSearchService>();
 builder.Services.AddScoped<GamesHandler>();
 builder.Services.AddScoped<InterestsHandler>();
+builder.Services.AddScoped<SessionsHandler>();
 builder.Services.AddScoped<CollectionImportService>();
 builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();

@@ -5,6 +5,7 @@ using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
 using oyinQ.Bot.Features.Registration;
+using oyinQ.Bot.Features.Sessions;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -17,10 +18,11 @@ public sealed class TelegramUpdateHandler(
     CollectionsHandler collectionsHandler,
     GamesHandler gamesHandler,
     InterestsHandler interestsHandler,
+    SessionsHandler sessionsHandler,
     ILogger<TelegramUpdateHandler> logger)
 {
     private static readonly string[] DeferredCallbackPrefixes =
-        ["session:", "admin:"];
+        ["admin:"];
 
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
@@ -123,7 +125,9 @@ public sealed class TelegramUpdateHandler(
         {
             if (IsGameCallback(callback.Data) && !IsRegistrationComplete(participant))
             {
-                var chatId = callback.Message?.Chat.Id ?? telegramUser.Id;
+                var chatId = callback.Data?.StartsWith("session:", StringComparison.Ordinal) == true
+                    ? telegramUser.Id
+                    : callback.Message?.Chat.Id ?? telegramUser.Id;
                 await SendRegistrationRequiredAsync(chatId, cancellationToken);
                 return;
             }
@@ -139,6 +143,15 @@ public sealed class TelegramUpdateHandler(
 
             if (callback.Data?.StartsWith("interest:", StringComparison.Ordinal) == true
                 && await interestsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            if (callback.Data?.StartsWith("session:", StringComparison.Ordinal) == true
+                && await sessionsHandler.TryHandleCallbackAsync(
                     callback,
                     telegramUser.Id,
                     cancellationToken))
@@ -202,6 +215,15 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
+            if (await sessionsHandler.TryHandleMessageAsync(
+                    message,
+                    telegramUser.Id,
+                    conversationState,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (await gamesHandler.TryHandleMessageAsync(
                     message,
                     telegramUser.Id,
@@ -222,15 +244,6 @@ public sealed class TelegramUpdateHandler(
                 {
                     return;
                 }
-            }
-
-            if (text == "▶️ Собрать игру")
-            {
-                await botClient.SendMessage(
-                    message.Chat.Id,
-                    "Этот раздел появится позже.",
-                    replyMarkup: Keyboards.MainMenu,
-                    cancellationToken: cancellationToken);
             }
         }
     }
@@ -254,7 +267,8 @@ public sealed class TelegramUpdateHandler(
         callbackData?.StartsWith("game:", StringComparison.Ordinal) == true
         || callbackData?.StartsWith("interest:", StringComparison.Ordinal) == true
         || callbackData?.StartsWith("copy:", StringComparison.Ordinal) == true
-        || callbackData?.StartsWith("collection:", StringComparison.Ordinal) == true;
+        || callbackData?.StartsWith("collection:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("session:", StringComparison.Ordinal) == true;
 
     private static bool IsGameCommand(string command) =>
         command is "/games" or "/addgame" or "/wanted" or "/mygames";
@@ -263,6 +277,7 @@ public sealed class TelegramUpdateHandler(
         text is "🎲 Игры"
             or "➕ Добавить игры"
             or "🔥 Хочу сыграть"
+            or "▶️ Собрать игру"
             or "Мои игры"
             or "🎲 Мои игры"
             or "Мои хотелки"
