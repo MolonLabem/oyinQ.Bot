@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
@@ -19,11 +20,9 @@ public sealed class TelegramUpdateHandler(
     GamesHandler gamesHandler,
     InterestsHandler interestsHandler,
     SessionsHandler sessionsHandler,
+    AdminHandler adminHandler,
     ILogger<TelegramUpdateHandler> logger)
 {
-    private static readonly string[] DeferredCallbackPrefixes =
-        ["admin:"];
-
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
         if (update.CallbackQuery is { } callbackQuery)
@@ -40,6 +39,26 @@ public sealed class TelegramUpdateHandler(
         }
 
         var command = GetCommand(update.Message?.Text);
+
+        if (command == "/admin" && update.Message is { } adminMessage)
+        {
+            await adminHandler.HandleCommandAsync(
+                adminMessage,
+                telegramUser.Id,
+                cancellationToken);
+            return;
+        }
+
+        if (update.CallbackQuery is { Data: { } callbackData } adminCallback
+            && callbackData.StartsWith("admin:", StringComparison.Ordinal))
+        {
+            await adminHandler.TryHandleCallbackAsync(
+                adminCallback,
+                telegramUser.Id,
+                cancellationToken);
+            return;
+        }
+
         var participant = await dbContext.Participants
             .SingleOrDefaultAsync(
                 value => value.TelegramUserId == telegramUser.Id,
@@ -123,6 +142,15 @@ public sealed class TelegramUpdateHandler(
 
         if (update.CallbackQuery is { } callback)
         {
+            if (IsClubImportCallback(callback.Data)
+                && await collectionsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (IsGameCallback(callback.Data) && !IsRegistrationComplete(participant))
             {
                 var chatId = callback.Data?.StartsWith("session:", StringComparison.Ordinal) == true
@@ -179,13 +207,7 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
-            var prefix = DeferredCallbackPrefixes.FirstOrDefault(value =>
-                callback.Data?.StartsWith(value, StringComparison.Ordinal) == true);
-            logger.LogDebug(
-                prefix is null
-                    ? "Ignoring unknown callback payload."
-                    : "Callback prefix {Prefix} is awaiting a later feature handler.",
-                prefix);
+            logger.LogDebug("Ignoring unknown callback payload.");
             return;
         }
 
@@ -262,6 +284,10 @@ public sealed class TelegramUpdateHandler(
     private static bool IsRegistrationComplete(Participant participant) =>
         participant.DaysStaying is >= 1 and <= 3
         && participant.NeedsAccommodation.HasValue;
+
+    private static bool IsClubImportCallback(string? callbackData) =>
+        callbackData?.StartsWith("collection:import:", StringComparison.Ordinal) == true
+        && callbackData.EndsWith(":club", StringComparison.Ordinal);
 
     private static bool IsGameCallback(string? callbackData) =>
         callbackData?.StartsWith("game:", StringComparison.Ordinal) == true
