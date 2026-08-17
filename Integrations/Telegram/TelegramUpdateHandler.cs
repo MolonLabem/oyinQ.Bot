@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
 using oyinQ.Bot.Features.Registration;
@@ -13,6 +14,7 @@ public sealed class TelegramUpdateHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     RegistrationHandler registrationHandler,
+    CollectionsHandler collectionsHandler,
     GamesHandler gamesHandler,
     InterestsHandler interestsHandler,
     ILogger<TelegramUpdateHandler> logger)
@@ -126,6 +128,15 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
+            if (callback.Data?.StartsWith("collection:", StringComparison.Ordinal) == true
+                && await collectionsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (callback.Data?.StartsWith("interest:", StringComparison.Ordinal) == true
                 && await interestsHandler.TryHandleCallbackAsync(
                     callback,
@@ -182,6 +193,15 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
+            if (await collectionsHandler.TryHandleMessageAsync(
+                    message,
+                    telegramUser.Id,
+                    conversationState,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (await gamesHandler.TryHandleMessageAsync(
                     message,
                     telegramUser.Id,
@@ -233,7 +253,8 @@ public sealed class TelegramUpdateHandler(
     private static bool IsGameCallback(string? callbackData) =>
         callbackData?.StartsWith("game:", StringComparison.Ordinal) == true
         || callbackData?.StartsWith("interest:", StringComparison.Ordinal) == true
-        || callbackData?.StartsWith("copy:", StringComparison.Ordinal) == true;
+        || callbackData?.StartsWith("copy:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("collection:", StringComparison.Ordinal) == true;
 
     private static bool IsGameCommand(string command) =>
         command is "/games" or "/addgame" or "/wanted" or "/mygames";

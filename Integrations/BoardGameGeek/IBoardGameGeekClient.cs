@@ -1,13 +1,6 @@
-namespace oyinQ.Bot.Integrations.BoardGameGeek;
+using oyinQ.Bot.Integrations;
 
-public sealed record ExternalGame(
-    long? BggId,
-    string? TeseraAlias,
-    string Name,
-    int? MinPlayers,
-    int? MaxPlayers,
-    string? BestPlayers,
-    string? ExternalUrl);
+namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
 public sealed record ExternalGameSearchResult(
     long BggId,
@@ -22,5 +15,15 @@ public interface IBoardGameGeekClient
 
     Task<ExternalGame?> GetGameAsync(
         long bggId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
+        string username,
+        CancellationToken cancellationToken);
+
+    Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
+        string username,
+        int offset,
+        int limit,
         CancellationToken cancellationToken);
 }

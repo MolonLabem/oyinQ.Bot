@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Common.Normalization;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
-using oyinQ.Bot.Integrations.BoardGameGeek;
+using oyinQ.Bot.Integrations;
 
 namespace oyinQ.Bot.Features.Games;
 
@@ -130,6 +130,64 @@ public sealed class GameDedupService(
             existing.BringStatus = bringStatus;
             await dbContext.SaveChangesAsync(cancellationToken);
             return existing;
+        }
+    }
+
+    public async Task<bool> AddImportedCopyIfMissingAsync(
+        long gameId,
+        long? ownerParticipantId,
+        GameCopySource source,
+        BringStatus bringStatus,
+        CancellationToken cancellationToken)
+    {
+        if (source == GameCopySource.Personal && ownerParticipantId is null)
+        {
+            throw new ArgumentException("Personal copies require an owner.", nameof(ownerParticipantId));
+        }
+
+        if (source == GameCopySource.Club && ownerParticipantId is not null)
+        {
+            throw new ArgumentException("Club copies cannot have an owner.", nameof(ownerParticipantId));
+        }
+
+        var exists = await dbContext.GameCopies.AnyAsync(
+            value => value.GameId == gameId
+                && value.OwnerParticipantId == ownerParticipantId
+                && value.Source == source,
+            cancellationToken);
+        if (exists)
+        {
+            return false;
+        }
+
+        var copy = new GameCopy
+        {
+            GameId = gameId,
+            OwnerParticipantId = ownerParticipantId,
+            Source = source,
+            BringStatus = bringStatus,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        dbContext.GameCopies.Add(copy);
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            dbContext.Entry(copy).State = EntityState.Detached;
+            if (await dbContext.GameCopies.AnyAsync(
+                    value => value.GameId == gameId
+                        && value.OwnerParticipantId == ownerParticipantId
+                        && value.Source == source,
+                    cancellationToken))
+            {
+                return false;
+            }
+
+            throw;
         }
     }
 }

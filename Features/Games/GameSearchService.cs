@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Common.Normalization;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Games;

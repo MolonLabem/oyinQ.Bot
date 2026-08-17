@@ -3,11 +3,13 @@ using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Normalization;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
+using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
 using oyinQ.Bot.Features.Registration;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
+using oyinQ.Bot.Integrations.Tesera;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -34,6 +36,11 @@ builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client =>
 {
     client.BaseAddress = new Uri("https://boardgamegeek.com");
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+builder.Services.AddHttpClient<ITeseraClient, TeseraClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.tesera.ru");
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddSingleton<ITelegramBotClient>(
@@ -45,7 +52,10 @@ builder.Services.AddScoped<GameDedupService>();
 builder.Services.AddScoped<GameSearchService>();
 builder.Services.AddScoped<GamesHandler>();
 builder.Services.AddScoped<InterestsHandler>();
+builder.Services.AddScoped<CollectionImportService>();
+builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddHostedService<CollectionImportWorker>();
 
 if (botOptions.UseLongPolling)
 {

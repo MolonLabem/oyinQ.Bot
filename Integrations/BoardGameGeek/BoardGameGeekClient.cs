@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Xml.Linq;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
+using oyinQ.Bot.Integrations;
 
 namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
@@ -12,8 +13,12 @@ public sealed class BoardGameGeekClient(
     ILogger<BoardGameGeekClient> logger)
     : IBoardGameGeekClient
 {
-    private const int MaxAttempts = 4;
+    private const int CollectionAcceptedAttempts = 5;
+    private const int TransientAttempts = 3;
+    private const int ThingBatchSize = 20;
     private static readonly TimeSpan AcceptedRetryDelay = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromSeconds(5);
 
     public async Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
         string query,
@@ -62,80 +67,237 @@ public sealed class BoardGameGeekClient(
             return null;
         }
 
-        var document = await GetXmlAsync(
-            $"/xmlapi2/thing?id={bggId}&stats=1",
+        var games = await FetchThingsAsync([bggId], cancellationToken);
+        return games.GetValueOrDefault(bggId);
+    }
+
+    public async Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
+        string username,
+        CancellationToken cancellationToken)
+    {
+        var collection = await FetchCollectionAsync(username, cancellationToken);
+        if (collection.Count == 0)
+        {
+            return [];
+        }
+
+        await Task.Delay(ThingBatchDelay, cancellationToken);
+        var enriched = await FetchThingsAsync(
+            collection.Select(item => item.BggId).ToArray(),
             cancellationToken);
 
-        var item = document.Root?.Elements("item").FirstOrDefault();
-        if (item is null)
+        return collection
+            .Select(item => Merge(item, enriched.GetValueOrDefault(item.BggId)))
+            .ToArray();
+    }
+
+    public async Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
+        string username,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+
+        var collection = await FetchCollectionAsync(username, cancellationToken);
+        var slice = collection.Skip(offset).Take(limit).ToArray();
+        if (slice.Length == 0)
         {
-            return null;
+            return new ExternalCollectionStep([], Math.Min(offset, collection.Count), collection.Count);
         }
 
-        var primaryName = item.Elements("name")
-            .FirstOrDefault(name => string.Equals(
-                (string?)name.Attribute("type"),
-                "primary",
-                StringComparison.OrdinalIgnoreCase));
-        var name = (string?)primaryName?.Attribute("value");
-        if (string.IsNullOrWhiteSpace(name))
+        await Task.Delay(ThingBatchDelay, cancellationToken);
+        var enriched = await FetchThingsAsync(
+            slice.Select(item => item.BggId).ToArray(),
+            cancellationToken);
+        var games = slice
+            .Select(item => Merge(item, enriched.GetValueOrDefault(item.BggId)))
+            .ToArray();
+
+        return new ExternalCollectionStep(
+            games,
+            Math.Min(offset + slice.Length, collection.Count),
+            collection.Count);
+    }
+
+    private async Task<IReadOnlyList<CollectionItem>> FetchCollectionAsync(
+        string username,
+        CancellationToken cancellationToken)
+    {
+        var document = await GetXmlAsync(
+            $"/xmlapi2/collection?username={Uri.EscapeDataString(username)}&own=1&excludesubtype=boardgameexpansion&stats=1",
+            cancellationToken,
+            CollectionAcceptedAttempts);
+
+        return document.Root?
+            .Elements("item")
+            .Select(ParseCollectionItem)
+            .Where(item => item is not null)
+            .Cast<CollectionItem>()
+            .ToArray()
+            ?? [];
+    }
+
+    private async Task<Dictionary<long, ExternalGame>> FetchThingsAsync(
+        IReadOnlyCollection<long> bggIds,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<long, ExternalGame>();
+        var ids = bggIds.Where(id => id > 0).Distinct().ToArray();
+
+        for (var offset = 0; offset < ids.Length; offset += ThingBatchSize)
         {
-            return null;
+            if (offset > 0)
+            {
+                await Task.Delay(ThingBatchDelay, cancellationToken);
+            }
+
+            var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
+            var document = await GetXmlAsync(
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&stats=1",
+                cancellationToken);
+
+            foreach (var item in document.Root?.Elements("item") ?? [])
+            {
+                var parsed = ParseThing(item);
+                if (parsed?.BggId is { } bggId)
+                {
+                    result[bggId] = parsed;
+                }
+            }
         }
 
-        return new ExternalGame(
-            BggId: bggId,
-            TeseraAlias: null,
-            Name: name,
-            MinPlayers: ReadIntValue(item.Element("minplayers")),
-            MaxPlayers: ReadIntValue(item.Element("maxplayers")),
-            BestPlayers: CalculateBestPlayers(item),
-            ExternalUrl: $"https://boardgamegeek.com/boardgame/{bggId}");
+        return result;
     }
 
     private async Task<XDocument> GetXmlAsync(
         string relativeUrl,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int acceptedAttempts = TransientAttempts)
     {
-        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
+        var transientAttempt = 0;
+        var acceptedAttempt = 0;
+
+        while (true)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, relativeUrl);
-            if (!string.IsNullOrWhiteSpace(options.Value.ApiToken))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue(
-                    "Bearer",
-                    options.Value.ApiToken);
-            }
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.Value.ApiToken);
 
-            using var response = await httpClient.SendAsync(request, cancellationToken);
+            using var response = await httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+
             if (response.StatusCode == HttpStatusCode.Accepted)
             {
-                if (attempt == MaxAttempts)
+                acceptedAttempt++;
+                if (acceptedAttempt >= acceptedAttempts)
                 {
                     throw new HttpRequestException(
-                        "BGG did not finish preparing the response after all retries.");
+                        "BGG не успел подготовить коллекцию после нескольких повторов.",
+                        null,
+                        response.StatusCode);
                 }
 
                 logger.LogDebug(
                     "BGG returned HTTP 202 for {Url}; retry {Attempt}/{MaxAttempts}.",
                     relativeUrl,
-                    attempt,
-                    MaxAttempts);
+                    acceptedAttempt,
+                    acceptedAttempts);
                 await Task.Delay(AcceptedRetryDelay, cancellationToken);
                 continue;
+            }
+
+            if (response.StatusCode is HttpStatusCode.InternalServerError
+                or HttpStatusCode.BadGateway
+                or HttpStatusCode.ServiceUnavailable
+                or HttpStatusCode.GatewayTimeout
+                || (int)response.StatusCode == 429)
+            {
+                transientAttempt++;
+                if (transientAttempt < TransientAttempts)
+                {
+                    var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 350));
+                    await Task.Delay(TransientRetryDelay + jitter, cancellationToken);
+                    continue;
+                }
             }
 
             response.EnsureSuccessStatusCode();
             var xml = await response.Content.ReadAsStringAsync(cancellationToken);
             return XDocument.Parse(xml);
         }
-
-        throw new HttpRequestException("BGG did not return a completed response.");
     }
+
+    private static CollectionItem? ParseCollectionItem(XElement item)
+    {
+        var bggId = ReadLongAttribute(item, "objectid");
+        var name = item.Element("name")?.Value?.Trim();
+        if (bggId is null || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var stats = item.Element("stats");
+        return new CollectionItem(
+            bggId.Value,
+            name,
+            ReadIntAttribute(stats, "minplayers"),
+            ReadIntAttribute(stats, "maxplayers"));
+    }
+
+    private static ExternalGame? ParseThing(XElement item)
+    {
+        var bggId = ReadLongAttribute(item, "id");
+        var primaryName = item.Elements("name")
+            .FirstOrDefault(name => string.Equals(
+                (string?)name.Attribute("type"),
+                "primary",
+                StringComparison.OrdinalIgnoreCase));
+        var name = (string?)primaryName?.Attribute("value");
+
+        if (bggId is null || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        return new ExternalGame(
+            bggId,
+            null,
+            name,
+            ReadIntValue(item.Element("minplayers")),
+            ReadIntValue(item.Element("maxplayers")),
+            BggBestPlayerCalculator.Calculate(item),
+            $"https://boardgamegeek.com/boardgame/{bggId.Value}");
+    }
+
+    private static ExternalGame Merge(CollectionItem collectionItem, ExternalGame? enriched) =>
+        enriched is null
+            ? new ExternalGame(
+                collectionItem.BggId,
+                null,
+                collectionItem.Name,
+                collectionItem.MinPlayers,
+                collectionItem.MaxPlayers,
+                null,
+                $"https://boardgamegeek.com/boardgame/{collectionItem.BggId}")
+            : enriched with
+            {
+                MinPlayers = enriched.MinPlayers ?? collectionItem.MinPlayers,
+                MaxPlayers = enriched.MaxPlayers ?? collectionItem.MaxPlayers
+            };
 
     private static int? ReadIntValue(XElement? element)
     {
         var value = (string?)element?.Attribute("value");
+        return int.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static int? ReadIntAttribute(XElement? element, string attributeName)
+    {
+        var value = (string?)element?.Attribute(attributeName);
         return int.TryParse(value, out var parsed) ? parsed : null;
     }
 
@@ -145,49 +307,9 @@ public sealed class BoardGameGeekClient(
         return long.TryParse(value, out var parsed) ? parsed : null;
     }
 
-    private static string? CalculateBestPlayers(XElement item)
-    {
-        var poll = item.Elements("poll")
-            .FirstOrDefault(value => string.Equals(
-                (string?)value.Attribute("name"),
-                "suggested_numplayers",
-                StringComparison.OrdinalIgnoreCase));
-        if (poll is null)
-        {
-            return null;
-        }
-
-        var best = new List<string>();
-        foreach (var results in poll.Elements("results"))
-        {
-            var playerCount = (string?)results.Attribute("numplayers");
-            if (string.IsNullOrWhiteSpace(playerCount))
-            {
-                continue;
-            }
-
-            var votes = results.Elements("result")
-                .Select(result => new
-                {
-                    Value = (string?)result.Attribute("value"),
-                    Votes = int.TryParse((string?)result.Attribute("numvotes"), out var count)
-                        ? count
-                        : 0
-                })
-                .ToArray();
-
-            var bestVotes = votes.FirstOrDefault(vote => vote.Value == "Best")?.Votes ?? 0;
-            var recommendedVotes = votes.FirstOrDefault(vote => vote.Value == "Recommended")?.Votes ?? 0;
-            var notRecommendedVotes = votes.FirstOrDefault(vote => vote.Value == "Not Recommended")?.Votes ?? 0;
-
-            if (bestVotes > 0
-                && bestVotes >= recommendedVotes
-                && bestVotes >= notRecommendedVotes)
-            {
-                best.Add(playerCount);
-            }
-        }
-
-        return best.Count == 0 ? null : string.Join(", ", best);
-    }
+    private sealed record CollectionItem(
+        long BggId,
+        string Name,
+        int? MinPlayers,
+        int? MaxPlayers);
 }

@@ -65,6 +65,7 @@ public partial class AppDbContextModelSnapshot : ModelSnapshot
             b.Property<long?>("OwnerParticipantId").HasColumnType("bigint");
             b.Property<GameCopySource>("Source").HasColumnType("integer");
             b.HasKey("Id");
+            b.HasIndex("GameId").IsUnique().HasDatabaseName("IX_GameCopies_GameId_Club").HasFilter("\"OwnerParticipantId\" IS NULL AND \"Source\" = 1");
             b.HasIndex("GameId", "OwnerParticipantId").IsUnique();
             b.HasIndex("OwnerParticipantId");
             b.ToTable("GameCopies");
@@ -124,6 +125,7 @@ public partial class AppDbContextModelSnapshot : ModelSnapshot
             b.Property<long?>("ParticipantId").HasColumnType("bigint");
             b.Property<string>("ProgressJson").HasColumnType("jsonb");
             b.Property<ExternalGameProvider>("Provider").HasColumnType("integer");
+            b.Property<long>("RequestedByTelegramUserId").HasColumnType("bigint");
             b.Property<int>("SkippedCount").HasColumnType("integer");
             b.Property<DateTimeOffset?>("StartedAt").HasColumnType("timestamp with time zone");
             b.Property<ImportStatus>("Status").HasColumnType("integer");
@@ -131,6 +133,7 @@ public partial class AppDbContextModelSnapshot : ModelSnapshot
             b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");
             b.HasKey("Id");
             b.HasIndex("ParticipantId");
+            b.HasIndex("RequestedByTelegramUserId");
             b.HasIndex("Provider", "ExternalUsername", "ParticipantId", "Target", "Status");
             b.HasIndex("Status", "CreatedAt");
             b.ToTable("CollectionImports");
