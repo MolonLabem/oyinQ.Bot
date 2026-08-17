@@ -222,20 +222,25 @@ public sealed class CollectionsHandler(
     {
         var rows = new List<InlineKeyboardButton[]>
         {
-            [InlineKeyboardButton.WithCallbackData("Одна игра", "collection:add:single")],
-            [
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Одна игра", "collection:add:single")
+            },
+            new[]
+            {
                 InlineKeyboardButton.WithCallbackData("Коллекция BGG", "collection:import:bgg:personal"),
                 InlineKeyboardButton.WithCallbackData("Коллекция Tesera", "collection:import:tesera:personal")
-            ]
+            }
         };
 
         if (campOptions.Value.AdminTelegramIds.Contains(telegramUserId))
         {
             rows.Add(
-            [
-                InlineKeyboardButton.WithCallbackData("🏢 BGG клуба", "collection:import:bgg:club"),
-                InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club")
-            ]);
+                new[]
+                {
+                    InlineKeyboardButton.WithCallbackData("🏢 BGG клуба", "collection:import:bgg:club"),
+                    InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club")
+                });
         }
 
         return new InlineKeyboardMarkup(rows);
