@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
@@ -6,7 +7,6 @@ using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Registration;
 
@@ -106,11 +106,11 @@ public sealed class RegistrationHandler(
                 return true;
             }
 
-            participant.DaysStaying = days;
-            participant.NeedsAccommodation = null;
-            participant.UpdatedAt = DateTimeOffset.UtcNow;
-
-            await SetConversationStateAsync(participant.Id, AwaitingAccommodationState, cancellationToken);
+            await SetConversationStateAsync(
+                participant.Id,
+                AwaitingAccommodationState,
+                JsonSerializer.Serialize(new RegistrationDraft(days)),
+                cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             var price = campOptions.Value.AccommodationPricePerDay;
@@ -127,10 +127,11 @@ public sealed class RegistrationHandler(
             var state = await dbContext.ParticipantConversationStates
                 .SingleOrDefaultAsync(x => x.ParticipantId == participant.Id, cancellationToken);
 
+            var draft = state is null ? null : DeserializeDraft(state.DataJson);
             if (state is null
                 || state.State != AwaitingAccommodationState
                 || state.ExpiresAt <= DateTimeOffset.UtcNow
-                || participant.DaysStaying is null)
+                || draft is null)
             {
                 if (state is not null)
                 {
@@ -146,18 +147,20 @@ public sealed class RegistrationHandler(
                 return true;
             }
 
-            participant.NeedsAccommodation = callbackData switch
+            bool? needsAccommodation = callbackData switch
             {
                 "reg:accommodation:yes" => true,
                 "reg:accommodation:no" => false,
-                _ => participant.NeedsAccommodation
+                _ => null
             };
 
-            if (participant.NeedsAccommodation is null)
+            if (!needsAccommodation.HasValue)
             {
                 return true;
             }
 
+            participant.DaysStaying = draft.DaysStaying;
+            participant.NeedsAccommodation = needsAccommodation.Value;
             participant.UpdatedAt = DateTimeOffset.UtcNow;
             dbContext.ParticipantConversationStates.Remove(state);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -173,9 +176,6 @@ public sealed class RegistrationHandler(
         if (callbackData == "reg:edit")
         {
             await ClearConversationStateAsync(participant.Id, cancellationToken);
-            participant.DaysStaying = null;
-            participant.NeedsAccommodation = null;
-            participant.UpdatedAt = DateTimeOffset.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
 
             await botClient.SendMessage(
@@ -211,10 +211,7 @@ public sealed class RegistrationHandler(
         Participant participant,
         ParticipantConversationState conversationState,
         Message message,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult(false);
-    }
+        CancellationToken cancellationToken) => Task.FromResult(false);
 
     private async Task SendProfileAsync(
         long chatId,
@@ -243,6 +240,7 @@ public sealed class RegistrationHandler(
     private async Task SetConversationStateAsync(
         long participantId,
         string stateName,
+        string? dataJson,
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
@@ -259,7 +257,7 @@ public sealed class RegistrationHandler(
         }
 
         state.State = stateName;
-        state.DataJson = null;
+        state.DataJson = dataJson;
         state.ExpiresAt = now.Add(StateTtl);
         state.UpdatedAt = now;
     }
@@ -272,6 +270,23 @@ public sealed class RegistrationHandler(
         if (state is not null)
         {
             dbContext.ParticipantConversationStates.Remove(state);
+        }
+    }
+
+    private static RegistrationDraft? DeserializeDraft(string? dataJson)
+    {
+        if (string.IsNullOrWhiteSpace(dataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<RegistrationDraft>(dataJson);
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 
@@ -302,4 +317,6 @@ public sealed class RegistrationHandler(
             ? user.Username ?? user.Id.ToString()
             : name;
     }
+
+    private sealed record RegistrationDraft(int DaysStaying);
 }
