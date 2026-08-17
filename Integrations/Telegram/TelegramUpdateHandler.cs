@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Games;
+using oyinQ.Bot.Features.Interests;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -9,10 +11,12 @@ namespace oyinQ.Bot.Integrations.Telegram;
 public sealed class TelegramUpdateHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
+    GamesHandler gamesHandler,
+    InterestsHandler interestsHandler,
     ILogger<TelegramUpdateHandler> logger)
 {
-    private static readonly string[] CallbackPrefixes =
-        ["game:", "interest:", "copy:", "session:", "reg:", "admin:"];
+    private static readonly string[] DeferredCallbackPrefixes =
+        ["session:", "reg:", "admin:"];
 
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
@@ -32,7 +36,7 @@ public sealed class TelegramUpdateHandler(
         var command = GetCommand(update.Message?.Text);
         var participant = await dbContext.Participants
             .SingleOrDefaultAsync(
-                x => x.TelegramUserId == telegramUser.Id,
+                value => value.TelegramUserId == telegramUser.Id,
                 cancellationToken);
 
         if (participant is null && command == "/start")
@@ -62,7 +66,7 @@ public sealed class TelegramUpdateHandler(
 
         var conversationState = await dbContext.ParticipantConversationStates
             .SingleOrDefaultAsync(
-                x => x.ParticipantId == participant.Id,
+                value => value.ParticipantId == participant.Id,
                 cancellationToken);
 
         if (conversationState is not null
@@ -73,31 +77,59 @@ public sealed class TelegramUpdateHandler(
             conversationState = null;
         }
 
-        if (command is not null)
+        if (update.CallbackQuery is { } callback)
         {
-            logger.LogDebug(
-                "Command {Command} is awaiting a Phase 2+ feature handler.",
-                command);
-            return;
-        }
+            if (callback.Data?.StartsWith("interest:", StringComparison.Ordinal) == true
+                && await interestsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
 
-        if (update.CallbackQuery?.Data is { } callbackData)
-        {
-            var prefix = CallbackPrefixes.FirstOrDefault(
-                value => callbackData.StartsWith(value, StringComparison.Ordinal));
+            if ((callback.Data?.StartsWith("game:", StringComparison.Ordinal) == true
+                    || callback.Data?.StartsWith("copy:", StringComparison.Ordinal) == true)
+                && await gamesHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
 
+            var prefix = DeferredCallbackPrefixes.FirstOrDefault(value =>
+                callback.Data?.StartsWith(value, StringComparison.Ordinal) == true);
             logger.LogDebug(
                 prefix is null
                     ? "Ignoring unknown callback payload."
-                    : "Callback prefix {Prefix} is awaiting a Phase 2+ feature handler.",
+                    : "Callback prefix {Prefix} is awaiting a later feature handler.",
                 prefix);
+            return;
+        }
+
+        if (update.Message is { } message
+            && await gamesHandler.TryHandleMessageAsync(
+                message,
+                telegramUser.Id,
+                conversationState,
+                cancellationToken))
+        {
+            return;
+        }
+
+        if (command is not null)
+        {
+            logger.LogDebug(
+                "Command {Command} is awaiting another feature handler.",
+                command);
             return;
         }
 
         if (update.Message?.Text is not null && conversationState is not null)
         {
             logger.LogDebug(
-                "Conversation state {State} is awaiting a Phase 2+ feature handler.",
+                "Conversation state {State} is awaiting another feature handler.",
                 conversationState.State);
         }
     }
