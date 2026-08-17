@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
+using oyinQ.Bot.Features.Registration;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -29,6 +30,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
+builder.Services.AddScoped<RegistrationHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
 
 if (botOptions.UseLongPolling)

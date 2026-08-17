@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Registration;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -9,6 +10,7 @@ namespace oyinQ.Bot.Integrations.Telegram;
 public sealed class TelegramUpdateHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
+    RegistrationHandler registrationHandler,
     ILogger<TelegramUpdateHandler> logger)
 {
     private static readonly string[] CallbackPrefixes =
@@ -73,32 +75,75 @@ public sealed class TelegramUpdateHandler(
             conversationState = null;
         }
 
-        if (command is not null)
+        if (command is not null && update.Message is { } commandMessage)
         {
-            logger.LogDebug(
-                "Command {Command} is awaiting a Phase 2+ feature handler.",
-                command);
-            return;
+            switch (command)
+            {
+                case "/start":
+                    await registrationHandler.HandleStartAsync(participant, commandMessage, cancellationToken);
+                    return;
+                case "/menu":
+                    await registrationHandler.HandleMenuAsync(participant, commandMessage, cancellationToken);
+                    return;
+                default:
+                    logger.LogDebug("Ignoring unknown command {Command}.", command);
+                    return;
+            }
         }
 
         if (update.CallbackQuery?.Data is { } callbackData)
         {
+            if (callbackData.StartsWith("reg:", StringComparison.Ordinal))
+            {
+                await registrationHandler.HandleCallbackAsync(
+                    participant,
+                    update.CallbackQuery,
+                    callbackData,
+                    cancellationToken);
+                return;
+            }
+
             var prefix = CallbackPrefixes.FirstOrDefault(
                 value => callbackData.StartsWith(value, StringComparison.Ordinal));
 
             logger.LogDebug(
                 prefix is null
                     ? "Ignoring unknown callback payload."
-                    : "Callback prefix {Prefix} is awaiting a Phase 2+ feature handler.",
+                    : "Callback prefix {Prefix} is awaiting a later feature handler.",
                 prefix);
             return;
         }
 
-        if (update.Message?.Text is not null && conversationState is not null)
+        if (update.Message is { Text: { } text } message)
         {
-            logger.LogDebug(
-                "Conversation state {State} is awaiting a Phase 2+ feature handler.",
-                conversationState.State);
+            if (text == "👤 Моё")
+            {
+                await registrationHandler.HandleProfileAsync(participant, message, cancellationToken);
+                return;
+            }
+
+            if (conversationState is not null)
+            {
+                var handled = await registrationHandler.HandleConversationTextAsync(
+                    participant,
+                    conversationState,
+                    message,
+                    cancellationToken);
+
+                if (handled)
+                {
+                    return;
+                }
+            }
+
+            if (text is "🎲 Игры" or "➕ Добавить игры" or "🔥 Хочу сыграть" or "▶️ Собрать игру")
+            {
+                await botClient.SendMessage(
+                    message.Chat.Id,
+                    "Этот раздел появится позже.",
+                    replyMarkup: Keyboards.MainMenu,
+                    cancellationToken: cancellationToken);
+            }
         }
     }
 
