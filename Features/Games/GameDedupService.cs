@@ -1,0 +1,114 @@
+using Microsoft.EntityFrameworkCore;
+using oyinQ.Bot.Common.Normalization;
+using oyinQ.Bot.Data;
+using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.BoardGameGeek;
+
+namespace oyinQ.Bot.Features.Games;
+
+public sealed class GameDedupService(
+    AppDbContext dbContext,
+    GameNameNormalizer normalizer)
+{
+    public async Task<Game> FindOrCreateAsync(
+        ExternalGame externalGame,
+        CancellationToken cancellationToken)
+    {
+        var normalizedName = normalizer.Normalize(externalGame.Name);
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            throw new InvalidOperationException("Game name cannot be normalized to an empty value.");
+        }
+
+        Game? game = null;
+
+        if (externalGame.BggId is { } bggId)
+        {
+            game = await dbContext.Games.SingleOrDefaultAsync(
+                value => value.BggId == bggId,
+                cancellationToken);
+        }
+
+        if (game is null && !string.IsNullOrWhiteSpace(externalGame.TeseraAlias))
+        {
+            game = await dbContext.Games.SingleOrDefaultAsync(
+                value => value.TeseraAlias == externalGame.TeseraAlias,
+                cancellationToken);
+        }
+
+        game ??= await dbContext.Games.SingleOrDefaultAsync(
+            value => value.NormalizedName == normalizedName,
+            cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        if (game is null)
+        {
+            game = new Game
+            {
+                BggId = externalGame.BggId,
+                TeseraAlias = externalGame.TeseraAlias,
+                Name = externalGame.Name.Trim(),
+                NormalizedName = normalizedName,
+                MinPlayers = externalGame.MinPlayers,
+                MaxPlayers = externalGame.MaxPlayers,
+                BestPlayers = externalGame.BestPlayers,
+                ExternalUrl = externalGame.ExternalUrl,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            dbContext.Games.Add(game);
+        }
+        else
+        {
+            game.BggId ??= externalGame.BggId;
+            game.TeseraAlias ??= externalGame.TeseraAlias;
+            game.MinPlayers ??= externalGame.MinPlayers;
+            game.MaxPlayers ??= externalGame.MaxPlayers;
+            game.BestPlayers ??= externalGame.BestPlayers;
+            game.ExternalUrl ??= externalGame.ExternalUrl;
+            game.UpdatedAt = now;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return game;
+    }
+
+    public async Task<GameCopy> AddOrUpdatePersonalCopyAsync(
+        long gameId,
+        long telegramUserId,
+        BringStatus bringStatus,
+        CancellationToken cancellationToken)
+    {
+        var participant = await dbContext.Participants.SingleAsync(
+            value => value.TelegramUserId == telegramUserId,
+            cancellationToken);
+
+        var copy = await dbContext.GameCopies.SingleOrDefaultAsync(
+            value => value.GameId == gameId
+                && value.OwnerParticipantId == participant.Id
+                && value.Source == GameCopySource.Personal,
+            cancellationToken);
+
+        if (copy is null)
+        {
+            copy = new GameCopy
+            {
+                GameId = gameId,
+                OwnerParticipantId = participant.Id,
+                Source = GameCopySource.Personal,
+                BringStatus = bringStatus,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            dbContext.GameCopies.Add(copy);
+        }
+        else
+        {
+            copy.BringStatus = bringStatus;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return copy;
+    }
+}
