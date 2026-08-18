@@ -29,6 +29,8 @@ public sealed class TeseraClient(
 
         string? selectedPath = null;
         IReadOnlyList<JsonElement> firstPage = [];
+        string? firstSuccessfulEmptyPath = null;
+        IReadOnlyList<JsonElement> firstSuccessfulEmptyPage = [];
         var failures = new List<HttpStatusCode>();
 
         foreach (var pathTemplate in CollectionPaths)
@@ -39,9 +41,20 @@ public sealed class TeseraClient(
                 var page = await FetchCollectionPageAsync(path, 0, cancellationToken);
                 if (page.IsSuccess)
                 {
-                    selectedPath = path;
-                    firstPage = page.Items;
-                    break;
+                    if (page.Items.Count > 0)
+                    {
+                        selectedPath = path;
+                        firstPage = page.Items;
+                        break;
+                    }
+
+                    firstSuccessfulEmptyPath ??= path;
+                    if (ReferenceEquals(firstSuccessfulEmptyPath, path)
+                        || firstSuccessfulEmptyPage.Count == 0)
+                    {
+                        firstSuccessfulEmptyPage = page.Items;
+                    }
+                    continue;
                 }
 
                 if (page.StatusCode is { } statusCode)
@@ -53,6 +66,12 @@ public sealed class TeseraClient(
             {
                 logger.LogDebug(exception, "Tesera collection endpoint {Path} failed.", path);
             }
+        }
+
+        if (selectedPath is null && firstSuccessfulEmptyPath is not null)
+        {
+            selectedPath = firstSuccessfulEmptyPath;
+            firstPage = firstSuccessfulEmptyPage;
         }
 
         if (selectedPath is null)
@@ -83,7 +102,7 @@ public sealed class TeseraClient(
         }
 
         var aliases = collectionItems
-            .Where(item => ReadBool(item, "isAddition") is not true)
+            .Where(item => !IsAddition(item))
             .Select(ExtractAlias)
             .Where(alias => !string.IsNullOrWhiteSpace(alias))
             .Cast<string>()
@@ -304,6 +323,24 @@ public sealed class TeseraClient(
         return [];
     }
 
+    private static bool IsAddition(JsonElement item)
+    {
+        var directValue = ReadBool(item, "isAddition");
+        if (directValue.HasValue)
+        {
+            return directValue.Value;
+        }
+
+        if (item.ValueKind == JsonValueKind.Object
+            && (TryGetProperty(item, "game", out var game)
+                || TryGetProperty(item, "Game", out game)))
+        {
+            return ReadBool(game, "isAddition") is true;
+        }
+
+        return false;
+    }
+
     private static string? ExtractAlias(JsonElement item)
     {
         var alias = ReadString(item, "alias") ?? ReadString(item, "Alias");
@@ -395,13 +432,38 @@ public sealed class TeseraClient(
             return null;
         }
 
-        return property.ValueKind switch
+        if (property.ValueKind == JsonValueKind.True)
         {
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.String when bool.TryParse(property.GetString(), out var value) => value,
-            _ => null
-        };
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number
+            && property.TryGetInt32(out var number)
+            && number is 0 or 1)
+        {
+            return number == 1;
+        }
+
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            var text = property.GetString();
+            if (bool.TryParse(text, out var boolean))
+            {
+                return boolean;
+            }
+
+            if (int.TryParse(text, out number) && number is 0 or 1)
+            {
+                return number == 1;
+            }
+        }
+
+        return null;
     }
 
     private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
