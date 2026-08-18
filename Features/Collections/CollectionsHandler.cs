@@ -16,10 +16,12 @@ public sealed class CollectionsHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     CollectionImportService importService,
-    IOptions<CampOptions> campOptions)
+    IOptions<CampOptions> campOptions,
+    IOptions<BggOptions> bggOptions)
 {
     private const string GameAddSearchState = "games:add-search";
     private const string ImportStatePrefix = "collections:import:";
+    private const string BggUnavailableMessage = "BGG пока недоступен — ждём подтверждение API-доступа.\nПопробуй Tesera или добавь игру другим доступным способом.";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(30);
 
     public async Task<bool> TryHandleMessageAsync(
@@ -75,6 +77,17 @@ public sealed class CollectionsHandler(
 
         if (data == "collection:add:single")
         {
+            if (!bggOptions.Value.IsAvailable)
+            {
+                await SendOrEditAsync(
+                    callbackQuery,
+                    chatId,
+                    BggUnavailableMessage,
+                    BuildAddMenu(telegramUserId),
+                    cancellationToken);
+                return true;
+            }
+
             await SetStateAsync(telegramUserId, GameAddSearchState, cancellationToken);
             await SendOrEditAsync(
                 callbackQuery,
@@ -90,6 +103,17 @@ public sealed class CollectionsHandler(
             && TryParseProvider(providerText, out var provider)
             && TryParseTarget(targetText, out var target))
         {
+            if (provider == ExternalGameProvider.Bgg && !bggOptions.Value.IsAvailable)
+            {
+                await SendOrEditAsync(
+                    callbackQuery,
+                    chatId,
+                    BggUnavailableMessage,
+                    BuildAddMenu(telegramUserId),
+                    cancellationToken);
+                return true;
+            }
+
             if (target == ImportTarget.Club
                 && !campOptions.Value.AdminTelegramIds.Contains(telegramUserId))
             {
@@ -107,7 +131,7 @@ public sealed class CollectionsHandler(
 
             var prompt = provider == ExternalGameProvider.Bgg
                 ? "Отправьте имя пользователя BGG или ссылку на его профиль/коллекцию."
-                : "Отправьте alias пользователя Tesera или ссылку на его профиль. Tesera сейчас может отвечать нестабильно; ошибка этого импорта не повлияет на BGG.";
+                : "Отправьте alias пользователя Tesera или ссылку на его профиль. Tesera сейчас может отвечать нестабильно; ошибка этого импорта не повлияет на другие функции бота.";
             await SendOrEditAsync(callbackQuery, chatId, prompt, null, cancellationToken);
             return true;
         }
@@ -133,6 +157,17 @@ public sealed class CollectionsHandler(
             || !TryParseTarget(parts[3], out var target))
         {
             await ClearStateAsync(conversationState, cancellationToken);
+            return;
+        }
+
+        if (provider == ExternalGameProvider.Bgg && !bggOptions.Value.IsAvailable)
+        {
+            await ClearStateAsync(conversationState, cancellationToken);
+            await botClient.SendMessage(
+                chatId,
+                BggUnavailableMessage,
+                replyMarkup: BuildAddMenu(telegramUserId),
+                cancellationToken: cancellationToken);
             return;
         }
 
@@ -176,7 +211,7 @@ public sealed class CollectionsHandler(
 
         await ClearStateAsync(conversationState, cancellationToken);
 
-        var message = result.Status switch
+        var responseMessage = result.Status switch
         {
             CollectionImportEnqueueStatus.Queued
                 => "⏳ Импорт поставлен в очередь. Я напишу, когда он завершится.",
@@ -184,12 +219,14 @@ public sealed class CollectionsHandler(
                 => "⏳ Такой импорт уже выполняется. Я напишу после завершения.",
             CollectionImportEnqueueStatus.RecentlyCompleted
                 => "Эта коллекция уже импортировалась за последние 2 дня. Повторный импорт пока пропущен.",
+            CollectionImportEnqueueStatus.Unavailable
+                => BggUnavailableMessage,
             _ => "Импорт не поставлен в очередь."
         };
 
         await botClient.SendMessage(
             chatId,
-            message,
+            responseMessage,
             replyMarkup: Keyboards.MainMenu,
             cancellationToken: cancellationToken);
     }
@@ -201,7 +238,7 @@ public sealed class CollectionsHandler(
     {
         await botClient.SendMessage(
             chatId,
-            "Как добавить игры?",
+            BuildAddMenuText(),
             replyMarkup: BuildAddMenu(telegramUserId),
             cancellationToken: cancellationToken);
     }
@@ -214,33 +251,51 @@ public sealed class CollectionsHandler(
         await SendOrEditAsync(
             callbackQuery,
             chatId,
-            "Как добавить игры?",
+            BuildAddMenuText(),
             BuildAddMenu(telegramUserId),
             cancellationToken);
 
+    private string BuildAddMenuText() => bggOptions.Value.IsAvailable
+        ? "Как добавить игры?"
+        : $"Как добавить игры?\n\n{BggUnavailableMessage}";
+
     private InlineKeyboardMarkup BuildAddMenu(long telegramUserId)
     {
-        var rows = new List<InlineKeyboardButton[]>
+        var rows = new List<InlineKeyboardButton[]>();
+
+        if (bggOptions.Value.IsAvailable)
         {
-            new[]
-            {
+            rows.Add(
+            [
                 InlineKeyboardButton.WithCallbackData("Одна игра", "collection:add:single")
-            },
-            new[]
-            {
+            ]);
+            rows.Add(
+            [
                 InlineKeyboardButton.WithCallbackData("Коллекция BGG", "collection:import:bgg:personal"),
                 InlineKeyboardButton.WithCallbackData("Коллекция Tesera", "collection:import:tesera:personal")
-            }
-        };
+            ]);
+        }
+        else
+        {
+            rows.Add(
+            [
+                InlineKeyboardButton.WithCallbackData("Коллекция Tesera", "collection:import:tesera:personal")
+            ]);
+        }
 
         if (campOptions.Value.AdminTelegramIds.Contains(telegramUserId))
         {
             rows.Add(
-                new[]
-                {
-                    InlineKeyboardButton.WithCallbackData("🏢 BGG клуба", "collection:import:bgg:club"),
-                    InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club")
-                });
+                bggOptions.Value.IsAvailable
+                    ?
+                    [
+                        InlineKeyboardButton.WithCallbackData("🏢 BGG клуба", "collection:import:bgg:club"),
+                        InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club")
+                    ]
+                    :
+                    [
+                        InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club")
+                    ]);
         }
 
         return new InlineKeyboardMarkup(rows);
