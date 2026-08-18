@@ -48,12 +48,12 @@ public sealed class TeseraClient(
                         break;
                     }
 
-                    firstSuccessfulEmptyPath ??= path;
-                    if (ReferenceEquals(firstSuccessfulEmptyPath, path)
-                        || firstSuccessfulEmptyPage.Count == 0)
+                    if (firstSuccessfulEmptyPath is null)
                     {
+                        firstSuccessfulEmptyPath = path;
                         firstSuccessfulEmptyPage = page.Items;
                     }
+
                     continue;
                 }
 
