@@ -10,7 +10,8 @@ public enum CollectionImportEnqueueStatus
 {
     Queued,
     AlreadyQueued,
-    RecentlyCompleted
+    RecentlyCompleted,
+    Unavailable
 }
 
 public sealed record CollectionImportEnqueueResult(
@@ -19,7 +20,8 @@ public sealed record CollectionImportEnqueueResult(
 
 public sealed class CollectionImportService(
     AppDbContext dbContext,
-    IOptions<CampOptions> campOptions)
+    IOptions<CampOptions> campOptions,
+    IOptions<BggOptions> bggOptions)
 {
     private static readonly TimeSpan RecentImportWindow = TimeSpan.FromDays(2);
 
@@ -29,6 +31,11 @@ public sealed class CollectionImportService(
         string externalUsername,
         CancellationToken cancellationToken)
     {
+        if (provider == ExternalGameProvider.Bgg && !bggOptions.Value.IsAvailable)
+        {
+            return new CollectionImportEnqueueResult(CollectionImportEnqueueStatus.Unavailable, null);
+        }
+
         var participant = await dbContext.Participants.SingleAsync(
             value => value.TelegramUserId == telegramUserId,
             cancellationToken);
@@ -51,6 +58,12 @@ public sealed class CollectionImportService(
         if (!campOptions.Value.AdminTelegramIds.Contains(telegramUserId))
         {
             throw new UnauthorizedAccessException("Импорт коллекции клуба доступен только администратору.");
+        }
+
+        if (provider == ExternalGameProvider.Bgg && !bggOptions.Value.IsAvailable)
+        {
+            return Task.FromResult(
+                new CollectionImportEnqueueResult(CollectionImportEnqueueStatus.Unavailable, null));
         }
 
         return EnqueueAsync(
