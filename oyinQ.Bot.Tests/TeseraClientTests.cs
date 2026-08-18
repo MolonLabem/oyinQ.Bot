@@ -18,7 +18,8 @@ public sealed class TeseraClientTests
 
             if (request.RequestUri!.AbsolutePath == "/collections/base/own/test-user")
             {
-                return JsonResponse(HttpStatusCode.NotFound, "{}");
+                Assert.Equal("?GamesType=SelfGame&Limit=100&Offset=0", request.RequestUri.Query);
+                return JsonResponse(HttpStatusCode.OK, "{\"games\":[]}");
             }
 
             if (request.RequestUri.AbsolutePath == "/collections/base/Own/test-user")
@@ -29,8 +30,8 @@ public sealed class TeseraClientTests
                     """
                     {
                       "games": [
-                        { "alias": "base-game", "isAddition": false },
-                        { "alias": "expansion", "isAddition": true }
+                        { "game": { "alias": "base-game", "isAddition": false } },
+                        { "Game": { "Alias": "expansion", "IsAddition": 1 } }
                       ]
                     }
                     """);
@@ -74,11 +75,12 @@ public sealed class TeseraClientTests
         Assert.Equal("https://tesera.ru/game/base-game", game.ExternalUrl);
         Assert.DoesNotContain(requests, uri => uri.AbsolutePath == "/games/expansion");
         Assert.Equal(
-            [
+            new[]
+            {
                 "/collections/base/own/test-user",
                 "/collections/base/Own/test-user",
                 "/games/base-game"
-            ],
+            },
             requests.Select(uri => uri.AbsolutePath).ToArray());
     }
 
