@@ -30,6 +30,14 @@ public sealed class TelegramUpdateHandler(
             await botClient.AnswerCallbackQuery(
                 callbackQuery.Id,
                 cancellationToken: cancellationToken);
+
+            if (!CallbackDataValidator.IsValid(callbackQuery.Data))
+            {
+                logger.LogWarning(
+                    "Ignoring malformed Telegram callback payload for update {UpdateId}.",
+                    update.Id);
+                return;
+            }
         }
 
         var telegramUser = update.CallbackQuery?.From ?? update.Message?.From;

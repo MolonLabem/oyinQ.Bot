@@ -31,6 +31,11 @@ public sealed class AdminHandler(
             return;
         }
 
+        await EnsureAdminParticipantStubAsync(
+            message.From,
+            telegramUserId,
+            cancellationToken);
+
         await botClient.SendMessage(
             telegramUserId,
             "Админ-панель",
@@ -59,6 +64,11 @@ public sealed class AdminHandler(
                 cancellationToken: cancellationToken);
             return true;
         }
+
+        await EnsureAdminParticipantStubAsync(
+            callbackQuery.From,
+            telegramUserId,
+            cancellationToken);
 
         switch (data)
         {
@@ -236,21 +246,6 @@ public sealed class AdminHandler(
         long chatId,
         CancellationToken cancellationToken)
     {
-        var hasParticipant = await dbContext.Participants
-            .AsNoTracking()
-            .AnyAsync(value => value.TelegramUserId == chatId, cancellationToken);
-
-        if (!hasParticipant)
-        {
-            await SendOrEditAsync(
-                callbackQuery,
-                chatId,
-                "🏢 Коллекция клуба\n\nДля импорта сначала выполните /start. Права администратора проверяются только по ADMIN_TELEGRAM_IDS.",
-                BuildBackKeyboard(),
-                cancellationToken);
-            return;
-        }
-
         var keyboard = new InlineKeyboardMarkup(
         [
             [
@@ -355,6 +350,43 @@ public sealed class AdminHandler(
                 && value.DaysStaying.Value >= 1
                 && value.DaysStaying.Value <= 3
                 && value.NeedsAccommodation.HasValue);
+
+    private async Task EnsureAdminParticipantStubAsync(
+        User? user,
+        long telegramUserId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var displayName = BuildDisplayName(user, telegramUserId);
+        var username = user?.Username;
+
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "Participants"
+                ("TelegramUserId", "TelegramUsername", "DisplayName", "CreatedAt", "UpdatedAt")
+            VALUES
+                ({telegramUserId}, {username}, {displayName}, {now}, {now})
+            ON CONFLICT ("TelegramUserId") DO NOTHING
+            """,
+            cancellationToken);
+    }
+
+    private static string BuildDisplayName(User? user, long telegramUserId)
+    {
+        if (user is null)
+        {
+            return telegramUserId.ToString();
+        }
+
+        var displayName = string.Join(
+            ' ',
+            new[] { user.FirstName, user.LastName }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        return string.IsNullOrWhiteSpace(displayName)
+            ? user.Username ?? telegramUserId.ToString()
+            : displayName;
+    }
 
     private bool IsAdmin(long telegramUserId) =>
         campOptions.Value.AdminTelegramIds.Contains(telegramUserId);
