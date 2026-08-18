@@ -9,15 +9,16 @@ namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
 public sealed class BoardGameGeekClient(
     HttpClient httpClient,
-    IOptions<BggOptions> options,
-    ILogger<BoardGameGeekClient> logger)
+    IOptions<BggOptions> options)
     : IBoardGameGeekClient
 {
     private const int CollectionAcceptedAttempts = 5;
     private const int TransientAttempts = 3;
+    private const int ThingAttempts = 2;
     private const int ThingBatchSize = 100;
     private static readonly TimeSpan AcceptedRetryDelay = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan TransientRetryJitter = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromMilliseconds(120);
 
     public async Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
@@ -127,7 +128,7 @@ public sealed class BoardGameGeekClient(
         var document = await GetXmlAsync(
             $"/xmlapi2/collection?username={Uri.EscapeDataString(username)}&own=1&excludesubtype=boardgameexpansion&stats=1",
             cancellationToken,
-            CollectionAcceptedAttempts);
+            acceptedAttempts: CollectionAcceptedAttempts);
 
         return document.Root?
             .Elements("item")
@@ -155,7 +156,9 @@ public sealed class BoardGameGeekClient(
             var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
             var document = await GetXmlAsync(
                 $"/xmlapi2/thing?id={string.Join(',', batch)}&stats=1",
-                cancellationToken);
+                cancellationToken,
+                acceptedAttempts: ThingAttempts,
+                transientAttempts: ThingAttempts);
 
             foreach (var item in document.Root?.Elements("item") ?? [])
             {
@@ -173,60 +176,40 @@ public sealed class BoardGameGeekClient(
     private async Task<XDocument> GetXmlAsync(
         string relativeUrl,
         CancellationToken cancellationToken,
-        int acceptedAttempts = TransientAttempts)
+        int acceptedAttempts = TransientAttempts,
+        int transientAttempts = TransientAttempts)
     {
-        var transientAttempt = 0;
-        var acceptedAttempt = 0;
+        using var response = await HttpRetryHelper.SendAsync(
+            async retryCancellationToken =>
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, relativeUrl);
+                request.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    options.Value.ApiToken);
 
-        while (true)
+                return await httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    retryCancellationToken);
+            },
+            maxTransientAttempts: transientAttempts,
+            maxAcceptedAttempts: acceptedAttempts,
+            acceptedRetryDelay: AcceptedRetryDelay,
+            transientRetryDelay: TransientRetryDelay,
+            maxJitter: TransientRetryJitter,
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Accepted)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, relativeUrl);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.Value.ApiToken);
-
-            using var response = await httpClient.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-
-            if (response.StatusCode == HttpStatusCode.Accepted)
-            {
-                acceptedAttempt++;
-                if (acceptedAttempt >= acceptedAttempts)
-                {
-                    throw new HttpRequestException(
-                        "BGG не успел подготовить коллекцию после нескольких повторов.",
-                        null,
-                        response.StatusCode);
-                }
-
-                logger.LogDebug(
-                    "BGG returned HTTP 202 for {Url}; retry {Attempt}/{MaxAttempts}.",
-                    relativeUrl,
-                    acceptedAttempt,
-                    acceptedAttempts);
-                await Task.Delay(AcceptedRetryDelay, cancellationToken);
-                continue;
-            }
-
-            if (response.StatusCode is HttpStatusCode.InternalServerError
-                or HttpStatusCode.BadGateway
-                or HttpStatusCode.ServiceUnavailable
-                or HttpStatusCode.GatewayTimeout
-                || (int)response.StatusCode == 429)
-            {
-                transientAttempt++;
-                if (transientAttempt < TransientAttempts)
-                {
-                    var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 350));
-                    await Task.Delay(TransientRetryDelay + jitter, cancellationToken);
-                    continue;
-                }
-            }
-
-            response.EnsureSuccessStatusCode();
-            var xml = await response.Content.ReadAsStringAsync(cancellationToken);
-            return XDocument.Parse(xml);
+            throw new HttpRequestException(
+                "BGG не успел подготовить ответ после нескольких повторов.",
+                null,
+                response.StatusCode);
         }
+
+        response.EnsureSuccessStatusCode();
+        var xml = await response.Content.ReadAsStringAsync(cancellationToken);
+        return XDocument.Parse(xml);
     }
 
     private static CollectionItem? ParseCollectionItem(XElement item)
