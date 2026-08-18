@@ -13,9 +13,11 @@ public sealed class AdminHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     CsvExportService csvExportService,
-    IOptions<CampOptions> campOptions)
+    IOptions<CampOptions> campOptions,
+    IOptions<BggOptions> bggOptions)
 {
     private const decimal AccommodationPricePerDay = 3000m;
+    private const string BggUnavailableMessage = "BGG пока недоступен — ждём подтверждение API-доступа.";
 
     public async Task HandleCommandAsync(
         Message message,
@@ -246,20 +248,33 @@ public sealed class AdminHandler(
         long chatId,
         CancellationToken cancellationToken)
     {
-        var keyboard = new InlineKeyboardMarkup(
-        [
+        var rows = new List<IEnumerable<InlineKeyboardButton>>();
+        if (bggOptions.Value.IsAvailable)
+        {
+            rows.Add(
             [
                 InlineKeyboardButton.WithCallbackData("BGG", "collection:import:bgg:club"),
                 InlineKeyboardButton.WithCallbackData("Tesera", "collection:import:tesera:club")
-            ],
-            [InlineKeyboardButton.WithCallbackData("← Админ-панель", "admin:menu")]
-        ]);
+            ]);
+        }
+        else
+        {
+            rows.Add(
+            [
+                InlineKeyboardButton.WithCallbackData("Tesera", "collection:import:tesera:club")
+            ]);
+        }
+
+        rows.Add([InlineKeyboardButton.WithCallbackData("← Админ-панель", "admin:menu")]);
+        var text = bggOptions.Value.IsAvailable
+            ? "🏢 Коллекция клуба\n\nВыберите источник импорта."
+            : $"🏢 Коллекция клуба\n\n{BggUnavailableMessage}\nДля импорта сейчас доступна Tesera.";
 
         await SendOrEditAsync(
             callbackQuery,
             chatId,
-            "🏢 Коллекция клуба\n\nВыберите источник импорта.",
-            keyboard,
+            text,
+            new InlineKeyboardMarkup(rows),
             cancellationToken);
     }
 
