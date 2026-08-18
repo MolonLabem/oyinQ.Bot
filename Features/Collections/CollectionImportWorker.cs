@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Games;
@@ -16,11 +18,13 @@ namespace oyinQ.Bot.Features.Collections;
 public sealed class CollectionImportWorker(
     IServiceScopeFactory scopeFactory,
     ITelegramBotClient botClient,
+    IOptions<BggOptions> bggOptions,
     ILogger<CollectionImportWorker> logger)
     : BackgroundService
 {
     private const int MaxImportsPerPass = 30;
     private const int BggStepSize = 140;
+    private const string BggUnavailableReason = "BGG пока недоступен — ждём подтверждение API-доступа.";
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan SoftPassLimit = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan StuckImportAge = TimeSpan.FromMinutes(10);
@@ -31,6 +35,11 @@ public sealed class CollectionImportWorker(
         {
             try
             {
+                if (!bggOptions.Value.IsAvailable)
+                {
+                    await FailUnavailableBggImportsAsync(stoppingToken);
+                }
+
                 await RecoverStuckImportsAsync(stoppingToken);
                 await ProcessPassAsync(stoppingToken);
             }
@@ -72,11 +81,13 @@ public sealed class CollectionImportWorker(
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var bggAvailable = bggOptions.Value.IsAvailable;
 
         for (var attempt = 0; attempt < 5; attempt++)
         {
             var importId = await dbContext.CollectionImports
                 .Where(value => value.Status == ImportStatus.Pending
+                    && (bggAvailable || value.Provider != ExternalGameProvider.Bgg)
                     && !excludedImportIds.Contains(value.Id))
                 .OrderBy(value => value.CreatedAt)
                 .Select(value => (long?)value.Id)
@@ -118,6 +129,12 @@ public sealed class CollectionImportWorker(
         {
             if (import.Provider == ExternalGameProvider.Bgg)
             {
+                if (!bggOptions.Value.IsAvailable)
+                {
+                    await FailImportAsUnavailableAsync(import, dbContext, cancellationToken);
+                    return;
+                }
+
                 var client = scope.ServiceProvider.GetRequiredService<IBoardGameGeekClient>();
                 await ProcessBggAsync(import, client, dedupService, dbContext, cancellationToken);
                 return;
@@ -245,6 +262,53 @@ public sealed class CollectionImportWorker(
         return (addedCount, skippedCount);
     }
 
+    private async Task FailUnavailableBggImportsAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var imports = await dbContext.CollectionImports
+            .Where(value => value.Provider == ExternalGameProvider.Bgg
+                && (value.Status == ImportStatus.Pending || value.Status == ImportStatus.Running))
+            .ToListAsync(cancellationToken);
+        if (imports.Count == 0)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var import in imports)
+        {
+            import.Status = ImportStatus.Failed;
+            import.Error = BggUnavailableReason;
+            import.CompletedAt = now;
+            import.UpdatedAt = now;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "Failed {Count} queued BGG imports because BGG integration is disabled.",
+            imports.Count);
+
+        foreach (var import in imports)
+        {
+            await NotifyFailureSafeAsync(import, cancellationToken);
+        }
+    }
+
+    private async Task FailImportAsUnavailableAsync(
+        CollectionImport import,
+        AppDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        import.Status = ImportStatus.Failed;
+        import.Error = BggUnavailableReason;
+        import.CompletedAt = now;
+        import.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await NotifyFailureSafeAsync(import, cancellationToken);
+    }
+
     private async Task RecoverStuckImportsAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -310,7 +374,7 @@ public sealed class CollectionImportWorker(
             HttpRequestException when provider == ExternalGameProvider.Bgg
                 => "BGG временно не отвечает. Попробуйте импорт ещё раз позже.",
             _ when provider == ExternalGameProvider.Tesera
-                => "Tesera временно недоступна. Импорт BGG продолжает работать независимо.",
+                => "Tesera временно недоступна. Попробуйте импорт ещё раз позже.",
             _ => "Не удалось импортировать коллекцию. Попробуйте позже."
         };
 
