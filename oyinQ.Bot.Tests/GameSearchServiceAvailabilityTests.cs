@@ -9,22 +9,24 @@ namespace oyinQ.Bot.Tests;
 public sealed class GameSearchServiceAvailabilityTests
 {
     [Fact]
-    public void SearchExternalAsync_WhenBggDisabled_DoesNotCallClient()
+    public async Task SearchExternalAsync_WhenBggDisabled_DoesNotCallClient()
     {
         var client = new TrackingBggClient();
         var service = CreateService(client);
 
-        Assert.Throws<HttpRequestException>(() => service.SearchExternalAsync("Catan", default));
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.SearchExternalAsync("Catan", default));
         Assert.Equal(0, client.CallCount);
     }
 
     [Fact]
-    public void GetBggGameAsync_WhenBggDisabled_DoesNotCallClient()
+    public async Task GetBggGameAsync_WhenBggDisabled_DoesNotCallClient()
     {
         var client = new TrackingBggClient();
         var service = CreateService(client);
 
-        Assert.Throws<HttpRequestException>(() => service.GetBggGameAsync(13, default));
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.GetBggGameAsync(13, default));
         Assert.Equal(0, client.CallCount);
     }
 
