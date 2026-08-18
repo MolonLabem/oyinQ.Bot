@@ -4,14 +4,11 @@ public sealed class BggOptions
 {
     public string ApiToken { get; init; } = string.Empty;
 
-    public static BggOptions FromConfiguration(IConfiguration configuration)
-    {
-        var apiToken = configuration["BGG_API_TOKEN"]?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(apiToken))
-        {
-            throw new InvalidOperationException("BGG_API_TOKEN is required.");
-        }
+    public bool IsAvailable => !string.IsNullOrWhiteSpace(ApiToken);
 
-        return new BggOptions { ApiToken = apiToken };
-    }
+    public static BggOptions FromConfiguration(IConfiguration configuration) =>
+        new()
+        {
+            ApiToken = configuration["BGG_API_TOKEN"]?.Trim() ?? string.Empty
+        };
 }
