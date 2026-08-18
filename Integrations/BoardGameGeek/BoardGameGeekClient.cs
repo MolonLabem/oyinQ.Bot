@@ -15,10 +15,10 @@ public sealed class BoardGameGeekClient(
 {
     private const int CollectionAcceptedAttempts = 5;
     private const int TransientAttempts = 3;
-    private const int ThingBatchSize = 20;
+    private const int ThingBatchSize = 100;
     private static readonly TimeSpan AcceptedRetryDelay = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromMilliseconds(120);
 
     public async Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
         string query,
@@ -81,7 +81,6 @@ public sealed class BoardGameGeekClient(
             return [];
         }
 
-        await Task.Delay(ThingBatchDelay, cancellationToken);
         var enriched = await FetchThingsAsync(
             collection.Select(item => item.BggId).ToArray(),
             cancellationToken);
@@ -108,7 +107,6 @@ public sealed class BoardGameGeekClient(
             return new ExternalCollectionStep([], Math.Min(offset, collection.Count), collection.Count);
         }
 
-        await Task.Delay(ThingBatchDelay, cancellationToken);
         var enriched = await FetchThingsAsync(
             slice.Select(item => item.BggId).ToArray(),
             cancellationToken);
