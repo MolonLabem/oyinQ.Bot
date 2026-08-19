@@ -19,7 +19,7 @@ jobs:
           token=$(openssl rand -hex 32)
           echo "::add-mask::$token"
 
-          output=$(npx -y wrangler@latest deploy --temporary --var "PROXY_TOKEN:$token" 2>&1)
+          output=$(npx -y wrangler@latest deploy --temporary --yes --var "PROXY_TOKEN:$token" 2>&1)
           worker_url=$(printf '%s\n' "$output" | grep -oE 'https://[^[:space:]]+\.workers\.dev' | tail -1)
           if [ -z "$worker_url" ]; then
             echo "Temporary Worker URL was not found in Wrangler output." >&2
