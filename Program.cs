@@ -34,6 +34,7 @@ builder.Services.AddSingleton(Options.Create(bggOptions));
 builder.Services.AddDbContext<AppDbContext>(
     options => options.UseNpgsql(connectionString));
 
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client =>
 {
@@ -45,6 +46,7 @@ builder.Services.AddHttpClient<ITeseraClient, TeseraClient>(client =>
     client.BaseAddress = new Uri("https://api.tesera.ru");
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddSingleton<TeseraAvailabilityService>();
 builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
@@ -62,6 +64,7 @@ builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddHostedService<TeseraAvailabilityMonitorService>();
 builder.Services.AddHostedService<CollectionImportWorker>();
 
 if (botOptions.UseLongPolling)
@@ -86,71 +89,24 @@ app.MapGet("/health", static () => Results.Ok());
 app.MapGet(
     "/health/tesera",
     async Task<IResult> (
-        ITeseraClient teseraClient,
+        TeseraAvailabilityService availabilityService,
         CancellationToken cancellationToken) =>
     {
-        const string probeAlias = "carcassonne";
+        var availability = await availabilityService.GetAsync(
+            forceRefresh: false,
+            cancellationToken);
 
-        try
+        var body = new
         {
-            var game = await teseraClient.GetGameByAliasAsync(probeAlias, cancellationToken);
-            if (game is null)
-            {
-                return Results.Json(
-                    new
-                    {
-                        dependency = "tesera",
-                        status = "unavailable",
-                        probe = probeAlias,
-                        error = "Tesera did not return the probe game."
-                    },
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
+            dependency = "tesera",
+            status = availability.IsAvailable ? "ok" : "unavailable",
+            reason = availability.Reason,
+            checkedAt = availability.CheckedAt
+        };
 
-            return Results.Ok(new
-            {
-                dependency = "tesera",
-                status = "ok",
-                probe = probeAlias,
-                game = game.Name
-            });
-        }
-        catch (TeseraUnavailableException exception)
-        {
-            return Results.Json(
-                new
-                {
-                    dependency = "tesera",
-                    status = "unavailable",
-                    probe = probeAlias,
-                    error = exception.Message
-                },
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-        catch (HttpRequestException exception)
-        {
-            return Results.Json(
-                new
-                {
-                    dependency = "tesera",
-                    status = "unavailable",
-                    probe = probeAlias,
-                    error = exception.Message
-                },
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            return Results.Json(
-                new
-                {
-                    dependency = "tesera",
-                    status = "unavailable",
-                    probe = probeAlias,
-                    error = exception.Message
-                },
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
+        return availability.IsAvailable
+            ? Results.Ok(body)
+            : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
     });
 
 app.MapPost(
