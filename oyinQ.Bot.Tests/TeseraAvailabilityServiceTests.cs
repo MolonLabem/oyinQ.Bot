@@ -83,7 +83,7 @@ public sealed class TeseraAvailabilityServiceTests
         var services = new ServiceCollection();
         services.AddMemoryCache();
         services.AddSingleton(client);
-        using var provider = services.BuildServiceProvider();
+        var provider = services.BuildServiceProvider();
 
         return new TeseraAvailabilityService(
             provider.GetRequiredService<IServiceScopeFactory>(),
