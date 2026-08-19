@@ -168,7 +168,8 @@ public sealed class TeseraClient(
 
         if (games.Count == 0 && aliases.Length > 0)
         {
-            return [];
+            throw new TeseraUnavailableException(
+                "Tesera вернула коллекцию, но не отдала данные базовых игр. Попробуйте позже.");
         }
 
         return games;
