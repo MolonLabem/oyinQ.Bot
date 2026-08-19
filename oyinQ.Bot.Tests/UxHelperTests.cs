@@ -64,7 +64,7 @@ public sealed class UxHelperTests
             .Select(button => button.Text)
             .ToArray();
 
-        Assert.DoesNotContain("🛠 Админ-панель", regularButtons);
-        Assert.Contains("🛠 Админ-панель", adminButtons);
+        Assert.DoesNotContain("🛠 Админ", regularButtons);
+        Assert.Contains("🛠 Админ", adminButtons);
     }
 }
