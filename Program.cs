@@ -64,6 +64,7 @@ builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddHostedService<TeseraAvailabilityMonitorService>();
 builder.Services.AddHostedService<CollectionImportWorker>();
 
 if (botOptions.UseLongPolling)
