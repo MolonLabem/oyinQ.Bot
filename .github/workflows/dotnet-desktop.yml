@@ -38,3 +38,25 @@ jobs:
 
       - name: Build Docker image
         run: docker build --file Dockerfile --tag oyinq-bot:ci .
+
+  tesera-production-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production Tesera health
+        run: |
+          set -euo pipefail
+          response=$(mktemp)
+          code=$(curl --silent --show-error --max-time 20 \
+            --output "$response" --write-out '%{http_code}' \
+            'https://p01--oyinqbot--668p7wnqfhrf.code.run/health/tesera')
+          echo "HTTP $code"
+          cat "$response"
+          echo
+          test "$code" = "503"
+          grep -q '"dependency":"tesera"' "$response"
+          grep -q '"status":"unavailable"' "$response"
+          grep -q '"reason":"http_403"' "$response"
+          if grep -q 'отклонила запрос' "$response"; then
+            echo 'Raw provider error leaked' >&2
+            exit 1
+          fi
