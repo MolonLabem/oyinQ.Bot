@@ -23,6 +23,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.TelegramUserId).IsUnique();
             entity.Property(x => x.TelegramUsername).HasMaxLength(64);
             entity.Property(x => x.DisplayName).HasMaxLength(256);
+            entity.Property(x => x.PreferredDisplayName).HasMaxLength(128);
         });
 
         modelBuilder.Entity<Game>(entity =>

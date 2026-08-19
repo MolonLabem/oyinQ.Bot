@@ -3,8 +3,10 @@ using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Admin;
@@ -40,7 +42,7 @@ public sealed class AdminHandler(
 
         await botClient.SendMessage(
             telegramUserId,
-            "Админ-панель",
+            BuildMenuText(),
             replyMarkup: BuildMenu(),
             cancellationToken: cancellationToken);
     }
@@ -59,10 +61,10 @@ public sealed class AdminHandler(
 
         if (!IsAdmin(telegramUserId))
         {
-            var unauthorizedChatId = callbackQuery.Message?.Chat.Id ?? telegramUserId;
-            await botClient.SendMessage(
-                unauthorizedChatId,
+            await botClient.AnswerCallbackQuery(
+                callbackQuery.Id,
                 "Доступ запрещён.",
+                showAlert: true,
                 cancellationToken: cancellationToken);
             return true;
         }
@@ -78,7 +80,7 @@ public sealed class AdminHandler(
                 await SendOrEditAsync(
                     callbackQuery,
                     telegramUserId,
-                    "Админ-панель",
+                    BuildMenuText(),
                     BuildMenu(),
                     cancellationToken);
                 break;
@@ -125,6 +127,20 @@ public sealed class AdminHandler(
         var oneDay = await query.CountAsync(value => value.DaysStaying == 1, cancellationToken);
         var twoDays = await query.CountAsync(value => value.DaysStaying == 2, cancellationToken);
         var threeDays = await query.CountAsync(value => value.DaysStaying == 3, cancellationToken);
+        var participants = await query
+            .OrderBy(value => value.PreferredDisplayName ?? value.DisplayName)
+            .ThenBy(value => value.Id)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+        var lines = participants.Select(value =>
+            $"• {ParticipantPresentation.ToHtmlLink(value)} — {value.DaysStaying} дн.");
+        var listText = participants.Count == 0
+            ? "Участников пока нет."
+            : string.Join('\n', lines);
+        var truncated = total > participants.Count
+            ? $"\n\nПоказаны первые {participants.Count}; полный список есть в CSV export."
+            : string.Empty;
 
         var text = $"""
             👥 Участники
@@ -133,6 +149,8 @@ public sealed class AdminHandler(
             1 день: {oneDay}
             2 дня: {twoDays}
             3 дня: {threeDays}
+
+            {listText}{truncated}
             """;
 
         await SendOrEditAsync(
@@ -140,7 +158,8 @@ public sealed class AdminHandler(
             chatId,
             text,
             BuildBackKeyboard(),
-            cancellationToken);
+            cancellationToken,
+            ParseMode.Html);
     }
 
     private async Task ShowAccommodationAsync(
@@ -159,6 +178,7 @@ public sealed class AdminHandler(
         var text = $"""
             🏠 Жильё
 
+            Справочная сводка по регистрации.
             Нужно жильё: {participantCount}
             Человеко-дней: {personDays}
             Ориентировочно: {estimatedTotal:0} ₸
@@ -199,8 +219,8 @@ public sealed class AdminHandler(
             Уникальных игр: {uniqueGames}
             Копий клуба: {clubCopies}
             Личных копий: {personalCopies}
-            Точно будут: {bringingCopies}
-            Возможно: {maybeCopies}
+            Точно привезут: {bringingCopies}
+            Возможно привезут: {maybeCopies}
             """;
 
         await SendOrEditAsync(
@@ -231,7 +251,7 @@ public sealed class AdminHandler(
 
         var text = games.Count == 0
             ? "🔥 Топ игр\n\nИнтересов пока нет."
-            : "🔥 Топ игр\n\n" + string.Join(
+            : "🔥 Топ игр по спросу\n\nЭто количество отметок «Хочу сыграть», а не подтверждение привоза.\n\n" + string.Join(
                 "\n",
                 games.Select((game, index) => $"{index + 1}. {game.Name} — 🔥 {game.InterestCount}"));
 
@@ -267,8 +287,8 @@ public sealed class AdminHandler(
 
         rows.Add([InlineKeyboardButton.WithCallbackData("← Админ-панель", "admin:menu")]);
         var text = bggOptions.Value.IsAvailable
-            ? "🏢 Коллекция клуба\n\nВыберите источник импорта."
-            : $"🏢 Коллекция клуба\n\n{BggUnavailableMessage}\nДля импорта сейчас доступна Tesera.";
+            ? "🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными. Выберите источник."
+            : $"🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными.\n\n{BggUnavailableMessage}\nДля импорта сейчас доступна Tesera.";
 
         await SendOrEditAsync(
             callbackQuery,
@@ -302,6 +322,7 @@ public sealed class AdminHandler(
         var text = $"""
             📊 Статистика
 
+            Общая техническая сводка по данным бота.
             Участники: {registeredParticipants}
             Нужно жильё: {accommodationParticipants}
             Уникальных игр: {uniqueGames}
@@ -328,7 +349,7 @@ public sealed class AdminHandler(
         await SendOrEditAsync(
             callbackQuery,
             chatId,
-            "📤 Экспорт CSV отправляется отдельными файлами.",
+            "📤 Export\n\nОтправляю participants.csv, games.csv, interests.csv и sessions.csv отдельными файлами в этот личный чат.",
             BuildBackKeyboard(),
             cancellationToken);
 
@@ -406,6 +427,18 @@ public sealed class AdminHandler(
     private bool IsAdmin(long telegramUserId) =>
         campOptions.Value.AdminTelegramIds.Contains(telegramUserId);
 
+    private static string BuildMenuText() => """
+        Админ-панель
+
+        👥 Участники — регистрация и список участников.
+        🏠 Жильё — справочная сводка по проживанию.
+        🎲 Игры — размеры каталога и статусы привоза.
+        🔥 Топ игр — спрос по отметкам «Хочу сыграть».
+        🏢 Коллекция клуба — отдельный админский импорт клубных игр.
+        📊 Статистика — общие счётчики.
+        📤 Export — четыре CSV-файла в личный чат.
+        """;
+
     private static InlineKeyboardMarkup BuildMenu() =>
         new(
         [
@@ -435,7 +468,8 @@ public sealed class AdminHandler(
         long chatId,
         string text,
         InlineKeyboardMarkup replyMarkup,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ParseMode? parseMode = null)
     {
         if (callbackQuery.Message is { } callbackMessage
             && callbackMessage.Chat.Id == chatId)
@@ -444,6 +478,7 @@ public sealed class AdminHandler(
                 chatId,
                 callbackMessage.MessageId,
                 text,
+                parseMode: parseMode,
                 replyMarkup: replyMarkup,
                 cancellationToken: cancellationToken);
             return;
@@ -452,6 +487,7 @@ public sealed class AdminHandler(
         await botClient.SendMessage(
             chatId,
             text,
+            parseMode: parseMode,
             replyMarkup: replyMarkup,
             cancellationToken: cancellationToken);
     }

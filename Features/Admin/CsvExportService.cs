@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Admin;
 
@@ -43,7 +44,7 @@ public sealed class CsvExportService(
                 value.Id,
                 value.TelegramUserId,
                 value.TelegramUsername,
-                value.DisplayName,
+                DisplayName = value.PreferredDisplayName ?? value.DisplayName,
                 value.DaysStaying,
                 value.NeedsAccommodation,
                 value.CreatedAt,
@@ -129,7 +130,7 @@ public sealed class CsvExportService(
                 value.Id,
                 value.ParticipantId,
                 value.Participant.TelegramUserId,
-                value.Participant.DisplayName,
+                DisplayName = value.Participant.PreferredDisplayName ?? value.Participant.DisplayName,
                 value.GameId,
                 GameName = value.Game.Name,
                 value.CreatedAt
@@ -172,13 +173,13 @@ public sealed class CsvExportService(
             value.Game.Name,
             value.HostParticipantId,
             value.HostParticipant.TelegramUserId,
-            value.HostParticipant.DisplayName,
+            ParticipantPresentation.GetDisplayName(value.HostParticipant),
             value.WantedAdditionalPlayers,
             value.Status,
             value.Participants.Count,
             string.Join(" | ", value.Participants
                 .OrderBy(participant => participant.JoinedAt)
-                .Select(participant => participant.Participant.DisplayName)),
+                .Select(participant => ParticipantPresentation.GetDisplayName(participant.Participant))),
             value.TelegramChatId,
             value.TelegramMessageId,
             value.CreatedAt,

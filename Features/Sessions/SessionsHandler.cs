@@ -5,6 +5,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Games;
 using Telegram.Bot;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -48,7 +49,8 @@ public sealed class SessionsHandler(
             return true;
         }
 
-        if (rawText.Trim() != "▶️ Собрать игру")
+        var text = rawText.Trim();
+        if (text is not ("▶️ Собрать игру" or "🎲 Текущие сборы"))
         {
             return false;
         }
@@ -58,7 +60,15 @@ public sealed class SessionsHandler(
             return true;
         }
 
-        await ShowSourceMenuAsync(null, message.Chat.Id, cancellationToken);
+        if (text == "🎲 Текущие сборы")
+        {
+            await ShowActiveSessionsAsync(null, message.Chat.Id, 0, cancellationToken);
+        }
+        else
+        {
+            await ShowSourceMenuAsync(null, message.Chat.Id, cancellationToken);
+        }
+
         return true;
     }
 
@@ -75,15 +85,26 @@ public sealed class SessionsHandler(
         }
 
         var parts = data.Split(':');
+        var isGroupJoinLeave = parts is ["session", "join" or "leave", _];
+        if (callbackQuery.Message?.Chat.Type != ChatType.Private && !isGroupJoinLeave)
+        {
+            await AnswerAlertAsync(
+                callbackQuery,
+                "Меню и управление сборами доступны в личном чате с ботом.",
+                cancellationToken);
+            return true;
+        }
 
         if (parts is ["session", "join", var joinSessionId]
             && long.TryParse(joinSessionId, out var sessionId))
         {
-            await ChangeGroupParticipationAsync(
+            await ChangeParticipationAsync(
                 callbackQuery,
                 telegramUserId,
                 sessionId,
                 join: true,
+                requireGroupMessageIdentity: true,
+                refreshPrivateView: false,
                 cancellationToken);
             return true;
         }
@@ -91,32 +112,84 @@ public sealed class SessionsHandler(
         if (parts is ["session", "leave", var leaveSessionId]
             && long.TryParse(leaveSessionId, out sessionId))
         {
-            await ChangeGroupParticipationAsync(
+            await ChangeParticipationAsync(
                 callbackQuery,
                 telegramUserId,
                 sessionId,
                 join: false,
+                requireGroupMessageIdentity: true,
+                refreshPrivateView: false,
                 cancellationToken);
             return true;
         }
 
-        if (callbackQuery.Message?.Chat.Type != ChatType.Private)
+        if (parts is ["session", "pjoin", var privateJoinSessionId]
+            && long.TryParse(privateJoinSessionId, out sessionId))
         {
+            await ChangeParticipationAsync(
+                callbackQuery,
+                telegramUserId,
+                sessionId,
+                join: true,
+                requireGroupMessageIdentity: false,
+                refreshPrivateView: true,
+                cancellationToken);
             return true;
         }
 
-        var chatId = callbackQuery.Message.Chat.Id;
+        if (parts is ["session", "pleave", var privateLeaveSessionId]
+            && long.TryParse(privateLeaveSessionId, out sessionId))
+        {
+            await ChangeParticipationAsync(
+                callbackQuery,
+                telegramUserId,
+                sessionId,
+                join: false,
+                requireGroupMessageIdentity: false,
+                refreshPrivateView: true,
+                cancellationToken);
+            return true;
+        }
+
+        var chatId = callbackQuery.Message?.Chat.Id ?? telegramUserId;
 
         if (data == "session:menu")
         {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
             await ClearConversationStateAsync(telegramUserId, cancellationToken);
             await ShowSourceMenuAsync(callbackQuery, chatId, cancellationToken);
+            return true;
+        }
+
+        if (parts is ["session", "active", var activePageText]
+            && int.TryParse(activePageText, out var activePage))
+        {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
+            await ShowActiveSessionsAsync(
+                callbackQuery,
+                chatId,
+                Math.Max(activePage, 0),
+                cancellationToken);
+            return true;
+        }
+
+        if (parts is ["session", "view", var viewSessionId]
+            && long.TryParse(viewSessionId, out sessionId))
+        {
+            await ShowActiveSessionAsync(
+                callbackQuery,
+                chatId,
+                telegramUserId,
+                sessionId,
+                answerCallback: true,
+                cancellationToken);
             return true;
         }
 
         if (parts is ["session", "list", var scope, var pageText]
             && int.TryParse(pageText, out var page))
         {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
             await ShowGamePageAsync(
                 callbackQuery,
                 chatId,
@@ -129,6 +202,7 @@ public sealed class SessionsHandler(
 
         if (data == "session:search")
         {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
             await StartSearchAsync(chatId, telegramUserId, cancellationToken);
             return true;
         }
@@ -136,6 +210,7 @@ public sealed class SessionsHandler(
         if (parts is ["session", "game", var gameIdText]
             && long.TryParse(gameIdText, out var gameId))
         {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
             await ShowPlayerCountAsync(callbackQuery, chatId, gameId, cancellationToken);
             return true;
         }
@@ -145,6 +220,7 @@ public sealed class SessionsHandler(
             && int.TryParse(wantedText, out var wantedAdditionalPlayers)
             && wantedAdditionalPlayers is >= 1 and <= 4)
         {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
             await CreateSessionAsync(
                 callbackQuery,
                 chatId,
@@ -179,6 +255,7 @@ public sealed class SessionsHandler(
             return true;
         }
 
+        await AnswerAlertAsync(callbackQuery, "Эта кнопка устарела.", cancellationToken);
         return true;
     }
 
@@ -189,13 +266,132 @@ public sealed class SessionsHandler(
         await RenderPrivateAsync(
             callbackQuery,
             chatId,
-            "▶️ Собрать игру\n\nВыберите игру:",
+            """
+            ▶️ Собрать игру
+
+            Создайте новый набор игроков. Выберите игру из каталога, своих игр или через поиск, затем укажите, сколько дополнительных игроков нужно.
+
+            Сам набор будет опубликован одним сообщением в группе BoardCamp; дальнейшие изменения состава обновляют это сообщение на месте.
+            """,
             new InlineKeyboardMarkup([
-                [InlineKeyboardButton.WithCallbackData("🔥 Популярные", "session:list:p:0")],
+                [InlineKeyboardButton.WithCallbackData("🔥 По спросу", "session:list:p:0")],
                 [InlineKeyboardButton.WithCallbackData("🎒 Мои игры", "session:list:m:0")],
-                [InlineKeyboardButton.WithCallbackData("🔎 Поиск", "session:search")]
+                [InlineKeyboardButton.WithCallbackData("🔎 Поиск", "session:search")],
+                [InlineKeyboardButton.WithCallbackData("🎲 Текущие сборы", "session:active:0")]
             ]),
             cancellationToken);
+
+    private async Task ShowActiveSessionsAsync(
+        CallbackQuery? callbackQuery,
+        long chatId,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.GameSessions
+            .AsNoTracking()
+            .Where(value => value.Status == SessionStatus.Recruiting || value.Status == SessionStatus.Full)
+            .OrderByDescending(value => value.CreatedAt)
+            .Select(value => new ActiveSessionItem(
+                value.Id,
+                value.Game.Name,
+                value.Status,
+                value.Participants.Count,
+                value.WantedAdditionalPlayers + 1))
+            .Skip(page * PageSize)
+            .Take(PageSize + 1)
+            .ToArrayAsync(cancellationToken);
+        var hasMore = rows.Length > PageSize;
+        var items = rows.Take(PageSize).ToArray();
+
+        var text = items.Length == 0
+            ? "🎲 Текущие сборы\n\nСейчас открытых сборов нет. Здесь появятся наборы, опубликованные в группе BoardCamp."
+            : "🎲 Текущие сборы\n\nОткрытые наборы игроков. «Состав набран» остаётся в списке, пока организатор не закроет сбор; если кто-то выйдет, набор снова откроется.";
+
+        var keyboardRows = items
+            .Select(item => (IEnumerable<InlineKeyboardButton>)[
+                InlineKeyboardButton.WithCallbackData(
+                    $"{FormatActiveStatus(item.Status)} {item.GameName} · {item.PlayerCount}/{item.TotalPlayers}",
+                    $"session:view:{item.Id}")
+            ])
+            .ToList();
+        var pagination = new List<InlineKeyboardButton>();
+        if (page > 0)
+        {
+            pagination.Add(InlineKeyboardButton.WithCallbackData("⬅️", $"session:active:{page - 1}"));
+        }
+        if (hasMore)
+        {
+            pagination.Add(InlineKeyboardButton.WithCallbackData("Ещё ➡️", $"session:active:{page + 1}"));
+        }
+        if (pagination.Count > 0)
+        {
+            keyboardRows.Add(pagination);
+        }
+        keyboardRows.Add([InlineKeyboardButton.WithCallbackData("▶️ Создать сбор", "session:menu")]);
+
+        await RenderPrivateAsync(
+            callbackQuery,
+            chatId,
+            text,
+            new InlineKeyboardMarkup(keyboardRows),
+            cancellationToken);
+    }
+
+    private async Task ShowActiveSessionAsync(
+        CallbackQuery callbackQuery,
+        long chatId,
+        long telegramUserId,
+        long sessionId,
+        bool answerCallback,
+        CancellationToken cancellationToken)
+    {
+        var session = await LoadSessionAsync(sessionId, tracking: false, cancellationToken);
+        if (session is null || session.Status == SessionStatus.Closed)
+        {
+            if (answerCallback)
+            {
+                await AnswerAlertAsync(callbackQuery, "Этот сбор уже закрыт или больше не существует.", cancellationToken);
+            }
+
+            await ShowActiveSessionsAsync(callbackQuery, chatId, 0, cancellationToken);
+            return;
+        }
+
+        if (answerCallback)
+        {
+            await AcknowledgeAsync(callbackQuery, cancellationToken);
+        }
+
+        var participant = await dbContext.Participants
+            .AsNoTracking()
+            .SingleAsync(value => value.TelegramUserId == telegramUserId, cancellationToken);
+        var isHost = participant.Id == session.HostParticipantId;
+        var isParticipant = session.Participants.Any(value => value.ParticipantId == participant.Id);
+        var rows = new List<IEnumerable<InlineKeyboardButton>>();
+
+        if (isHost)
+        {
+            rows.Add([InlineKeyboardButton.WithCallbackData("✅ Закрыть набор", $"session:close:{session.Id}")]);
+            rows.Add([InlineKeyboardButton.WithCallbackData("❌ Отменить", $"session:cancel:{session.Id}")]);
+        }
+        else if (isParticipant)
+        {
+            rows.Add([InlineKeyboardButton.WithCallbackData("➖ Выйти", $"session:pleave:{session.Id}")]);
+        }
+        else if (session.Status == SessionStatus.Recruiting)
+        {
+            rows.Add([InlineKeyboardButton.WithCallbackData("➕ Присоединиться", $"session:pjoin:{session.Id}")]);
+        }
+
+        rows.Add([InlineKeyboardButton.WithCallbackData("⬅️ К текущим сборам", "session:active:0")]);
+        await RenderPrivateAsync(
+            callbackQuery,
+            chatId,
+            messageFormatter.Format(session),
+            new InlineKeyboardMarkup(rows),
+            cancellationToken,
+            ParseMode.Html);
+    }
 
     private async Task ShowGamePageAsync(
         CallbackQuery callbackQuery,
@@ -221,7 +417,9 @@ public sealed class SessionsHandler(
             ? query.OrderByDescending(game => game.Interests.Count).ThenBy(game => game.Name)
             : query.OrderBy(game => game.Name);
         var pageResult = await ReadPageAsync(ordered, page, cancellationToken);
-        var title = scope == "m" ? "🎒 Мои игры" : "🔥 Популярные игры";
+        var title = scope == "m"
+            ? "🎒 Мои игры — игры, которые есть в вашей личной коллекции"
+            : "🔥 По спросу — игры, которые участники чаще всего отметили «Хочу сыграть»";
 
         await RenderPrivateAsync(
             callbackQuery,
@@ -259,7 +457,7 @@ public sealed class SessionsHandler(
         await RenderPrivateAsync(
             callbackQuery,
             chatId,
-            $"🎲 {game.Name}\n\nСколько ещё игроков нужно?",
+            $"🎲 {game.Name}\n\nСколько ещё игроков нужно помимо вас?",
             new InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton.WithCallbackData("1", $"session:create:{game.Id}:1"),
@@ -308,7 +506,7 @@ public sealed class SessionsHandler(
         await dbContext.SaveChangesAsync(cancellationToken);
         await botClient.SendMessage(
             chatId,
-            "Введите часть названия игры из каталога.",
+            "Введите часть названия игры из уже добавленного каталога.",
             cancellationToken: cancellationToken);
     }
 
@@ -385,7 +583,7 @@ public sealed class SessionsHandler(
             await RenderPrivateAsync(
                 callbackQuery,
                 privateChatId,
-                "Чат BoardCamp не настроен. Укажите BOARD_CAMP_CHAT_ID.",
+                "Чат BoardCamp не настроен. Обратитесь к администратору.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("⬅️ Назад", "session:menu")]
                 ]),
@@ -462,7 +660,7 @@ public sealed class SessionsHandler(
             await RenderPrivateAsync(
                 callbackQuery,
                 privateChatId,
-                "Не удалось опубликовать сбор в чате BoardCamp. Проверьте BOARD_CAMP_CHAT_ID и права бота.",
+                "Не удалось опубликовать сбор в чате BoardCamp. Проверьте настройки чата и права бота.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("⬅️ Назад", "session:menu")]
                 ]),
@@ -473,20 +671,24 @@ public sealed class SessionsHandler(
         await RenderPrivateAsync(
             callbackQuery,
             privateChatId,
-            $"✅ Сбор создан: {game.Name}\nНужно ещё: {wantedAdditionalPlayers}\n\nСообщение опубликовано в чате BoardCamp.",
+            $"✅ Сбор создан: {game.Name}\nНужно ещё: {wantedAdditionalPlayers}\n\nВ группе BoardCamp опубликовано одно сообщение набора; состав будет обновляться в нём.",
             BuildHostKeyboard(session.Id),
             cancellationToken);
     }
 
-    private async Task ChangeGroupParticipationAsync(
+    private async Task ChangeParticipationAsync(
         CallbackQuery callbackQuery,
         long telegramUserId,
         long sessionId,
         bool join,
+        bool requireGroupMessageIdentity,
+        bool refreshPrivateView,
         CancellationToken cancellationToken)
     {
-        if (callbackQuery.Message is not { } callbackMessage)
+        var callbackMessage = callbackQuery.Message;
+        if (callbackMessage is null)
         {
+            await AnswerAlertAsync(callbackQuery, "Не удалось определить сообщение сбора.", cancellationToken);
             return;
         }
 
@@ -496,12 +698,19 @@ public sealed class SessionsHandler(
             cancellationToken);
 
         var session = await LoadSessionAsync(sessionId, tracking: true, cancellationToken);
-        if (session is null
-            || session.TelegramChatId != callbackMessage.Chat.Id
-            || session.TelegramMessageId != callbackMessage.Id
-            || session.Status == SessionStatus.Closed)
+        if (session is null)
         {
             await transaction.CommitAsync(cancellationToken);
+            await AnswerAlertAsync(callbackQuery, "Этот сбор больше не существует.", cancellationToken);
+            return;
+        }
+
+        if (requireGroupMessageIdentity
+            && (session.TelegramChatId != callbackMessage.Chat.Id
+                || session.TelegramMessageId != callbackMessage.Id))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            await AnswerAlertAsync(callbackQuery, "Эта кнопка относится к устаревшему сообщению сбора.", cancellationToken);
             return;
         }
 
@@ -511,51 +720,55 @@ public sealed class SessionsHandler(
         if (participant is null)
         {
             await transaction.CommitAsync(cancellationToken);
+            await AnswerAlertAsync(
+                callbackQuery,
+                "Сначала откройте бота в личном чате и зарегистрируйтесь.",
+                cancellationToken);
             return;
         }
 
-        var existing = session.Participants.SingleOrDefault(value =>
+        var existingBeforeChange = session.Participants.SingleOrDefault(value =>
             value.ParticipantId == participant.Id);
-        var totalPlayers = session.WantedAdditionalPlayers + 1;
+        var change = SessionParticipationLogic.Apply(
+            session,
+            participant,
+            join,
+            DateTimeOffset.UtcNow);
 
-        if (join)
+        if (change.Changed)
         {
-            if (participant.Id != session.HostParticipantId
-                && existing is null
-                && CurrentPlayerCount(session) < totalPlayers)
+            if (!join && existingBeforeChange is not null)
             {
-                session.Participants.Add(new GameSessionParticipant
-                {
-                    ParticipantId = participant.Id,
-                    JoinedAt = DateTimeOffset.UtcNow
-                });
+                dbContext.GameSessionParticipants.Remove(existingBeforeChange);
             }
-        }
-        else if (participant.Id != session.HostParticipantId && existing is not null)
-        {
-            var remainingPlayers = CurrentPlayerCount(session) - 1;
-            session.Participants.Remove(existing);
-            dbContext.GameSessionParticipants.Remove(existing);
-            session.Status = remainingPlayers >= totalPlayers
-                ? SessionStatus.Full
-                : SessionStatus.Recruiting;
+
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        if (join)
-        {
-            session.Status = CurrentPlayerCount(session) >= totalPlayers
-                ? SessionStatus.Full
-                : SessionStatus.Recruiting;
-        }
-
-        session.UpdatedAt = DateTimeOffset.UtcNow;
-        await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await AnswerParticipationResultAsync(callbackQuery, change.Result, cancellationToken);
+
+        if (!change.Changed)
+        {
+            return;
+        }
 
         var updated = await LoadSessionAsync(sessionId, tracking: false, cancellationToken);
-        if (updated is not null)
+        if (updated is null)
         {
-            await TryRefreshGroupMessageAsync(updated, cancelled: false, cancellationToken);
+            return;
+        }
+
+        await TryRefreshGroupMessageAsync(updated, cancelled: false, cancellationToken);
+        if (refreshPrivateView && callbackMessage.Chat.Type == ChatType.Private)
+        {
+            await ShowActiveSessionAsync(
+                callbackQuery,
+                callbackMessage.Chat.Id,
+                telegramUserId,
+                sessionId,
+                answerCallback: false,
+                cancellationToken);
         }
     }
 
@@ -576,23 +789,13 @@ public sealed class SessionsHandler(
 
         if (session is null)
         {
-            await RenderPrivateAsync(
-                callbackQuery,
-                telegramUserId,
-                "Этот сбор вам недоступен.",
-                EmptyKeyboard(),
-                cancellationToken);
+            await AnswerAlertAsync(callbackQuery, "Этот сбор вам недоступен.", cancellationToken);
             return;
         }
 
         if (session.Status == SessionStatus.Closed)
         {
-            await RenderPrivateAsync(
-                callbackQuery,
-                telegramUserId,
-                "Этот сбор уже закрыт.",
-                EmptyKeyboard(),
-                cancellationToken);
+            await AnswerAlertAsync(callbackQuery, "Этот сбор уже закрыт.", cancellationToken);
             return;
         }
 
@@ -600,6 +803,10 @@ public sealed class SessionsHandler(
         session.ClosedAt = DateTimeOffset.UtcNow;
         session.UpdatedAt = session.ClosedAt.Value;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await botClient.AnswerCallbackQuery(
+            callbackQuery.Id,
+            cancelled ? "Сбор отменён." : "Набор закрыт.",
+            cancellationToken: cancellationToken);
 
         var updated = await LoadSessionAsync(session.Id, tracking: false, cancellationToken);
         var groupUpdated = updated is not null
@@ -609,14 +816,16 @@ public sealed class SessionsHandler(
             : $"✅ Набор закрыт: {session.Game.Name}";
         if (!groupUpdated)
         {
-            actionText += "\n\nНе удалось обновить сообщение в группе.";
+            actionText += "\n\nНе удалось обновить исходное сообщение в группе.";
         }
 
         await RenderPrivateAsync(
             callbackQuery,
             telegramUserId,
             actionText,
-            EmptyKeyboard(),
+            new InlineKeyboardMarkup([
+                [InlineKeyboardButton.WithCallbackData("🎲 Текущие сборы", "session:active:0")]
+            ]),
             cancellationToken);
     }
 
@@ -642,6 +851,15 @@ public sealed class SessionsHandler(
                     ? EmptyKeyboard()
                     : BuildGroupKeyboard(session),
                 cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (ApiRequestException exception) when (
+            exception.ErrorCode == 400
+            && exception.Message.Contains("message is not modified", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogDebug(
+                "BoardCamp session message {SessionId} already shows the desired state.",
+                session.Id);
             return true;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
@@ -756,7 +974,8 @@ public sealed class SessionsHandler(
     private static InlineKeyboardMarkup BuildHostKeyboard(long sessionId) =>
         new([
             [InlineKeyboardButton.WithCallbackData("✅ Закрыть набор", $"session:close:{sessionId}")],
-            [InlineKeyboardButton.WithCallbackData("❌ Отменить", $"session:cancel:{sessionId}")]
+            [InlineKeyboardButton.WithCallbackData("❌ Отменить", $"session:cancel:{sessionId}")],
+            [InlineKeyboardButton.WithCallbackData("🎲 Текущие сборы", "session:active:0")]
         ]);
 
     private static InlineKeyboardMarkup BuildGroupKeyboard(GameSession session) =>
@@ -779,7 +998,8 @@ public sealed class SessionsHandler(
         long chatId,
         string text,
         InlineKeyboardMarkup keyboard,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ParseMode? parseMode = null)
     {
         if (callbackQuery?.Message is { } message)
         {
@@ -787,6 +1007,7 @@ public sealed class SessionsHandler(
                 message.Chat.Id,
                 message.Id,
                 text,
+                parseMode: parseMode,
                 replyMarkup: keyboard,
                 cancellationToken: cancellationToken);
             return;
@@ -795,13 +1016,58 @@ public sealed class SessionsHandler(
         await botClient.SendMessage(
             chatId,
             text,
+            parseMode: parseMode,
             replyMarkup: keyboard,
             cancellationToken: cancellationToken);
     }
 
-    private static int CurrentPlayerCount(GameSession session) =>
-        1 + session.Participants.Count(value => value.ParticipantId != session.HostParticipantId);
+    private Task AcknowledgeAsync(CallbackQuery callbackQuery, CancellationToken cancellationToken) =>
+        botClient.AnswerCallbackQuery(callbackQuery.Id, cancellationToken: cancellationToken);
+
+    private Task AnswerAlertAsync(
+        CallbackQuery callbackQuery,
+        string text,
+        CancellationToken cancellationToken) =>
+        botClient.AnswerCallbackQuery(
+            callbackQuery.Id,
+            text,
+            showAlert: true,
+            cancellationToken: cancellationToken);
+
+    private async Task AnswerParticipationResultAsync(
+        CallbackQuery callbackQuery,
+        SessionParticipationResult result,
+        CancellationToken cancellationToken)
+    {
+        var (text, showAlert) = result switch
+        {
+            SessionParticipationResult.Joined => ("Вы присоединились.", false),
+            SessionParticipationResult.Left => ("Вы вышли из сбора.", false),
+            SessionParticipationResult.AlreadyJoined => ("Вы уже участвуете в этом сборе.", true),
+            SessionParticipationResult.NotJoined => ("Вы не участвуете в этом сборе.", true),
+            SessionParticipationResult.HostAlreadyJoined => ("Вы организатор и уже входите в состав.", true),
+            SessionParticipationResult.HostCannotLeave => ("Организатор не может выйти. Закройте или отмените сбор в личном чате.", true),
+            SessionParticipationResult.Full => ("Состав уже набран. Если кто-то выйдет, набор снова откроется.", true),
+            SessionParticipationResult.Closed => ("Этот сбор уже закрыт.", true),
+            _ => ("Действие недоступно.", true)
+        };
+
+        await botClient.AnswerCallbackQuery(
+            callbackQuery.Id,
+            text,
+            showAlert: showAlert,
+            cancellationToken: cancellationToken);
+    }
+
+    private static string FormatActiveStatus(SessionStatus status) =>
+        status == SessionStatus.Full ? "✅" : "🟢";
 
     private sealed record GameListItem(long Id, string Name, int InterestCount);
     private sealed record PageResult(IReadOnlyList<GameListItem> Items, bool HasMore);
+    private sealed record ActiveSessionItem(
+        long Id,
+        string GameName,
+        SessionStatus Status,
+        int PlayerCount,
+        int TotalPlayers);
 }

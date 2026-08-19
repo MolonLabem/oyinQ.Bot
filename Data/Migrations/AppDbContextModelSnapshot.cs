@@ -28,6 +28,7 @@ public partial class AppDbContextModelSnapshot : ModelSnapshot
             b.Property<int?>("DaysStaying").HasColumnType("integer");
             b.Property<string>("DisplayName").IsRequired().HasMaxLength(256).HasColumnType("character varying(256)");
             b.Property<bool?>("NeedsAccommodation").HasColumnType("boolean");
+            b.Property<string>("PreferredDisplayName").HasMaxLength(128).HasColumnType("character varying(128)");
             b.Property<long>("TelegramUserId").HasColumnType("bigint");
             b.Property<string>("TelegramUsername").HasMaxLength(64).HasColumnType("character varying(64)");
             b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone");

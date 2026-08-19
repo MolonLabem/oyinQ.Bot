@@ -15,11 +15,11 @@ public sealed class BoardGameGeekClient(
     private const int CollectionAcceptedAttempts = 5;
     private const int TransientAttempts = 3;
     private const int ThingAttempts = 2;
-    private const int ThingBatchSize = 100;
+    private const int ThingBatchSize = 20;
     private static readonly TimeSpan AcceptedRetryDelay = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan TransientRetryJitter = TimeSpan.FromMilliseconds(350);
-    private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromSeconds(5);
 
     public async Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
         string query,

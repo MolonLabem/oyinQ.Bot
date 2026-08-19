@@ -38,6 +38,7 @@ public static class CallbackDataValidator
         parts switch
         {
             ["reg", "edit"] => true,
+            ["reg", "name", "skip"] => true,
             ["reg", "days", var days] => int.TryParse(days, out var parsedDays)
                 && parsedDays is >= 1 and <= 3,
             ["reg", "accommodation", var value] => value is "yes" or "no",
@@ -48,6 +49,7 @@ public static class CallbackDataValidator
         parts switch
         {
             ["collection", "menu"] => true,
+            ["collection", "cancel"] => true,
             ["collection", "add", "single"] => true,
             ["collection", "import", var provider, var target] =>
                 provider is "bgg" or "tesera"
@@ -64,6 +66,8 @@ public static class CallbackDataValidator
         {
             ["session", "menu"] => true,
             ["session", "search"] => true,
+            ["session", "active", var page] => IsNonNegativeInt(page),
+            ["session", "view", var sessionId] => IsPositiveLong(sessionId),
             ["session", "list", var scope, var page] =>
                 scope is "p" or "m" && IsNonNegativeInt(page),
             ["session", "game", var gameId] => IsPositiveLong(gameId),
@@ -72,7 +76,7 @@ public static class CallbackDataValidator
                 && int.TryParse(wanted, out var parsedWanted)
                 && parsedWanted is >= 1 and <= 4,
             ["session", var action, var sessionId] =>
-                action is "join" or "leave" or "close" or "cancel"
+                action is "join" or "leave" or "pjoin" or "pleave" or "close" or "cancel"
                 && IsPositiveLong(sessionId),
             _ => false
         };
@@ -82,6 +86,10 @@ public static class CallbackDataValidator
         {
             ["game", "menu"] => true,
             ["game", "my", "menu"] => true,
+            ["game", "collections", var page] => IsNonNegativeInt(page),
+            ["game", "collection", var participantId, var page] =>
+                IsPositiveLong(participantId) && IsNonNegativeInt(page),
+            ["game", "collectionall", var participantId] => IsPositiveLong(participantId),
             ["game", "list", var filter, var page] =>
                 filter is "p" or "b" or "m" && IsNonNegativeInt(page),
             ["game", "wanted", var page] => IsNonNegativeInt(page),

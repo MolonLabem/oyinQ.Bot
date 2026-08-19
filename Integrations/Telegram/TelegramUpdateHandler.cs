@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
@@ -9,6 +11,8 @@ using oyinQ.Bot.Features.Registration;
 using oyinQ.Bot.Features.Sessions;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Integrations.Telegram;
 
@@ -21,32 +25,52 @@ public sealed class TelegramUpdateHandler(
     InterestsHandler interestsHandler,
     SessionsHandler sessionsHandler,
     AdminHandler adminHandler,
+    IOptions<CampOptions> campOptions,
+    IOptions<BggOptions> bggOptions,
     ILogger<TelegramUpdateHandler> logger)
 {
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
-        if (update.CallbackQuery is { } callbackQuery)
+        var callbackQuery = update.CallbackQuery;
+        if (callbackQuery is not null && !CallbackDataValidator.IsValid(callbackQuery.Data))
         {
             await botClient.AnswerCallbackQuery(
                 callbackQuery.Id,
+                "Эта кнопка устарела или повреждена.",
+                showAlert: true,
                 cancellationToken: cancellationToken);
-
-            if (!CallbackDataValidator.IsValid(callbackQuery.Data))
-            {
-                logger.LogWarning(
-                    "Ignoring malformed Telegram callback payload for update {UpdateId}.",
-                    update.Id);
-                return;
-            }
+            logger.LogWarning(
+                "Ignoring malformed Telegram callback payload for update {UpdateId}.",
+                update.Id);
+            return;
         }
 
-        var telegramUser = update.CallbackQuery?.From ?? update.Message?.From;
+        var telegramUser = callbackQuery?.From ?? update.Message?.From;
         if (telegramUser is null)
         {
             return;
         }
 
         var command = GetCommand(update.Message?.Text);
+        if (update.Message is { } incomingMessage
+            && incomingMessage.Chat.Type != ChatType.Private
+            && IsInteractiveGroupMessage(incomingMessage.Text, command))
+        {
+            await SendPrivateEntryPointAsync(incomingMessage.Chat.Id, cancellationToken);
+            return;
+        }
+
+        if (callbackQuery is { } groupCallback
+            && groupCallback.Message?.Chat.Type != ChatType.Private
+            && !IsGroupSessionParticipation(groupCallback.Data))
+        {
+            await botClient.AnswerCallbackQuery(
+                groupCallback.Id,
+                "Это действие выполняется в личном чате с ботом.",
+                showAlert: true,
+                cancellationToken: cancellationToken);
+            return;
+        }
 
         if (command == "/admin" && update.Message is { } adminMessage)
         {
@@ -57,9 +81,22 @@ public sealed class TelegramUpdateHandler(
             return;
         }
 
-        if (update.CallbackQuery is { Data: { } callbackData } adminCallback
-            && callbackData.StartsWith("admin:", StringComparison.Ordinal))
+        if (callbackQuery is { Data: { } adminCallbackData } adminCallback
+            && adminCallbackData.StartsWith("admin:", StringComparison.Ordinal))
         {
+            if (!IsAdmin(telegramUser.Id))
+            {
+                await botClient.AnswerCallbackQuery(
+                    adminCallback.Id,
+                    "Доступ запрещён.",
+                    showAlert: true,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            await botClient.AnswerCallbackQuery(
+                adminCallback.Id,
+                cancellationToken: cancellationToken);
             await adminHandler.TryHandleCallbackAsync(
                 adminCallback,
                 telegramUser.Id,
@@ -90,10 +127,22 @@ public sealed class TelegramUpdateHandler(
 
         if (participant is null)
         {
-            logger.LogDebug(
-                "Ignoring Telegram update {UpdateId} from unregistered user {TelegramUserId}.",
-                update.Id,
-                telegramUser.Id);
+            if (callbackQuery is not null)
+            {
+                await botClient.AnswerCallbackQuery(
+                    callbackQuery.Id,
+                    "Сначала откройте бота в личном чате и зарегистрируйтесь через /start.",
+                    showAlert: true,
+                    cancellationToken: cancellationToken);
+            }
+            else
+            {
+                logger.LogDebug(
+                    "Ignoring Telegram update {UpdateId} from unregistered user {TelegramUserId}.",
+                    update.Id,
+                    telegramUser.Id);
+            }
+
             return;
         }
 
@@ -108,6 +157,13 @@ public sealed class TelegramUpdateHandler(
             dbContext.ParticipantConversationStates.Remove(conversationState);
             await dbContext.SaveChangesAsync(cancellationToken);
             conversationState = null;
+        }
+
+        if (update.Message is { Chat.Type: not ChatType.Private } groupMessage
+            && conversationState is not null)
+        {
+            await SendPrivateEntryPointAsync(groupMessage.Chat.Id, cancellationToken);
+            return;
         }
 
         if (command is not null && update.Message is { } commandMessage)
@@ -148,9 +204,52 @@ public sealed class TelegramUpdateHandler(
             return;
         }
 
-        if (update.CallbackQuery is { } callback)
+        if (callbackQuery is { Data: { } callbackData } callback)
         {
-            if (IsClubImportCallback(callback.Data)
+            if (IsGameCallback(callbackData) && !IsRegistrationComplete(participant))
+            {
+                await botClient.AnswerCallbackQuery(
+                    callback.Id,
+                    "Сначала завершите регистрацию в личном чате с ботом.",
+                    showAlert: true,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            if (IsClubImportCallback(callbackData) && !IsAdmin(telegramUser.Id))
+            {
+                await botClient.AnswerCallbackQuery(
+                    callback.Id,
+                    "Импорт коллекции клуба доступен только администратору.",
+                    showAlert: true,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            if (IsUnavailableBggCallback(callbackData))
+            {
+                await botClient.AnswerCallbackQuery(
+                    callback.Id,
+                    "BGG API пока недоступен. Используйте Tesera или повторите после включения BGG.",
+                    showAlert: true,
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            if (callbackData.StartsWith("session:", StringComparison.Ordinal))
+            {
+                await sessionsHandler.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken);
+                return;
+            }
+
+            await botClient.AnswerCallbackQuery(
+                callback.Id,
+                cancellationToken: cancellationToken);
+
+            if (callbackData.StartsWith("collection:", StringComparison.Ordinal)
                 && await collectionsHandler.TryHandleCallbackAsync(
                     callback,
                     telegramUser.Id,
@@ -159,25 +258,7 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
-            if (IsGameCallback(callback.Data) && !IsRegistrationComplete(participant))
-            {
-                var chatId = callback.Data?.StartsWith("session:", StringComparison.Ordinal) == true
-                    ? telegramUser.Id
-                    : callback.Message?.Chat.Id ?? telegramUser.Id;
-                await SendRegistrationRequiredAsync(chatId, cancellationToken);
-                return;
-            }
-
-            if (callback.Data?.StartsWith("collection:", StringComparison.Ordinal) == true
-                && await collectionsHandler.TryHandleCallbackAsync(
-                    callback,
-                    telegramUser.Id,
-                    cancellationToken))
-            {
-                return;
-            }
-
-            if (callback.Data?.StartsWith("interest:", StringComparison.Ordinal) == true
+            if (callbackData.StartsWith("interest:", StringComparison.Ordinal)
                 && await interestsHandler.TryHandleCallbackAsync(
                     callback,
                     telegramUser.Id,
@@ -186,17 +267,8 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
-            if (callback.Data?.StartsWith("session:", StringComparison.Ordinal) == true
-                && await sessionsHandler.TryHandleCallbackAsync(
-                    callback,
-                    telegramUser.Id,
-                    cancellationToken))
-            {
-                return;
-            }
-
-            if ((callback.Data?.StartsWith("game:", StringComparison.Ordinal) == true
-                    || callback.Data?.StartsWith("copy:", StringComparison.Ordinal) == true)
+            if ((callbackData.StartsWith("game:", StringComparison.Ordinal)
+                    || callbackData.StartsWith("copy:", StringComparison.Ordinal))
                 && await gamesHandler.TryHandleCallbackAsync(
                     callback,
                     telegramUser.Id,
@@ -205,12 +277,12 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
-            if (callback.Data?.StartsWith("reg:", StringComparison.Ordinal) == true)
+            if (callbackData.StartsWith("reg:", StringComparison.Ordinal))
             {
                 await registrationHandler.HandleCallbackAsync(
                     participant,
                     callback,
-                    callback.Data,
+                    callbackData,
                     cancellationToken);
                 return;
             }
@@ -289,6 +361,45 @@ public sealed class TelegramUpdateHandler(
             cancellationToken: cancellationToken);
     }
 
+    private async Task SendPrivateEntryPointAsync(
+        long groupChatId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var me = await botClient.GetMe(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(me.Username))
+            {
+                var url = $"https://t.me/{me.Username}?start=menu";
+                await botClient.SendMessage(
+                    groupChatId,
+                    "Меню, поиск, импорт и управление выполняются в личном чате. В группе остаются сообщения сборов и точки входа.",
+                    replyMarkup: new InlineKeyboardMarkup([
+                        [InlineKeyboardButton.WithUrl("Открыть бота", url)]
+                    ]),
+                    cancellationToken: cancellationToken);
+                return;
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogDebug(exception, "Could not build private bot deep link.");
+        }
+
+        await botClient.SendMessage(
+            groupChatId,
+            "Откройте личный чат с ботом, чтобы продолжить.",
+            cancellationToken: cancellationToken);
+    }
+
+    private bool IsAdmin(long telegramUserId) =>
+        campOptions.Value.AdminTelegramIds.Contains(telegramUserId);
+
+    private bool IsUnavailableBggCallback(string callbackData) =>
+        !bggOptions.Value.IsAvailable
+        && (callbackData.StartsWith("collection:import:bgg:", StringComparison.Ordinal)
+            || callbackData.StartsWith("game:add:", StringComparison.Ordinal));
+
     private static bool IsRegistrationComplete(Participant participant) =>
         participant.DaysStaying is >= 1 and <= 3
         && participant.NeedsAccommodation.HasValue;
@@ -304,6 +415,10 @@ public sealed class TelegramUpdateHandler(
         || callbackData?.StartsWith("collection:", StringComparison.Ordinal) == true
         || callbackData?.StartsWith("session:", StringComparison.Ordinal) == true;
 
+    private static bool IsGroupSessionParticipation(string? callbackData) =>
+        callbackData?.StartsWith("session:join:", StringComparison.Ordinal) == true
+        || callbackData?.StartsWith("session:leave:", StringComparison.Ordinal) == true;
+
     private static bool IsGameCommand(string command) =>
         command is "/games" or "/addgame" or "/wanted" or "/mygames";
 
@@ -312,10 +427,21 @@ public sealed class TelegramUpdateHandler(
             or "➕ Добавить игры"
             or "🔥 Хочу сыграть"
             or "▶️ Собрать игру"
+            or "🎲 Текущие сборы"
             or "Мои игры"
             or "🎲 Мои игры"
             or "Мои хотелки"
             or "🔥 Мои хотелки";
+
+    private static bool IsInteractiveGroupMessage(string? text, string? command)
+    {
+        if (command is "/start" or "/menu" or "/admin" or "/games" or "/addgame" or "/wanted" or "/mygames")
+        {
+            return true;
+        }
+
+        return text is not null && (IsGameMenuText(text) || text == "👤 Моё");
+    }
 
     private static string? GetCommand(string? text)
     {
