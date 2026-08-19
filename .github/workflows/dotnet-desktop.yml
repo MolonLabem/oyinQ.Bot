@@ -38,3 +38,19 @@ jobs:
 
       - name: Build Docker image
         run: docker build --file Dockerfile --tag oyinq-bot:ci .
+
+  tesera-reader-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe game through Reader
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --max-time 45 \
+            'https://r.jina.ai/https://api.tesera.ru/games/carcassonne' \
+            | head -c 4000
+      - name: Probe collection through Reader
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --max-time 45 \
+            'https://r.jina.ai/https://api.tesera.ru/collections/base/own/Karn?GamesType=SelfGame&Limit=5&Offset=0' \
+            | head -c 4000
