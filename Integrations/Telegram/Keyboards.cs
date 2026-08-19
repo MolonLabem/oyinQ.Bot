@@ -23,7 +23,7 @@ public static class Keyboards
         new InlineKeyboardButton[][]
         {
             [
-                InlineKeyboardButton.WithCallbackData("Да", "reg:accommodation:yes"),
+                InlineKeyboardButton.WithCallbackData("Да, нужно", "reg:accommodation:yes"),
                 InlineKeyboardButton.WithCallbackData("Нет", "reg:accommodation:no")
             ]
         });
@@ -31,15 +31,15 @@ public static class Keyboards
     public static InlineKeyboardMarkup DisplayName { get; } = new(
         new InlineKeyboardButton[][]
         {
-            [InlineKeyboardButton.WithCallbackData("Пропустить — использовать имя Telegram", "reg:name:skip")]
+            [InlineKeyboardButton.WithCallbackData("Использовать имя Telegram", "reg:name:skip")]
         });
 
     public static InlineKeyboardMarkup Profile { get; } = new(
         new InlineKeyboardButton[][]
         {
-            [InlineKeyboardButton.WithCallbackData("📝 Изменить регистрацию", "reg:edit")],
-            [InlineKeyboardButton.WithCallbackData("🎒 Мои игры", "game:my:menu")],
-            [InlineKeyboardButton.WithCallbackData("🔥 Мои хотелки", "game:mywanted:0")],
+            [InlineKeyboardButton.WithCallbackData("🎲 Мои игры", "game:my:menu")],
+            [InlineKeyboardButton.WithCallbackData("❤️ Мои хотелки", "game:wishlist:mine:0")],
+            [InlineKeyboardButton.WithCallbackData("✏️ Изменить регистрацию", "reg:edit")],
             [InlineKeyboardButton.WithCallbackData("💳 Оплата участия", "reg:payment")]
         });
 
@@ -56,23 +56,18 @@ public static class Keyboards
             new KeyboardButton[]
             {
                 new("🎲 Игры"),
-                new("➕ Добавить игры")
-            },
-            new KeyboardButton[]
-            {
-                new("🔥 Хочу сыграть"),
                 new("▶️ Собрать игру")
             },
             new KeyboardButton[]
             {
-                new("🎲 Текущие сборы"),
-                new("👤 Профиль")
+                new("🔥 Хотелки"),
+                new("👤 Моё")
             }
         };
 
         if (includeAdmin)
         {
-            rows.Add([new KeyboardButton("🛠 Админ-панель")]);
+            rows.Add([new KeyboardButton("🛠 Админ")]);
         }
 
         return new ReplyKeyboardMarkup(rows)
