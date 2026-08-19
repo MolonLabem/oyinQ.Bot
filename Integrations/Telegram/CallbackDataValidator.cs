@@ -38,6 +38,8 @@ public static class CallbackDataValidator
         parts switch
         {
             ["reg", "edit"] => true,
+            ["reg", "profile"] => true,
+            ["reg", "payment"] => true,
             ["reg", "name", "skip"] => true,
             ["reg", "days", var days] => int.TryParse(days, out var parsedDays)
                 && parsedDays is >= 1 and <= 3,
