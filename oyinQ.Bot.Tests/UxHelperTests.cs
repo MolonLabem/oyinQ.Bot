@@ -49,4 +49,22 @@ public sealed class UxHelperTests
             "<a href=\"tg://user?id=123456\">BoardCamp Name</a>",
             ParticipantPresentation.ToHtmlLink(participant));
     }
+
+    [Fact]
+    public void MainMenuFor_ShowsAdminPanelOnlyForAdmins()
+    {
+        var regularButtons = Keyboards.MainMenuFor(includeAdmin: false)
+            .Keyboard
+            .SelectMany(row => row)
+            .Select(button => button.Text)
+            .ToArray();
+        var adminButtons = Keyboards.MainMenuFor(includeAdmin: true)
+            .Keyboard
+            .SelectMany(row => row)
+            .Select(button => button.Text)
+            .ToArray();
+
+        Assert.DoesNotContain("🛠 Админ-панель", regularButtons);
+        Assert.Contains("🛠 Админ-панель", adminButtons);
+    }
 }
