@@ -22,7 +22,7 @@ public sealed class SessionMessageFormatter
         text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(session.Game.Name)}</b>");
         text.AppendLine();
         text.AppendLine($"👤 Организатор: {ParticipantPresentation.ToHtmlLink(session.HostParticipant)}");
-        text.AppendLine($"👥 Состав: {currentPlayers}/{totalPlayers}");
+        text.AppendLine($"👥 Игроки: {currentPlayers}/{totalPlayers}");
         text.AppendLine();
 
         if (cancelled)
@@ -33,15 +33,15 @@ public sealed class SessionMessageFormatter
         {
             text.AppendLine(session.Status switch
             {
-                SessionStatus.Recruiting => $"🟢 Нужно ещё игроков: {neededPlayers}",
+                SessionStatus.Recruiting => $"Нужно ещё: {neededPlayers}",
                 SessionStatus.Full => "✅ Состав набран",
                 _ => "✅ Набор закрыт"
             });
         }
 
         text.AppendLine();
-        text.AppendLine("👥 Участники:");
-        text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(session.HostParticipant)} — организатор");
+        text.AppendLine("Участники:");
+        text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(session.HostParticipant)} (организатор)");
         foreach (var participant in otherParticipants)
         {
             text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant)}");
