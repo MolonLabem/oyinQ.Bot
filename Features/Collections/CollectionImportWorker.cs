@@ -338,7 +338,7 @@ public sealed class CollectionImportWorker(
             var target = import.Target == ImportTarget.Club ? " коллекции клуба" : string.Empty;
             await botClient.SendMessage(
                 import.RequestedByTelegramUserId,
-                $"✅ Импорт{target} завершён.\nДобавлено: {import.AddedCount} / Уже было: {import.SkippedCount}",
+                $"✅ Импорт{target} завершён\n\nДобавлено: {import.AddedCount}\nУже было: {import.SkippedCount}",
                 cancellationToken: cancellationToken);
         }
         catch (Exception exception)
@@ -353,7 +353,7 @@ public sealed class CollectionImportWorker(
         {
             await botClient.SendMessage(
                 import.RequestedByTelegramUserId,
-                $"❌ Импорт не завершён.\n{import.Error}",
+                $"❌ Импорт не завершён\n\n{import.Error}",
                 cancellationToken: cancellationToken);
         }
         catch (Exception exception)
