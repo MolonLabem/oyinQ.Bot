@@ -185,7 +185,7 @@ public sealed class CollectionsHandler(
 
             var prompt = provider == ExternalGameProvider.Bgg
                 ? "Импорт BGG\n\nОтправьте имя пользователя BGG или ссылку на его профиль/коллекцию. Импорт работает в фоне и не меняет ваши статусы уже добавленных игр."
-                : "Импорт Tesera\n\nОтправьте alias пользователя Tesera или ссылку на его профиль. После завершения бот напишет результат в этот чат.";
+                : "Импорт Tesera\n\nОтправьте имя пользователя Tesera или ссылку на его профиль. После завершения бот напишет результат в этот чат.";
             await SendOrEditAsync(
                 callbackQuery,
                 chatId,
@@ -261,8 +261,8 @@ public sealed class CollectionsHandler(
             await botClient.SendMessage(
                 chatId,
                 provider == ExternalGameProvider.Bgg
-                    ? "Не удалось распознать пользователя BGG. Пришлите username или ссылку на профиль/коллекцию."
-                    : "Не удалось распознать пользователя Tesera. Пришлите alias или ссылку на профиль.",
+                    ? "Не удалось распознать пользователя BGG. Пришлите имя пользователя или ссылку на профиль/коллекцию."
+                    : "Не удалось распознать пользователя Tesera. Пришлите имя пользователя или ссылку на профиль.",
                 replyMarkup: ImportInputKeyboard(),
                 cancellationToken: cancellationToken);
             return;
