@@ -23,6 +23,19 @@ if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("CONNECTION_STRING is required.");
 }
 
+var teseraBaseUrl = builder.Configuration["TESERA_BASE_URL"]?.Trim();
+if (string.IsNullOrWhiteSpace(teseraBaseUrl))
+{
+    teseraBaseUrl = "https://api.tesera.ru";
+}
+
+if (!Uri.TryCreate(teseraBaseUrl, UriKind.Absolute, out var teseraBaseUri)
+    || teseraBaseUri.Scheme != Uri.UriSchemeHttps)
+{
+    throw new InvalidOperationException("TESERA_BASE_URL must be an absolute HTTPS URL.");
+}
+
+var teseraProxyToken = builder.Configuration["TESERA_PROXY_TOKEN"]?.Trim();
 var botOptions = BotOptions.FromConfiguration(builder.Configuration);
 var campOptions = CampOptions.FromConfiguration(builder.Configuration);
 var bggOptions = BggOptions.FromConfiguration(builder.Configuration);
@@ -43,8 +56,13 @@ builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client
 });
 builder.Services.AddHttpClient<ITeseraClient, TeseraClient>(client =>
 {
-    client.BaseAddress = new Uri("https://api.tesera.ru");
+    client.BaseAddress = teseraBaseUri;
     client.Timeout = TimeSpan.FromSeconds(30);
+    if (!string.IsNullOrWhiteSpace(teseraProxyToken))
+    {
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", teseraProxyToken);
+    }
 });
 builder.Services.AddSingleton<TeseraAvailabilityService>();
 builder.Services.AddSingleton<ITelegramBotClient>(
