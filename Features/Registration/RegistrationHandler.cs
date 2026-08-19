@@ -407,7 +407,7 @@ public sealed class RegistrationHandler(
 
         try
         {
-            return JsonSerializer.Deserialize<RegistrationDraft>(dataJson) ?? new RegistrationDraft(0);
+            return JsonSerializer.Deserialize<RegistrationDraft>(dataJson);
         }
         catch (JsonException)
         {
