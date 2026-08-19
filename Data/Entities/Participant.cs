@@ -6,6 +6,7 @@ public sealed class Participant
     public long TelegramUserId { get; set; }
     public string? TelegramUsername { get; set; }
     public string DisplayName { get; set; } = string.Empty;
+    public string? PreferredDisplayName { get; set; }
     public int? DaysStaying { get; set; }
     public bool? NeedsAccommodation { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
