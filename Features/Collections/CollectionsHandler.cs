@@ -315,7 +315,10 @@ public sealed class CollectionsHandler(
     {
         var rows = new List<InlineKeyboardButton[]>
         {
-            [InlineKeyboardButton.WithCallbackData("➕ Одна игра по ссылке", "collection:add:single")]
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("➕ Одна игра по ссылке", "collection:add:single")
+            }
         };
 
         var personalImportButtons = new List<InlineKeyboardButton>();
