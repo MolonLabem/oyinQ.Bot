@@ -86,6 +86,9 @@ public static class CallbackDataValidator
         {
             ["game", "menu"] => true,
             ["game", "my", "menu"] => true,
+            ["game", "wishlist", "menu"] => true,
+            ["game", "wishlist", var scope, var page] =>
+                scope is "popular" or "mine" && IsNonNegativeInt(page),
             ["game", "collections", var page] => IsNonNegativeInt(page),
             ["game", "collection", var participantId, var page] =>
                 IsPositiveLong(participantId) && IsNonNegativeInt(page),
@@ -98,6 +101,10 @@ public static class CallbackDataValidator
                 filter is "d" or "b" or "m" && IsNonNegativeInt(page),
             ["game", "search", var scope] => scope is "catalog" or "my",
             ["game", "card", var gameId, var context, var page] =>
+                IsPositiveLong(gameId)
+                && !string.IsNullOrWhiteSpace(context)
+                && IsNonNegativeInt(page),
+            ["game", "availability", var gameId, var context, var page] =>
                 IsPositiveLong(gameId)
                 && !string.IsNullOrWhiteSpace(context)
                 && IsNonNegativeInt(page),
