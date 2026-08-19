@@ -54,6 +54,7 @@ builder.Services.AddScoped<RegistrationHandler>();
 builder.Services.AddScoped<GameDedupService>();
 builder.Services.AddScoped<GameSearchService>();
 builder.Services.AddScoped<GamesHandler>();
+builder.Services.AddScoped<GamesUxPresenter>();
 builder.Services.AddScoped<InterestsHandler>();
 builder.Services.AddScoped<SessionsHandler>();
 builder.Services.AddScoped<CollectionImportService>();
