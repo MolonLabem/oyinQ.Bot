@@ -1,3 +1,4 @@
+using Telegram.Bot.Requests;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -13,12 +14,15 @@ internal static class NullableParseModeExtensions
         ParseMode? parseMode,
         InlineKeyboardMarkup replyMarkup,
         CancellationToken cancellationToken = default) =>
-        botClient.SendMessage(
-            chatId,
-            text,
-            parseMode: parseMode.GetValueOrDefault(),
-            replyMarkup: replyMarkup,
-            cancellationToken: cancellationToken);
+        botClient.SendRequest(
+            new SendMessageRequest
+            {
+                ChatId = chatId,
+                Text = text,
+                ParseMode = parseMode.GetValueOrDefault(),
+                ReplyMarkup = replyMarkup
+            },
+            cancellationToken);
 
     public static Task<Message> EditMessageText(
         this ITelegramBotClient botClient,
@@ -28,11 +32,14 @@ internal static class NullableParseModeExtensions
         ParseMode? parseMode,
         InlineKeyboardMarkup replyMarkup,
         CancellationToken cancellationToken = default) =>
-        botClient.EditMessageText(
-            chatId,
-            messageId,
-            text,
-            parseMode: parseMode.GetValueOrDefault(),
-            replyMarkup: replyMarkup,
-            cancellationToken: cancellationToken);
+        botClient.SendRequest(
+            new EditMessageTextRequest
+            {
+                ChatId = chatId,
+                MessageId = messageId,
+                Text = text,
+                ParseMode = parseMode.GetValueOrDefault(),
+                ReplyMarkup = replyMarkup
+            },
+            cancellationToken);
 }
