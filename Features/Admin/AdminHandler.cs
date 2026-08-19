@@ -139,16 +139,16 @@ public sealed class AdminHandler(
             ? "Участников пока нет."
             : string.Join('\n', lines);
         var truncated = total > participants.Count
-            ? $"\n\nПоказаны первые {participants.Count}; полный список есть в CSV export."
+            ? $"\n\nПоказаны первые {participants.Count}. Полный список есть в CSV-экспорте."
             : string.Empty;
 
         var text = $"""
             👥 Участники
 
             Всего: {total}
-            1 день: {oneDay}
-            2 дня: {twoDays}
-            3 дня: {threeDays}
+            • 1 день: {oneDay}
+            • 2 дня: {twoDays}
+            • 3 дня: {threeDays}
 
             {listText}{truncated}
             """;
@@ -178,12 +178,11 @@ public sealed class AdminHandler(
         var text = $"""
             🏠 Жильё
 
-            Справочная сводка по регистрации.
             Нужно жильё: {participantCount}
             Человеко-дней: {personDays}
-            Ориентировочно: {estimatedTotal:0} ₸
+            Ориентировочная сумма: {estimatedTotal:0} ₸
 
-            Расчёт справочный.
+            Расчёт справочный: 3 000 ₸ за сутки с человека.
             """;
 
         await SendOrEditAsync(
@@ -216,11 +215,14 @@ public sealed class AdminHandler(
         var text = $"""
             🎲 Игры
 
-            Уникальных игр: {uniqueGames}
-            Копий клуба: {clubCopies}
-            Личных копий: {personalCopies}
-            Точно привезут: {bringingCopies}
-            Возможно привезут: {maybeCopies}
+            Каталог:
+            • Уникальных игр: {uniqueGames}
+            • Копий клуба: {clubCopies}
+            • Личных копий: {personalCopies}
+
+            Доступность:
+            • ✅ Точно будут: {bringingCopies}
+            • 🤔 Возможно будут: {maybeCopies}
             """;
 
         await SendOrEditAsync(
@@ -251,7 +253,7 @@ public sealed class AdminHandler(
 
         var text = games.Count == 0
             ? "🔥 Топ игр\n\nИнтересов пока нет."
-            : "🔥 Топ игр по спросу\n\nЭто количество отметок «Хочу сыграть», а не подтверждение привоза.\n\n" + string.Join(
+            : "🔥 Топ игр по спросу\n\nКоличество отметок «Хочу сыграть». Это спрос, а не подтверждение доступности игры.\n\n" + string.Join(
                 "\n",
                 games.Select((game, index) => $"{index + 1}. {game.Name} — 🔥 {game.InterestCount}"));
 
@@ -287,8 +289,8 @@ public sealed class AdminHandler(
 
         rows.Add([InlineKeyboardButton.WithCallbackData("← Админ-панель", "admin:menu")]);
         var text = bggOptions.Value.IsAvailable
-            ? "🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными. Выберите источник."
-            : $"🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными.\n\n{BggUnavailableMessage}\nДля импорта сейчас доступна Tesera.";
+            ? "🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными на мероприятии.\n\nВыберите источник."
+            : $"🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными на мероприятии.\n\n{BggUnavailableMessage}\n\nДля импорта сейчас доступна Tesera.";
 
         await SendOrEditAsync(
             callbackQuery,
@@ -322,15 +324,19 @@ public sealed class AdminHandler(
         var text = $"""
             📊 Статистика
 
-            Общая техническая сводка по данным бота.
-            Участники: {registeredParticipants}
-            Нужно жильё: {accommodationParticipants}
-            Уникальных игр: {uniqueGames}
-            Хотелок: {interests}
-            Сессий всего: {sessions}
-            Набор открыт: {recruitingSessions}
-            Состав набран: {fullSessions}
-            Закрыто: {closedSessions}
+            Участники:
+            • Зарегистрировано: {registeredParticipants}
+            • Нужно жильё: {accommodationParticipants}
+
+            Игры:
+            • Уникальных игр: {uniqueGames}
+            • Хотелок: {interests}
+
+            Сборы:
+            • Всего: {sessions}
+            • Набор открыт: {recruitingSessions}
+            • Состав набран: {fullSessions}
+            • Закрыто: {closedSessions}
             """;
 
         await SendOrEditAsync(
@@ -349,7 +355,7 @@ public sealed class AdminHandler(
         await SendOrEditAsync(
             callbackQuery,
             chatId,
-            "📤 Export\n\nОтправляю participants.csv, games.csv, interests.csv и sessions.csv отдельными файлами в этот личный чат.",
+            "📤 Экспорт\n\nОтправляю четыре CSV-файла отдельными сообщениями:\n\n• participants.csv\n• games.csv\n• interests.csv\n• sessions.csv",
             BuildBackKeyboard(),
             cancellationToken);
 
@@ -428,15 +434,28 @@ public sealed class AdminHandler(
         campOptions.Value.AdminTelegramIds.Contains(telegramUserId);
 
     private static string BuildMenuText() => """
-        Админ-панель
+        🛠 Админ-панель
 
-        👥 Участники — регистрация и список участников.
-        🏠 Жильё — справочная сводка по проживанию.
-        🎲 Игры — размеры каталога и статусы привоза.
-        🔥 Топ игр — спрос по отметкам «Хочу сыграть».
-        🏢 Коллекция клуба — отдельный админский импорт клубных игр.
-        📊 Статистика — общие счётчики.
-        📤 Export — четыре CSV-файла в личный чат.
+        👥 Участники
+        Регистрация и список участников.
+
+        🏠 Жильё
+        Сводка по проживанию.
+
+        🎲 Игры
+        Размер каталога и доступность игр.
+
+        🔥 Топ игр
+        Спрос по отметкам «Хочу сыграть».
+
+        🏢 Коллекция клуба
+        Импорт клубных игр.
+
+        📊 Статистика
+        Общие счётчики.
+
+        📤 Экспорт
+        Четыре CSV-файла в личный чат.
         """;
 
     private static InlineKeyboardMarkup BuildMenu() =>
@@ -453,7 +472,7 @@ public sealed class AdminHandler(
             [InlineKeyboardButton.WithCallbackData("🏢 Коллекция клуба", "admin:club")],
             [
                 InlineKeyboardButton.WithCallbackData("📊 Статистика", "admin:stats"),
-                InlineKeyboardButton.WithCallbackData("📤 Export", "admin:export")
+                InlineKeyboardButton.WithCallbackData("📤 Экспорт", "admin:export")
             ]
         ]);
 
@@ -469,7 +488,7 @@ public sealed class AdminHandler(
         string text,
         InlineKeyboardMarkup replyMarkup,
         CancellationToken cancellationToken,
-        ParseMode? parseMode = null)
+        ParseMode parseMode = default)
     {
         if (callbackQuery.Message is { } callbackMessage
             && callbackMessage.Chat.Id == chatId)
