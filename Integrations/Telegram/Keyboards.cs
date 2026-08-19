@@ -37,10 +37,10 @@ public static class Keyboards
     public static InlineKeyboardMarkup Profile { get; } = new(
         new InlineKeyboardButton[][]
         {
-            [InlineKeyboardButton.WithCallbackData("💳 Оплата участия", "reg:payment")],
-            [InlineKeyboardButton.WithCallbackData("Изменить регистрацию", "reg:edit")],
-            [InlineKeyboardButton.WithCallbackData("Мои игры", "game:my:menu")],
-            [InlineKeyboardButton.WithCallbackData("Мои хотелки", "game:mywanted:0")]
+            [InlineKeyboardButton.WithCallbackData("📝 Изменить регистрацию", "reg:edit")],
+            [InlineKeyboardButton.WithCallbackData("🎒 Мои игры", "game:my:menu")],
+            [InlineKeyboardButton.WithCallbackData("🔥 Мои хотелки", "game:mywanted:0")],
+            [InlineKeyboardButton.WithCallbackData("💳 Оплата участия", "reg:payment")]
         });
 
     public static InlineKeyboardMarkup Payment { get; } = new(
@@ -66,7 +66,7 @@ public static class Keyboards
             new KeyboardButton[]
             {
                 new("🎲 Текущие сборы"),
-                new("👤 Моё")
+                new("👤 Профиль")
             }
         };
 
