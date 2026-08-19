@@ -1,0 +1,45 @@
+name: Cloudflare Tesera smoke
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  cloudflare-tesera-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy temporary Worker and probe Tesera
+        working-directory: cloudflare/tesera-proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(openssl rand -hex 32)
+          echo "::add-mask::$token"
+
+          output=$(npx -y wrangler@latest deploy --temporary --var "PROXY_TOKEN:$token" 2>&1)
+          worker_url=$(printf '%s\n' "$output" | grep -oE 'https://[^[:space:]]+\.workers\.dev' | tail -1)
+          if [ -z "$worker_url" ]; then
+            echo "Temporary Worker URL was not found in Wrangler output." >&2
+            exit 1
+          fi
+
+          echo "Temporary Worker deployed."
+          response=$(mktemp)
+          code=$(curl --silent --show-error --max-time 30 \
+            --output "$response" --write-out '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            "$worker_url/games/carcassonne")
+
+          echo "Tesera through Cloudflare: HTTP $code"
+          head -c 1000 "$response"
+          echo
+          test "$code" = "200"
+
+          unauth_code=$(curl --silent --show-error --max-time 15 \
+            --output /dev/null --write-out '%{http_code}' \
+            "$worker_url/games/carcassonne")
+          echo "Unauthenticated proxy request: HTTP $unauth_code"
+          test "$unauth_code" = "404"
