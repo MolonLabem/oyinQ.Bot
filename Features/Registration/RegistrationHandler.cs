@@ -19,6 +19,32 @@ public sealed class RegistrationHandler(
     private const string AwaitingAccommodationState = "registration:awaiting-accommodation";
     private const string AwaitingDisplayNameState = "registration:awaiting-display-name";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(30);
+    private const string RegistrationIntro = """
+        🍂 Осенний Астанинский Настолкомарафон-2026
+
+        📍 Клуб «Кинь-Двинь»
+        🗓 26 сентября 2026, 09:00 — 29 сентября 2026, 09:00
+        🎲 Три дня настольных игр нон-стоп
+
+        💳 Участие:
+        • 1 день — 10 000 ₸
+        • 3 дня — 15 000 ₸
+
+        🏠 Проживание:
+        • квартира рядом с клубом
+        • 3 000 ₸ за сутки с человека
+
+        💰 Оплата:
+        Kaspi +7 747 120 8577 — Andrei K.
+        Чек отправьте @andreyjugg.
+        Если нужно проживание, укажите количество дней.
+
+        ❓ Вопросы: @andreyjugg
+
+        Регистрация — 3 коротких шага.
+
+        1/3. На сколько дней вы едете?
+        """;
 
     public async Task HandleStartAsync(
         Participant participant,
@@ -39,7 +65,7 @@ public sealed class RegistrationHandler(
 
         await botClient.SendMessage(
             message.Chat.Id,
-            "Регистрация займёт три коротких шага.\n\n1/3. На сколько дней вы едете?",
+            RegistrationIntro,
             replyMarkup: Keyboards.RegistrationDays,
             cancellationToken: cancellationToken);
     }
@@ -56,7 +82,7 @@ public sealed class RegistrationHandler(
         {
             await botClient.SendMessage(
                 message.Chat.Id,
-                "Сначала завершите регистрацию. Выберите количество дней.",
+                "Сначала завершите регистрацию.\n\n1/3. На сколько дней вы едете?",
                 replyMarkup: Keyboards.RegistrationDays,
                 cancellationToken: cancellationToken);
             return;
@@ -119,7 +145,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                $"2/3. Нужно жильё? Стоимость — {price:0} ₸ в день.",
+                $"2/3. Нужно жильё?\n\nСтоимость — {price:0} ₸ за сутки с человека.",
                 replyMarkup: Keyboards.Accommodation,
                 cancellationToken: cancellationToken);
             return true;
@@ -145,7 +171,7 @@ public sealed class RegistrationHandler(
                 await botClient.EditMessageText(
                     chatId.Value,
                     callbackQuery.Message!.Id,
-                    "Регистрация устарела. Выберите количество дней ещё раз.",
+                    "Регистрация устарела.\n\nВыберите количество дней ещё раз.",
                     replyMarkup: Keyboards.RegistrationDays,
                     cancellationToken: cancellationToken);
                 return true;
@@ -176,7 +202,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                "3/3. Как вас показывать другим участникам?\n\nОтправьте предпочтительное имя одним сообщением. Можно нажать «Пропустить» — тогда бот будет использовать имя из Telegram.",
+                "3/3. Как вас показывать другим участникам?\n\nОтправьте предпочтительное имя одним сообщением.\n\nМожно нажать «Пропустить» — тогда бот будет использовать имя из Telegram.",
                 replyMarkup: Keyboards.DisplayName,
                 cancellationToken: cancellationToken);
             return true;
@@ -199,7 +225,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
+                $"✅ Готово.\n\nДля других участников вы будете отображаться как {ParticipantPresentation.GetDisplayName(participant)}.",
                 cancellationToken: cancellationToken);
             await ShowMainMenuAsync(chatId.Value, participant.TelegramUserId, cancellationToken);
             return true;
@@ -212,7 +238,7 @@ public sealed class RegistrationHandler(
 
             await botClient.SendMessage(
                 chatId.Value,
-                "Изменение регистрации. После дней и жилья можно также обновить отображаемое имя.\n\n1/3. На сколько дней вы едете?",
+                "Изменение регистрации\n\nПосле дней и жилья можно также обновить отображаемое имя.\n\n1/3. На сколько дней вы едете?",
                 replyMarkup: Keyboards.RegistrationDays,
                 cancellationToken: cancellationToken);
             return true;
@@ -242,7 +268,7 @@ public sealed class RegistrationHandler(
         {
             await botClient.SendMessage(
                 message.Chat.Id,
-                "Имя не может быть пустым. Отправьте имя или нажмите «Пропустить» в предыдущем сообщении.",
+                "Имя не может быть пустым.\n\nОтправьте имя или нажмите «Пропустить» в предыдущем сообщении.",
                 cancellationToken: cancellationToken);
             return true;
         }
@@ -263,7 +289,7 @@ public sealed class RegistrationHandler(
 
         await botClient.SendMessage(
             message.Chat.Id,
-            $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
+            $"✅ Готово.\n\nДля других участников вы будете отображаться как {ParticipantPresentation.GetDisplayName(participant)}.",
             replyMarkup: Keyboards.MainMenuFor(IsAdmin(participant.TelegramUserId)),
             cancellationToken: cancellationToken);
         return true;
@@ -276,7 +302,15 @@ public sealed class RegistrationHandler(
     {
         var accommodation = participant.NeedsAccommodation == true ? "Да" : "Нет";
         var name = ParticipantPresentation.GetDisplayName(participant);
-        var text = $"👤 Моё\n\nИмя для участников: {name}\nДней: {participant.DaysStaying}\nЖильё: {accommodation}\n\nЗдесь можно изменить регистрацию, открыть свои игры или свои хотелки.";
+        var text = $"""
+            👤 Моё
+
+            Имя для участников: {name}
+            Дней: {participant.DaysStaying}
+            Жильё: {accommodation}
+
+            Здесь можно изменить регистрацию, открыть свои игры или свои хотелки.
+            """;
 
         await botClient.SendMessage(
             chatId,
@@ -294,17 +328,28 @@ public sealed class RegistrationHandler(
         var text = """
             Главное меню
 
-            🎲 Игры — каталог: спрос, подтверждённые привозы, возможные игры и коллекции участников.
-            ➕ Добавить игры — добавить одну игру или импортировать личную коллекцию.
-            🔥 Хочу сыграть — посмотреть спрос и управлять своими хотелками.
-            ▶️ Собрать игру — создать новый набор игроков.
-            🎲 Текущие сборы — открытые сейчас наборы, к которым можно присоединиться.
-            👤 Моё — регистрация, мои игры и мои хотелки.
+            🎲 Игры
+            Каталог, спрос и доступность игр на Настолкомарафоне-2026.
+
+            ➕ Добавить игры
+            Добавить одну игру или импортировать личную коллекцию.
+
+            🔥 Хочу сыграть
+            Посмотреть общий спрос и управлять своими хотелками.
+
+            ▶️ Собрать игру
+            Создать новый набор игроков.
+
+            🎲 Текущие сборы
+            Посмотреть открытые наборы и присоединиться.
+
+            👤 Моё
+            Регистрация, мои игры и мои хотелки.
             """;
 
         if (isAdmin)
         {
-            text += "\n🛠 Админ-панель — участники, игры, статистика, коллекция клуба и CSV-экспорт.";
+            text += "\n\n🛠 Админ-панель\nУчастники, игры, статистика, коллекция клуба и CSV-экспорт.";
         }
 
         await botClient.SendMessage(
@@ -362,7 +407,7 @@ public sealed class RegistrationHandler(
 
         try
         {
-            return JsonSerializer.Deserialize<RegistrationDraft>(dataJson);
+            return JsonSerializer.Deserialize<RegistrationDraft>(dataJson) ?? new RegistrationDraft(0);
         }
         catch (JsonException)
         {
