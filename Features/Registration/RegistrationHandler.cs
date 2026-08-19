@@ -34,16 +34,23 @@ public sealed class RegistrationHandler(
         • квартира рядом с клубом
         • 3 000 ₸ за сутки с человека
 
-        💰 Оплата:
-        Kaspi +7 747 120 8577 — Andrei K.
-        Чек отправьте @andreyjugg.
-        Если нужно проживание, укажите количество дней.
-
         ❓ Вопросы: @andreyjugg
 
         Регистрация — 3 коротких шага.
 
         1/3. На сколько дней вы едете?
+        """;
+    private const string PaymentDetails = """
+        💳 Оплата участия
+
+        Бот не принимает платежи — здесь только реквизиты организатора.
+
+        Kaspi: +7 747 120 8577
+        Получатель: Andrei K.
+
+        После перевода отправьте чек в ЛС @andreyjugg.
+
+        Если оплачиваете проживание, укажите количество дней.
         """;
 
     public async Task HandleStartAsync(
@@ -125,6 +132,30 @@ public sealed class RegistrationHandler(
         }
 
         RefreshTelegramIdentity(participant, callbackQuery.From);
+
+        if (callbackData == "reg:payment")
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await botClient.EditMessageText(
+                chatId.Value,
+                callbackQuery.Message!.Id,
+                PaymentDetails,
+                replyMarkup: Keyboards.Payment,
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
+        if (callbackData == "reg:profile")
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await botClient.EditMessageText(
+                chatId.Value,
+                callbackQuery.Message!.Id,
+                BuildProfileText(participant),
+                replyMarkup: Keyboards.Profile,
+                cancellationToken: cancellationToken);
+            return true;
+        }
 
         if (callbackData.StartsWith("reg:days:", StringComparison.Ordinal))
         {
@@ -300,23 +331,26 @@ public sealed class RegistrationHandler(
         Participant participant,
         CancellationToken cancellationToken)
     {
+        await botClient.SendMessage(
+            chatId,
+            BuildProfileText(participant),
+            replyMarkup: Keyboards.Profile,
+            cancellationToken: cancellationToken);
+    }
+
+    private static string BuildProfileText(Participant participant)
+    {
         var accommodation = participant.NeedsAccommodation == true ? "Да" : "Нет";
         var name = ParticipantPresentation.GetDisplayName(participant);
-        var text = $"""
+        return $"""
             👤 Моё
 
             Имя для участников: {name}
             Дней: {participant.DaysStaying}
             Жильё: {accommodation}
 
-            Здесь можно изменить регистрацию, открыть свои игры или свои хотелки.
+            Здесь можно посмотреть реквизиты для оплаты, изменить регистрацию, открыть свои игры или свои хотелки.
             """;
-
-        await botClient.SendMessage(
-            chatId,
-            text,
-            replyMarkup: Keyboards.Profile,
-            cancellationToken: cancellationToken);
     }
 
     private async Task ShowMainMenuAsync(
