@@ -92,7 +92,7 @@ app.MapGet(
         CancellationToken cancellationToken) =>
     {
         var availability = await availabilityService.GetAsync(
-            forceRefresh: true,
+            forceRefresh: false,
             cancellationToken);
 
         var body = new
