@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using oyinQ.Bot.Data;
 
 #nullable disable
 
 namespace oyinQ.Bot.Data.Migrations;
 
+[DbContext(typeof(AppDbContext))]
+[Migration("20260819090000_PreferredDisplayName")]
 public partial class PreferredDisplayName : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
