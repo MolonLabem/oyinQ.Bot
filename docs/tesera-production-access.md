@@ -13,8 +13,8 @@ Do not add random public proxies or HTML scraping as a production workaround. Th
 The bot now treats Tesera as a live dependency:
 
 - a background monitor probes Tesera through `ITeseraClient`;
-- healthy results are cached for 5 minutes;
-- unavailable results are cached for 2 minutes;
+- healthy results are cached for 10 minutes;
+- unavailable results are cached for 5 minutes;
 - each probe has a 5-second timeout;
 - Tesera import buttons are hidden while the provider is unavailable;
 - stale Tesera callbacks fail immediately instead of enqueuing a doomed import;
