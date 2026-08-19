@@ -23,8 +23,8 @@ public sealed class CampOptions
             .Select(value => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
                 ? (long?)id
                 : null)
-            .Where(id => id.HasValue)
-            .Select(id => id.Value)
+            .Where(static id => id.HasValue)
+            .Select(static id => id.GetValueOrDefault())
             .ToHashSet();
 
         var accommodationPrice = decimal.TryParse(
