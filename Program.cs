@@ -83,6 +83,76 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 app.MapGet("/health", static () => Results.Ok());
 
+app.MapGet(
+    "/health/tesera",
+    async Task<IResult> (
+        ITeseraClient teseraClient,
+        CancellationToken cancellationToken) =>
+    {
+        const string probeAlias = "carcassonne";
+
+        try
+        {
+            var game = await teseraClient.GetGameByAliasAsync(probeAlias, cancellationToken);
+            if (game is null)
+            {
+                return Results.Json(
+                    new
+                    {
+                        dependency = "tesera",
+                        status = "unavailable",
+                        probe = probeAlias,
+                        error = "Tesera did not return the probe game."
+                    },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            return Results.Ok(new
+            {
+                dependency = "tesera",
+                status = "ok",
+                probe = probeAlias,
+                game = game.Name
+            });
+        }
+        catch (TeseraUnavailableException exception)
+        {
+            return Results.Json(
+                new
+                {
+                    dependency = "tesera",
+                    status = "unavailable",
+                    probe = probeAlias,
+                    error = exception.Message
+                },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (HttpRequestException exception)
+        {
+            return Results.Json(
+                new
+                {
+                    dependency = "tesera",
+                    status = "unavailable",
+                    probe = probeAlias,
+                    error = exception.Message
+                },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Results.Json(
+                new
+                {
+                    dependency = "tesera",
+                    status = "unavailable",
+                    probe = probeAlias,
+                    error = exception.Message
+                },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    });
+
 app.MapPost(
     "/telegram/webhook/{secret}",
     async Task<IResult> (
