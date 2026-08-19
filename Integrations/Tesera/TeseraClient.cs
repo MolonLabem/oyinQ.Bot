@@ -168,8 +168,7 @@ public sealed class TeseraClient(
 
         if (games.Count == 0 && aliases.Length > 0)
         {
-            throw new TeseraUnavailableException(
-                "Tesera вернула коллекцию, но не отдала данные игр. Попробуйте позже.");
+            return [];
         }
 
         return games;
@@ -289,7 +288,7 @@ public sealed class TeseraClient(
             game = nested;
         }
 
-        if (game.ValueKind != JsonValueKind.Object)
+        if (game.ValueKind != JsonValueKind.Object || IsAddition(game))
         {
             return null;
         }
