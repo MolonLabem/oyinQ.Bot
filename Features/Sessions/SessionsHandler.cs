@@ -269,9 +269,11 @@ public sealed class SessionsHandler(
             """
             ▶️ Собрать игру
 
-            Создайте новый набор игроков. Выберите игру из каталога, своих игр или через поиск, затем укажите, сколько дополнительных игроков нужно.
+            Создайте новый набор игроков.
 
-            Сам набор будет опубликован одним сообщением в группе BoardCamp; дальнейшие изменения состава обновляют это сообщение на месте.
+            Выберите игру из каталога, своих игр или через поиск. Затем укажите, сколько дополнительных игроков нужно.
+
+            Набор будет опубликован одним сообщением в группе «Настолкомарафон-2026». Изменения состава будут обновляться в этом же сообщении.
             """,
             new InlineKeyboardMarkup([
                 [InlineKeyboardButton.WithCallbackData("🔥 По спросу", "session:list:p:0")],
@@ -304,8 +306,8 @@ public sealed class SessionsHandler(
         var items = rows.Take(PageSize).ToArray();
 
         var text = items.Length == 0
-            ? "🎲 Текущие сборы\n\nСейчас открытых сборов нет. Здесь появятся наборы, опубликованные в группе BoardCamp."
-            : "🎲 Текущие сборы\n\nОткрытые наборы игроков. «Состав набран» остаётся в списке, пока организатор не закроет сбор; если кто-то выйдет, набор снова откроется.";
+            ? "🎲 Текущие сборы\n\nСейчас открытых сборов нет.\n\nЗдесь появятся наборы, опубликованные в группе «Настолкомарафон-2026»."
+            : "🎲 Текущие сборы\n\nОткрытые наборы игроков.\n\n«Состав набран» остаётся в списке, пока организатор не закроет сбор. Если кто-то выйдет, набор снова откроется.";
 
         var keyboardRows = items
             .Select(item => (IEnumerable<InlineKeyboardButton>)[
@@ -418,8 +420,8 @@ public sealed class SessionsHandler(
             : query.OrderBy(game => game.Name);
         var pageResult = await ReadPageAsync(ordered, page, cancellationToken);
         var title = scope == "m"
-            ? "🎒 Мои игры — игры, которые есть в вашей личной коллекции"
-            : "🔥 По спросу — игры, которые участники чаще всего отметили «Хочу сыграть»";
+            ? "🎒 Мои игры\n\nИгры из вашей личной коллекции"
+            : "🔥 По спросу\n\nИгры, которые участники чаще всего отметили «Хочу сыграть»";
 
         await RenderPrivateAsync(
             callbackQuery,
@@ -564,7 +566,7 @@ public sealed class SessionsHandler(
 
         await botClient.SendMessage(
             chatId,
-            $"🔎 Результаты поиска: {text}",
+            $"🔎 Результаты поиска\n\n{text}",
             replyMarkup: new InlineKeyboardMarkup(rows),
             cancellationToken: cancellationToken);
     }
@@ -583,7 +585,7 @@ public sealed class SessionsHandler(
             await RenderPrivateAsync(
                 callbackQuery,
                 privateChatId,
-                "Чат BoardCamp не настроен. Обратитесь к администратору.",
+                "Чат «Настолкомарафон-2026» не настроен. Обратитесь к администратору.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("⬅️ Назад", "session:menu")]
                 ]),
@@ -653,14 +655,14 @@ public sealed class SessionsHandler(
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogError(exception, "Failed to publish game session {SessionId} to BoardCamp chat.", session.Id);
+            logger.LogError(exception, "Failed to publish game session {SessionId} to event chat.", session.Id);
             dbContext.GameSessions.Remove(session);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             await RenderPrivateAsync(
                 callbackQuery,
                 privateChatId,
-                "Не удалось опубликовать сбор в чате BoardCamp. Проверьте настройки чата и права бота.",
+                "Не удалось опубликовать сбор в чате «Настолкомарафон-2026».\n\nПроверьте настройки чата и права бота.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("⬅️ Назад", "session:menu")]
                 ]),
@@ -671,7 +673,7 @@ public sealed class SessionsHandler(
         await RenderPrivateAsync(
             callbackQuery,
             privateChatId,
-            $"✅ Сбор создан: {game.Name}\nНужно ещё: {wantedAdditionalPlayers}\n\nВ группе BoardCamp опубликовано одно сообщение набора; состав будет обновляться в нём.",
+            $"✅ Сбор создан\n\n🎲 {game.Name}\n👥 Нужно ещё: {wantedAdditionalPlayers}\n\nСообщение опубликовано в группе «Настолкомарафон-2026». Состав будет обновляться в нём.",
             BuildHostKeyboard(session.Id),
             cancellationToken);
     }
@@ -812,8 +814,8 @@ public sealed class SessionsHandler(
         var groupUpdated = updated is not null
             && await TryRefreshGroupMessageAsync(updated, cancelled, cancellationToken);
         var actionText = cancelled
-            ? $"❌ Сбор отменён: {session.Game.Name}"
-            : $"✅ Набор закрыт: {session.Game.Name}";
+            ? $"❌ Сбор отменён\n\n🎲 {session.Game.Name}"
+            : $"✅ Набор закрыт\n\n🎲 {session.Game.Name}";
         if (!groupUpdated)
         {
             actionText += "\n\nНе удалось обновить исходное сообщение в группе.";
@@ -858,7 +860,7 @@ public sealed class SessionsHandler(
             && exception.Message.Contains("message is not modified", StringComparison.OrdinalIgnoreCase))
         {
             logger.LogDebug(
-                "BoardCamp session message {SessionId} already shows the desired state.",
+                "Event session message {SessionId} already shows the desired state.",
                 session.Id);
             return true;
         }
@@ -866,7 +868,7 @@ public sealed class SessionsHandler(
         {
             logger.LogWarning(
                 exception,
-                "Failed to refresh BoardCamp session message for session {SessionId}.",
+                "Failed to refresh event session message for session {SessionId}.",
                 session.Id);
             return false;
         }
@@ -999,7 +1001,7 @@ public sealed class SessionsHandler(
         string text,
         InlineKeyboardMarkup keyboard,
         CancellationToken cancellationToken,
-        ParseMode? parseMode = null)
+        ParseMode parseMode = default)
     {
         if (callbackQuery?.Message is { } message)
         {
