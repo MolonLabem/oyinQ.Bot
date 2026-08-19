@@ -24,6 +24,11 @@ public sealed class TeseraClientTests
 
             if (request.RequestUri.AbsolutePath == "/collections/base/Own/test-user")
             {
+                if (request.RequestUri.Query.Contains("Offset=2", StringComparison.Ordinal))
+                {
+                    return JsonResponse(HttpStatusCode.OK, "{\"games\":[]}");
+                }
+
                 Assert.Equal("?GamesType=SelfGame&Limit=100&Offset=0", request.RequestUri.Query);
                 return JsonResponse(
                     HttpStatusCode.OK,
@@ -79,9 +84,70 @@ public sealed class TeseraClientTests
             {
                 "/collections/base/own/test-user",
                 "/collections/base/Own/test-user",
+                "/collections/base/Own/test-user",
                 "/games/base-game"
             },
             requests.Select(uri => uri.AbsolutePath).ToArray());
+    }
+
+    [Fact]
+    public async Task GetOwnedCollectionAsync_ContinuesAfterShortPages_UntilEmptyPage()
+    {
+        var offsets = new List<int>();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/collections/base/own/test-user")
+            {
+                var offset = ReadOffset(request.RequestUri);
+                offsets.Add(offset);
+                return offset switch
+                {
+                    0 => JsonResponse(HttpStatusCode.OK, "{\"games\":[{\"alias\":\"g1\"},{\"alias\":\"g2\"}]}"),
+                    2 => JsonResponse(HttpStatusCode.OK, "{\"games\":[{\"alias\":\"g3\"}]}"),
+                    3 => JsonResponse(HttpStatusCode.OK, "{\"games\":[]}"),
+                    _ => JsonResponse(HttpStatusCode.BadRequest, "{}")
+                };
+            }
+
+            if (request.RequestUri.AbsolutePath.StartsWith("/games/", StringComparison.Ordinal))
+            {
+                var alias = request.RequestUri.AbsolutePath["/games/".Length..];
+                return JsonResponse(
+                    HttpStatusCode.OK,
+                    $"{{\"alias\":\"{alias}\",\"title\":\"{alias}\"}}");
+            }
+
+            return JsonResponse(HttpStatusCode.NotFound, "{}");
+        });
+
+        var client = CreateClient(handler);
+
+        var games = await client.GetOwnedCollectionAsync("test-user", CancellationToken.None);
+
+        Assert.Equal(3, games.Count);
+        Assert.Equal([0, 2, 3], offsets);
+        Assert.Equal(["g1", "g2", "g3"], games.Select(value => value.TeseraAlias).ToArray());
+    }
+
+    [Fact]
+    public async Task GetOwnedCollectionAsync_WhenOffsetIsIgnored_ThrowsInsteadOfSilentlyTruncating()
+    {
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/collections/base/own/test-user")
+            {
+                return JsonResponse(HttpStatusCode.OK, "{\"games\":[{\"alias\":\"same\"}]}");
+            }
+
+            return JsonResponse(HttpStatusCode.NotFound, "{}");
+        });
+
+        var client = CreateClient(handler);
+
+        var exception = await Assert.ThrowsAsync<TeseraUnavailableException>(
+            () => client.GetOwnedCollectionAsync("test-user", CancellationToken.None));
+
+        Assert.Contains("повторила", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -136,6 +202,16 @@ public sealed class TeseraClientTests
 
         Assert.Equal(4, requestCount);
         Assert.Contains("401", exception.Message, StringComparison.Ordinal);
+    }
+
+    private static int ReadOffset(Uri uri)
+    {
+        var value = uri.Query
+            .TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .Single(part => part[0] == "Offset")[1];
+        return int.Parse(value);
     }
 
     private static TeseraClient CreateClient(HttpMessageHandler handler)
