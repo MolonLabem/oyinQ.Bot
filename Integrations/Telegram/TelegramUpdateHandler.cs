@@ -293,6 +293,15 @@ public sealed class TelegramUpdateHandler(
 
         if (update.Message is { Text: { } text } message)
         {
+            if (text == "🛠 Админ-панель")
+            {
+                await adminHandler.HandleCommandAsync(
+                    message,
+                    telegramUser.Id,
+                    cancellationToken);
+                return;
+            }
+
             if (text == "👤 Моё")
             {
                 await registrationHandler.HandleProfileAsync(
@@ -440,7 +449,9 @@ public sealed class TelegramUpdateHandler(
             return true;
         }
 
-        return text is not null && (IsGameMenuText(text) || text == "👤 Моё");
+        return text is not null
+            && (IsGameMenuText(text)
+                || text is "👤 Моё" or "🛠 Админ-панель");
     }
 
     private static string? GetCommand(string? text)
