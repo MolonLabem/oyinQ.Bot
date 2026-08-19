@@ -109,7 +109,22 @@ public sealed class CollectionsHandler(
 
         if (data == "collection:add:single")
         {
-            await teseraAvailabilityService.GetAsync(forceRefresh: false, cancellationToken);
+            var tesera = await teseraAvailabilityService.GetAsync(
+                forceRefresh: false,
+                cancellationToken);
+            if (!bggOptions.Value.IsAvailable && !tesera.IsAvailable)
+            {
+                await SendOrEditAsync(
+                    callbackQuery,
+                    chatId,
+                    "Внешние каталоги сейчас недоступны. Вернитесь к своим играм и выберите уже существующую игру из каталога.",
+                    new InlineKeyboardMarkup([
+                        [InlineKeyboardButton.WithCallbackData("← К моим играм", "game:my:menu")]
+                    ]),
+                    cancellationToken);
+                return true;
+            }
+
             await SetStateAsync(telegramUserId, GameAddSearchState, cancellationToken);
             await SendOrEditAsync(
                 callbackQuery,
