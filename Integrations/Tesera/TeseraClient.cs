@@ -83,22 +83,60 @@ public sealed class TeseraClient(
                 $"Tesera API временно недоступен ({statuses}). Попробуйте импорт BGG или повторите позже.");
         }
 
-        var collectionItems = new List<JsonElement>(firstPage);
+        var collectionItems = new List<JsonElement>();
+        var seenItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var offset = 0;
         var pageItems = firstPage;
-        for (var page = 1; page < MaxPages && pageItems.Count == PageSize; page++)
+        var exhausted = false;
+
+        for (var page = 0; page < MaxPages; page++)
         {
-            var response = await FetchCollectionPageAsync(
-                selectedPath,
-                page * PageSize,
-                cancellationToken);
-            if (!response.IsSuccess)
+            if (page > 0)
             {
-                throw new TeseraUnavailableException(
-                    "Tesera перестала отвечать во время загрузки коллекции. Попробуйте позже.");
+                var response = await FetchCollectionPageAsync(
+                    selectedPath,
+                    offset,
+                    cancellationToken);
+                if (!response.IsSuccess)
+                {
+                    throw new TeseraUnavailableException(
+                        "Tesera перестала отвечать во время загрузки коллекции. Попробуйте позже.");
+                }
+
+                pageItems = response.Items;
             }
 
-            pageItems = response.Items;
-            collectionItems.AddRange(pageItems);
+            if (pageItems.Count == 0)
+            {
+                exhausted = true;
+                break;
+            }
+
+            var newItems = 0;
+            foreach (var item in pageItems)
+            {
+                if (!seenItems.Add(GetCollectionItemKey(item)))
+                {
+                    continue;
+                }
+
+                collectionItems.Add(item.Clone());
+                newItems++;
+            }
+
+            if (page > 0 && newItems == 0)
+            {
+                throw new TeseraUnavailableException(
+                    "Tesera повторила уже загруженную страницу коллекции. Импорт остановлен, чтобы не сохранить неполный список.");
+            }
+
+            offset += pageItems.Count;
+        }
+
+        if (!exhausted && pageItems.Count > 0)
+        {
+            throw new TeseraUnavailableException(
+                "Коллекция Tesera слишком большая или API не завершил пагинацию. Импорт остановлен без отметки об успешном полном импорте.");
         }
 
         var aliases = collectionItems
@@ -115,14 +153,14 @@ public sealed class TeseraClient(
         }
 
         var games = new List<ExternalGame>(aliases.Length);
-        for (var offset = 0; offset < aliases.Length; offset += DetailBatchSize)
+        for (var detailOffset = 0; detailOffset < aliases.Length; detailOffset += DetailBatchSize)
         {
-            if (offset > 0)
+            if (detailOffset > 0)
             {
                 await Task.Delay(DetailBatchDelay, cancellationToken);
             }
 
-            var batch = aliases.Skip(offset).Take(DetailBatchSize).ToArray();
+            var batch = aliases.Skip(detailOffset).Take(DetailBatchSize).ToArray();
             var tasks = batch.Select(alias => GetGameByAliasWithRetryAsync(alias, cancellationToken));
             var details = await Task.WhenAll(tasks);
             games.AddRange(details.Where(game => game is not null).Cast<ExternalGame>());
@@ -321,6 +359,14 @@ public sealed class TeseraClient(
         }
 
         return [];
+    }
+
+    private static string GetCollectionItemKey(JsonElement item)
+    {
+        var alias = ExtractAlias(item);
+        return !string.IsNullOrWhiteSpace(alias)
+            ? $"alias:{alias}"
+            : item.GetRawText();
     }
 
     private static bool IsAddition(JsonElement item)
