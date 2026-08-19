@@ -429,7 +429,7 @@ public sealed class RegistrationHandler(
         }
     }
 
-    private static string GetParticipationLabel(int daysStaying) =>
+    private static string GetParticipationLabel(int? daysStaying) =>
         daysStaying switch
         {
             1 => "1 день",
