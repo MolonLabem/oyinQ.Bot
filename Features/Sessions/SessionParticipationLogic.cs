@@ -50,8 +50,14 @@ public static class SessionParticipationLogic
 
             if (CurrentPlayerCount(session) >= TotalPlayerCount(session))
             {
+                var changed = session.Status != SessionStatus.Full;
                 session.Status = SessionStatus.Full;
-                return new(SessionParticipationResult.Full, false);
+                if (changed)
+                {
+                    session.UpdatedAt = now;
+                }
+
+                return new(SessionParticipationResult.Full, changed);
             }
 
             session.Participants.Add(new GameSessionParticipant
