@@ -15,8 +15,8 @@ public sealed class TeseraAvailabilityService(
 {
     private const string CacheKey = "tesera:availability";
     private const string ProbeAlias = "carcassonne";
-    private static readonly TimeSpan AvailableCacheDuration = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan UnavailableCacheDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan AvailableCacheDuration = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan UnavailableCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
     private readonly SemaphoreSlim gate = new(1, 1);
 
