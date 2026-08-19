@@ -9,7 +9,7 @@ public static class Keyboards
         {
             ["🎲 Игры", "➕ Добавить игры"],
             ["🔥 Хочу сыграть", "▶️ Собрать игру"],
-            ["👤 Моё"]
+            ["🎲 Текущие сборы", "👤 Моё"]
         })
     {
         ResizeKeyboard = true,
@@ -33,6 +33,12 @@ public static class Keyboards
                 InlineKeyboardButton.WithCallbackData("Да", "reg:accommodation:yes"),
                 InlineKeyboardButton.WithCallbackData("Нет", "reg:accommodation:no")
             ]
+        });
+
+    public static InlineKeyboardMarkup DisplayName { get; } = new(
+        new InlineKeyboardButton[][]
+        {
+            [InlineKeyboardButton.WithCallbackData("Пропустить — использовать имя Telegram", "reg:name:skip")]
         });
 
     public static InlineKeyboardMarkup Profile { get; } = new(
