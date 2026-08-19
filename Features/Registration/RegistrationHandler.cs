@@ -29,6 +29,17 @@ public sealed class RegistrationHandler(
 
         1/3. На сколько дней вы приезжаете?
         """;
+    private const string MainMenuGuide = """
+        Главное меню
+
+        🎲 Игры — посмотреть игры участников и отметить, во что хочется сыграть.
+        ▶️ Собрать игру — создать сбор и позвать людей в партию.
+        🔥 Хотелки — посмотреть популярные игры и свой список.
+        👤 Профиль — регистрация, ваши игры и реквизиты для оплаты.
+
+        Свои коробки добавляются через «Профиль» → «Мои игры».
+        Все настройки делаются здесь, в личном чате. В общий чат бот отправляет только сборы на партии.
+        """;
     private const string PaymentDetails = """
         💳 Оплата участия
 
@@ -222,7 +233,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                "3/3. Как показывать вас другим участникам?\n\nОтправьте имя одним сообщением или используйте имя из Telegram.",
+                "3/3. Как вас подписать в боте?\n\nОтправьте имя одним сообщением или оставьте имя из Telegram.",
                 replyMarkup: Keyboards.DisplayName,
                 cancellationToken: cancellationToken);
             return true;
@@ -288,7 +299,7 @@ public sealed class RegistrationHandler(
         {
             await botClient.SendMessage(
                 message.Chat.Id,
-                "Имя не может быть пустым.\n\nОтправьте имя или нажмите «Использовать имя Telegram» в предыдущем сообщении.",
+                "Имя не может быть пустым.\n\nОтправьте имя или нажмите «Оставить имя из Telegram» в предыдущем сообщении.",
                 cancellationToken: cancellationToken);
             return true;
         }
@@ -310,8 +321,8 @@ public sealed class RegistrationHandler(
         await botClient.SendMessage(
             message.Chat.Id,
             BuildRegistrationSuccessText(participant),
-            replyMarkup: Keyboards.MainMenuFor(IsAdmin(participant.TelegramUserId)),
             cancellationToken: cancellationToken);
+        await ShowMainMenuAsync(message.Chat.Id, participant.TelegramUserId, cancellationToken);
         return true;
     }
 
@@ -334,13 +345,13 @@ public sealed class RegistrationHandler(
         var participation = GetParticipationLabel(participant.DaysStaying);
 
         return $"""
-            👤 Моё
+            👤 Профиль
 
             Имя: {name}
             Участие: {participation}
             Жильё: {accommodation}
 
-            Здесь можно изменить регистрацию, управлять своими играми и хотелками или открыть реквизиты для оплаты.
+            Здесь можно изменить регистрацию, посмотреть свои игры, отметить, во что хочется сыграть, и открыть реквизиты для оплаты.
             """;
     }
 
@@ -356,8 +367,6 @@ public sealed class RegistrationHandler(
             Участие: {participation}
             Жильё: {accommodation}
             Имя: {name}
-
-            Теперь можно выбрать игры, в которые хочется сыграть, или добавить свои.
             """;
     }
 
@@ -368,7 +377,7 @@ public sealed class RegistrationHandler(
     {
         await botClient.SendMessage(
             chatId,
-            "Что хотите сделать?",
+            MainMenuGuide,
             replyMarkup: Keyboards.MainMenuFor(IsAdmin(telegramUserId)),
             cancellationToken: cancellationToken);
     }
