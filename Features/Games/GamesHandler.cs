@@ -1,10 +1,14 @@
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
+using oyinQ.Bot.Integrations.Tesera;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Games;
@@ -17,6 +21,7 @@ public sealed partial class GamesHandler(
     ILogger<GamesHandler> logger)
 {
     private const int PageSize = 10;
+    private const int TelegramTextChunkLimit = 3500;
     private const string CatalogSearchState = "games:catalog-search";
     private const string AddSearchState = "games:add-search";
     private const string MyGamesSearchState = "games:my-search";
@@ -35,12 +40,33 @@ public sealed partial class GamesHandler(
         var text = rawText.Trim();
         if (conversationState?.State is CatalogSearchState or AddSearchState or MyGamesSearchState)
         {
+            if (message.Chat.Type != ChatType.Private)
+            {
+                return true;
+            }
+
             await HandleConversationTextAsync(
                 message.Chat.Id,
                 telegramUserId,
                 conversationState.State,
                 text,
                 cancellationToken);
+            return true;
+        }
+
+        var isRecognized = text is "🎲 Игры"
+            or "/games"
+            or "➕ Добавить игры"
+            or "/addgame"
+            or "🔥 Хочу сыграть"
+            or "/wanted"
+            or "Мои игры"
+            or "🎲 Мои игры"
+            or "/mygames"
+            or "Мои хотелки"
+            or "🔥 Мои хотелки";
+        if (isRecognized && message.Chat.Type != ChatType.Private)
+        {
             return true;
         }
 
@@ -57,7 +83,7 @@ public sealed partial class GamesHandler(
                     message.Chat.Id,
                     telegramUserId,
                     AddSearchState,
-                    "Отправьте название игры или ссылку BGG вида boardgamegeek.com/boardgame/12345.",
+                    BuildManualAddPrompt(),
                     cancellationToken);
                 return true;
 
@@ -98,7 +124,13 @@ public sealed partial class GamesHandler(
             return false;
         }
 
-        var chatId = callbackQuery.Message?.Chat.Id ?? telegramUserId;
+        if (callbackQuery.Message?.Chat.Type != ChatType.Private)
+        {
+            return data.StartsWith("game:", StringComparison.Ordinal)
+                || data.StartsWith("copy:", StringComparison.Ordinal);
+        }
+
+        var chatId = callbackQuery.Message.Chat.Id;
         var parts = data.Split(':');
 
         if (data == "game:menu")
@@ -110,6 +142,41 @@ public sealed partial class GamesHandler(
         if (data == "game:my:menu")
         {
             await ShowMyGamesMenuAsync(callbackQuery, chatId, cancellationToken);
+            return true;
+        }
+
+        if (parts is ["game", "collections", var participantsPage]
+            && int.TryParse(participantsPage, out var participantPage))
+        {
+            await ShowParticipantCollectionsAsync(
+                callbackQuery,
+                chatId,
+                Math.Max(participantPage, 0),
+                cancellationToken);
+            return true;
+        }
+
+        if (parts is ["game", "collection", var participantIdText, var collectionPage]
+            && long.TryParse(participantIdText, out var participantId)
+            && int.TryParse(collectionPage, out var participantCollectionPage))
+        {
+            await ShowParticipantCollectionAsync(
+                callbackQuery,
+                chatId,
+                participantId,
+                Math.Max(participantCollectionPage, 0),
+                cancellationToken);
+            return true;
+        }
+
+        if (parts is ["game", "collectionall", var allParticipantId]
+            && long.TryParse(allParticipantId, out participantId))
+        {
+            await SendFullParticipantCollectionAsync(
+                callbackQuery,
+                chatId,
+                participantId,
+                cancellationToken);
             return true;
         }
 
@@ -166,7 +233,7 @@ public sealed partial class GamesHandler(
             var state = searchScope == "my" ? MyGamesSearchState : CatalogSearchState;
             var prompt = searchScope == "my"
                 ? "Введите часть названия среди ваших игр."
-                : "Введите часть названия игры в каталоге.";
+                : "Введите часть названия уже добавленной игры в каталоге.";
 
             await StartSearchAsync(
                 chatId,
@@ -284,9 +351,9 @@ public sealed partial class GamesHandler(
         }
 
         var text = new StringBuilder();
-        text.AppendLine($"🎲 {game.Name}");
+        text.AppendLine($"🎲 <b>{Encode(game.Name)}</b>");
         text.AppendLine($"Игроки: {FormatPlayers(game.MinPlayers, game.MaxPlayers)}");
-        text.AppendLine($"Лучше всего: {game.BestPlayers ?? "—"}");
+        text.AppendLine($"Лучше всего: {Encode(game.BestPlayers ?? "—")}");
         text.AppendLine($"🔥 Хотят сыграть: {game.Interests.Count}");
         text.AppendLine();
         text.AppendLine("Копии:");
@@ -299,7 +366,9 @@ public sealed partial class GamesHandler(
         {
             foreach (var copy in game.Copies
                          .OrderBy(value => value.Source)
-                         .ThenBy(value => value.OwnerParticipant?.DisplayName))
+                         .ThenBy(value => value.OwnerParticipant is null
+                             ? string.Empty
+                             : ParticipantPresentation.GetDisplayName(value.OwnerParticipant)))
             {
                 if (copy.Source == GameCopySource.Club)
                 {
@@ -307,7 +376,9 @@ public sealed partial class GamesHandler(
                     continue;
                 }
 
-                var owner = copy.OwnerParticipant?.DisplayName ?? "Участник";
+                var owner = copy.OwnerParticipant is null
+                    ? "Участник"
+                    : ParticipantPresentation.ToHtmlLink(copy.OwnerParticipant);
                 var status = copy.BringStatus == BringStatus.Bringing ? "✅ возьмёт" : "🤔 возможно";
                 text.AppendLine($"{status} — {owner}");
             }
@@ -339,7 +410,11 @@ public sealed partial class GamesHandler(
 
         if (!string.IsNullOrWhiteSpace(game.ExternalUrl))
         {
-            rows.Add([InlineKeyboardButton.WithUrl("🔗 Открыть BGG", game.ExternalUrl)]);
+            rows.Add([
+                InlineKeyboardButton.WithUrl(
+                    GameExternalLinkLabel.ForUrl(game.ExternalUrl),
+                    game.ExternalUrl)
+            ]);
         }
 
         rows.Add([
@@ -353,13 +428,14 @@ public sealed partial class GamesHandler(
             telegramUserId,
             text.ToString().TrimEnd(),
             new InlineKeyboardMarkup(rows),
-            cancellationToken);
+            cancellationToken,
+            ParseMode.Html);
     }
 
     private async Task ShowCatalogMenuAsync(long chatId, CancellationToken cancellationToken) =>
         await botClient.SendMessage(
             chatId,
-            "🎲 Каталог игр",
+            CatalogMenuText(),
             replyMarkup: CatalogMenuKeyboard(),
             cancellationToken: cancellationToken);
 
@@ -370,16 +446,27 @@ public sealed partial class GamesHandler(
         await RenderAsync(
             callbackQuery,
             chatId,
-            "🎲 Каталог игр",
+            CatalogMenuText(),
             CatalogMenuKeyboard(),
             cancellationToken);
 
+    private static string CatalogMenuText() => """
+        🎲 Игры
+
+        🔥 Популярные — спрос: какие игры больше всего хотят сыграть. Это не обещание, что конкретную игру привезут.
+        ✅ Точно привезут — клубные игры и личные копии со статусом «Возьму».
+        🤔 Возможно привезут — личные копии, владельцы которых ещё не подтвердили привоз.
+        📚 Коллекции участников — посмотреть, какие игры загрузил конкретный участник.
+        🎒 Мои игры — управлять только своими копиями и их статусом.
+        """;
+
     private static InlineKeyboardMarkup CatalogMenuKeyboard() =>
         new([
-            [InlineKeyboardButton.WithCallbackData("🔥 Популярные", "game:list:p:0")],
-            [InlineKeyboardButton.WithCallbackData("✅ Точно будут", "game:list:b:0")],
-            [InlineKeyboardButton.WithCallbackData("🤔 Возможно", "game:list:m:0")],
-            [InlineKeyboardButton.WithCallbackData("🔎 Поиск", "game:search:catalog")],
+            [InlineKeyboardButton.WithCallbackData("🔥 Популярные — спрос", "game:list:p:0")],
+            [InlineKeyboardButton.WithCallbackData("✅ Точно привезут", "game:list:b:0")],
+            [InlineKeyboardButton.WithCallbackData("🤔 Возможно привезут", "game:list:m:0")],
+            [InlineKeyboardButton.WithCallbackData("📚 Коллекции участников", "game:collections:0")],
+            [InlineKeyboardButton.WithCallbackData("🔎 Поиск по каталогу", "game:search:catalog")],
             [InlineKeyboardButton.WithCallbackData("🎒 Мои игры", "game:my:menu")]
         ]);
 
@@ -412,9 +499,9 @@ public sealed partial class GamesHandler(
         var pageResult = await ReadPageAsync(ordered, page, cancellationToken);
         var title = filter switch
         {
-            "b" => "✅ Точно будут",
-            "m" => "🤔 Возможно",
-            _ => "🔥 Популярные игры"
+            "b" => "✅ Точно привезут\nКлубные игры и личные игры со статусом «Возьму».",
+            "m" => "🤔 Возможно привезут\nВладельцы этих личных копий ещё не подтвердили, что возьмут их.",
+            _ => "🔥 Популярные по спросу\nРейтинг по количеству отметок «Хочу сыграть»; это спрос, а не гарантия привоза."
         };
 
         await RenderGameListAsync(
@@ -454,7 +541,9 @@ public sealed partial class GamesHandler(
         await RenderAsync(
             callbackQuery,
             chatId,
-            BuildListText("🔥 Больше всего хотят сыграть", pageResult.Items),
+            BuildListText(
+                "🔥 Хочу сыграть\nЭто общий рейтинг спроса. Откройте игру, чтобы поставить или убрать свою отметку; отметка не означает, что вы обязуетесь привезти игру.",
+                pageResult.Items),
             new InlineKeyboardMarkup(rows),
             cancellationToken);
     }
@@ -477,7 +566,7 @@ public sealed partial class GamesHandler(
         await RenderGameListAsync(
             callbackQuery,
             chatId,
-            "🔥 Мои хотелки",
+            "🔥 Мои хотелки\nИгры, которые именно вы отметили «Хочу сыграть».",
             pageResult,
             page,
             "mw",
@@ -494,7 +583,14 @@ public sealed partial class GamesHandler(
         await RenderAsync(
             callbackQuery,
             chatId,
-            "🎒 Мои игры",
+            """
+            🎒 Мои игры
+
+            Здесь только ваши личные копии — добавленные вручную или импортированные из личной коллекции.
+            ✅ «Возьму» означает подтверждённый привоз на BoardCamp.
+            🤔 «Возможно» означает, что игра у вас есть, но привоз пока не подтверждён.
+            «Самые востребованные» сортирует ваши игры по общему спросу участников.
+            """,
             new InlineKeyboardMarkup([
                 [InlineKeyboardButton.WithCallbackData("🔥 Самые востребованные", "game:my:d:0")],
                 [InlineKeyboardButton.WithCallbackData("✅ Возьму", "game:my:b:0")],
@@ -539,9 +635,9 @@ public sealed partial class GamesHandler(
         var pageResult = await ReadPageAsync(ordered, page, cancellationToken);
         var title = filter switch
         {
-            "b" => "✅ Я возьму",
-            "m" => "🤔 Возможно возьму",
-            _ => "🔥 Мои самые востребованные"
+            "b" => "✅ Я возьму\nЭти копии вы подтвердили к привозу.",
+            "m" => "🤔 Возможно возьму\nЭти копии есть у вас, но привоз пока не подтверждён.",
+            _ => "🔥 Мои самые востребованные\nВаши игры, отсортированные по спросу других участников."
         };
 
         await RenderGameListAsync(
@@ -553,6 +649,212 @@ public sealed partial class GamesHandler(
             $"m{filter}",
             next => $"game:my:{filter}:{next}",
             "game:my:menu",
+            cancellationToken);
+    }
+
+    private async Task ShowParticipantCollectionsAsync(
+        CallbackQuery callbackQuery,
+        long chatId,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        var rows = await dbContext.Participants
+            .AsNoTracking()
+            .Where(participant => participant.GameCopies.Any(copy => copy.Source == GameCopySource.Personal))
+            .OrderBy(participant => participant.PreferredDisplayName ?? participant.DisplayName)
+            .ThenBy(participant => participant.Id)
+            .Select(participant => new ParticipantCollectionItem(
+                participant.Id,
+                participant.PreferredDisplayName ?? participant.DisplayName,
+                participant.GameCopies.Count(copy => copy.Source == GameCopySource.Personal)))
+            .Skip(page * PageSize)
+            .Take(PageSize + 1)
+            .ToArrayAsync(cancellationToken);
+        var hasMore = rows.Length > PageSize;
+        var items = rows.Take(PageSize).ToArray();
+
+        var keyboardRows = items
+            .Select(item => (IEnumerable<InlineKeyboardButton>)[
+                InlineKeyboardButton.WithCallbackData(
+                    $"{item.DisplayName} · {item.GameCount}",
+                    $"game:collection:{item.ParticipantId}:0")
+            ])
+            .ToList();
+        var pagination = new List<InlineKeyboardButton>();
+        if (page > 0)
+        {
+            pagination.Add(InlineKeyboardButton.WithCallbackData("⬅️", $"game:collections:{page - 1}"));
+        }
+        if (hasMore)
+        {
+            pagination.Add(InlineKeyboardButton.WithCallbackData("Ещё ➡️", $"game:collections:{page + 1}"));
+        }
+        if (pagination.Count > 0)
+        {
+            keyboardRows.Add(pagination);
+        }
+        keyboardRows.Add([InlineKeyboardButton.WithCallbackData("⬅️ Каталог", "game:menu")]);
+
+        var text = items.Length == 0
+            ? "📚 Коллекции участников\n\nПока никто не добавил личные игры."
+            : "📚 Коллекции участников\n\nВыберите участника. Показываются только люди, у которых есть личные копии игр. Внутри можно открыть карточки или получить весь список одним поисковым текстом.";
+
+        await RenderAsync(
+            callbackQuery,
+            chatId,
+            text,
+            new InlineKeyboardMarkup(keyboardRows),
+            cancellationToken);
+    }
+
+    private async Task ShowParticipantCollectionAsync(
+        CallbackQuery callbackQuery,
+        long chatId,
+        long participantId,
+        int page,
+        CancellationToken cancellationToken)
+    {
+        var participant = await dbContext.Participants
+            .AsNoTracking()
+            .Where(value => value.Id == participantId
+                && value.GameCopies.Any(copy => copy.Source == GameCopySource.Personal))
+            .Select(value => new
+            {
+                value.Id,
+                DisplayName = value.PreferredDisplayName ?? value.DisplayName
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (participant is null)
+        {
+            await RenderAsync(
+                callbackQuery,
+                chatId,
+                "Коллекция участника больше недоступна.",
+                new InlineKeyboardMarkup([
+                    [InlineKeyboardButton.WithCallbackData("⬅️ К участникам", "game:collections:0")]
+                ]),
+                cancellationToken);
+            return;
+        }
+
+        var rows = await dbContext.GameCopies
+            .AsNoTracking()
+            .Where(copy => copy.Source == GameCopySource.Personal
+                && copy.OwnerParticipantId == participantId)
+            .OrderBy(copy => copy.Game.Name)
+            .Select(copy => new ParticipantGameItem(
+                copy.GameId,
+                copy.Game.Name,
+                copy.BringStatus,
+                copy.Game.Interests.Count))
+            .Skip(page * PageSize)
+            .Take(PageSize + 1)
+            .ToArrayAsync(cancellationToken);
+        var hasMore = rows.Length > PageSize;
+        var items = rows.Take(PageSize).ToArray();
+
+        var text = new StringBuilder($"📚 Коллекция: {participant.DisplayName}")
+            .AppendLine()
+            .AppendLine("✅ — владелец точно возьмёт; 🤔 — пока возможно.")
+            .AppendLine();
+        if (items.Length == 0)
+        {
+            text.Append("Пока пусто.");
+        }
+        else
+        {
+            foreach (var item in items)
+            {
+                text.AppendLine($"{BringEmoji(item.BringStatus)} {item.Name} — 🔥 {item.InterestCount}");
+            }
+        }
+
+        var keyboardRows = items
+            .Select(item => (IEnumerable<InlineKeyboardButton>)[
+                InlineKeyboardButton.WithCallbackData(
+                    $"{BringEmoji(item.BringStatus)} {item.Name}",
+                    $"game:card:{item.GameId}:u{participantId}:{page}")
+            ])
+            .ToList();
+        var pagination = new List<InlineKeyboardButton>();
+        if (page > 0)
+        {
+            pagination.Add(InlineKeyboardButton.WithCallbackData(
+                "⬅️",
+                $"game:collection:{participantId}:{page - 1}"));
+        }
+        if (hasMore)
+        {
+            pagination.Add(InlineKeyboardButton.WithCallbackData(
+                "Ещё ➡️",
+                $"game:collection:{participantId}:{page + 1}"));
+        }
+        if (pagination.Count > 0)
+        {
+            keyboardRows.Add(pagination);
+        }
+        keyboardRows.Add([
+            InlineKeyboardButton.WithCallbackData(
+                "📄 Получить весь список",
+                $"game:collectionall:{participantId}")
+        ]);
+        keyboardRows.Add([InlineKeyboardButton.WithCallbackData("⬅️ К участникам", "game:collections:0")]);
+
+        await RenderAsync(
+            callbackQuery,
+            chatId,
+            text.ToString().TrimEnd(),
+            new InlineKeyboardMarkup(keyboardRows),
+            cancellationToken);
+    }
+
+    private async Task SendFullParticipantCollectionAsync(
+        CallbackQuery callbackQuery,
+        long chatId,
+        long participantId,
+        CancellationToken cancellationToken)
+    {
+        var participant = await dbContext.Participants
+            .AsNoTracking()
+            .SingleOrDefaultAsync(value => value.Id == participantId, cancellationToken);
+        if (participant is null)
+        {
+            return;
+        }
+
+        var games = await dbContext.GameCopies
+            .AsNoTracking()
+            .Where(copy => copy.Source == GameCopySource.Personal
+                && copy.OwnerParticipantId == participantId)
+            .OrderBy(copy => copy.Game.Name)
+            .Select(copy => new { copy.Game.Name, copy.BringStatus })
+            .ToArrayAsync(cancellationToken);
+        if (games.Length == 0)
+        {
+            return;
+        }
+
+        var header = $"📄 Полный список — {ParticipantPresentation.ToHtmlLink(participant)}\n✅ точно возьмёт · 🤔 возможно\n\n";
+        var lines = games
+            .Select(game => $"{BringEmoji(game.BringStatus)} {Encode(game.Name)}")
+            .ToArray();
+        var chunks = SplitLines(header, lines, TelegramTextChunkLimit);
+        foreach (var chunk in chunks)
+        {
+            await botClient.SendMessage(
+                chatId,
+                chunk,
+                parseMode: ParseMode.Html,
+                cancellationToken: cancellationToken);
+        }
+
+        await RenderAsync(
+            callbackQuery,
+            chatId,
+            $"📚 Коллекция: {ParticipantPresentation.GetDisplayName(participant)}\n\nПолный список отправлен отдельными сообщениями ниже. Его удобно находить позже через поиск Telegram.",
+            new InlineKeyboardMarkup([
+                [InlineKeyboardButton.WithCallbackData("⬅️ К коллекции", $"game:collection:{participantId}:0")]
+            ]),
             cancellationToken);
     }
 
@@ -627,9 +929,73 @@ public sealed partial class GamesHandler(
         string text,
         CancellationToken cancellationToken)
     {
-        try
+        var teseraAlias = TeseraGameUrlParser.Parse(text);
+        if (!string.IsNullOrWhiteSpace(teseraAlias))
         {
-            if (TryParseBggId(text, out var bggId))
+            try
+            {
+                var externalGame = await searchService.GetTeseraGameAsync(teseraAlias, cancellationToken);
+                if (externalGame is null)
+                {
+                    await botClient.SendMessage(
+                        chatId,
+                        "Tesera не вернула данные этой игры. Проверьте ссылку и попробуйте ещё раз.",
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                var game = await dedupService.FindOrCreateAsync(externalGame, cancellationToken);
+                await SendChooseBringStatusAsync(chatId, game.Id, game.Name, cancellationToken);
+                return;
+            }
+            catch (TeseraUnavailableException exception)
+            {
+                logger.LogWarning(exception, "Tesera manual game lookup failed for {Alias}.", teseraAlias);
+                await botClient.SendMessage(
+                    chatId,
+                    "Tesera сейчас не отдала данные игры. Попробуйте позже; BGG и остальные функции от этого не зависят.",
+                    cancellationToken: cancellationToken);
+                return;
+            }
+            catch (HttpRequestException exception)
+            {
+                logger.LogWarning(exception, "Tesera manual game request failed for {Alias}.", teseraAlias);
+                await botClient.SendMessage(
+                    chatId,
+                    "Tesera временно недоступна. Попробуйте позже.",
+                    cancellationToken: cancellationToken);
+                return;
+            }
+        }
+
+        if (TryParseBggId(text, out var bggId))
+        {
+            var existingGame = await dbContext.Games
+                .AsNoTracking()
+                .SingleOrDefaultAsync(value => value.BggId == bggId, cancellationToken);
+            if (existingGame is not null)
+            {
+                await SendChooseBringStatusAsync(
+                    chatId,
+                    existingGame.Id,
+                    existingGame.Name,
+                    cancellationToken);
+                return;
+            }
+
+            if (!searchService.IsBggAvailable)
+            {
+                await botClient.SendMessage(
+                    chatId,
+                    $"Ссылку BGG распознал: ID {bggId}. Но этой игры ещё нет в каталоге, а без BGG API нельзя надёжно получить её название и метаданные. Ничего не добавлено.\n\nЕсли у игры есть страница Tesera, пришлите ссылку tesera.ru/game/... — этот путь работает независимо от BGG.",
+                    replyMarkup: new InlineKeyboardMarkup([
+                        [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
+                    ]),
+                    cancellationToken: cancellationToken);
+                return;
+            }
+
+            try
             {
                 var externalGame = await searchService.GetBggGameAsync(bggId, cancellationToken);
                 if (externalGame is null)
@@ -645,13 +1011,37 @@ public sealed partial class GamesHandler(
                 await SendChooseBringStatusAsync(chatId, game.Id, game.Name, cancellationToken);
                 return;
             }
+            catch (HttpRequestException exception)
+            {
+                logger.LogWarning(exception, "BGG manual game lookup failed for {BggId}.", bggId);
+                await botClient.SendMessage(
+                    chatId,
+                    "BGG временно недоступен. ID ссылки сохранён только в текущем вводе; игра не добавлена без метаданных. Можно использовать ссылку Tesera.",
+                    cancellationToken: cancellationToken);
+                return;
+            }
+        }
 
+        if (!searchService.IsBggAvailable)
+        {
+            await botClient.SendMessage(
+                chatId,
+                "Поиск новой игры по названию использует BGG и сейчас недоступен. Пришлите прямую ссылку Tesera на игру. Ссылку BGG тоже можно прислать: если игра уже есть в каталоге, бот добавит её вам без нового запроса к BGG.",
+                replyMarkup: new InlineKeyboardMarkup([
+                    [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
+                ]),
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        try
+        {
             var results = await searchService.SearchExternalAsync(text, cancellationToken);
             if (results.Count == 0)
             {
                 await botClient.SendMessage(
                     chatId,
-                    "BGG ничего не нашёл. Попробуйте другое название или ссылку BGG.",
+                    "BGG ничего не нашёл. Попробуйте другое название, ссылку BGG или ссылку Tesera.",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -664,7 +1054,8 @@ public sealed partial class GamesHandler(
                         $"{result.Name}{suffix}",
                         $"game:add:{result.BggId}")
                 ];
-            }).ToArray();
+            }).ToList();
+            rows.Add([InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]);
 
             await botClient.SendMessage(
                 chatId,
@@ -674,10 +1065,10 @@ public sealed partial class GamesHandler(
         }
         catch (HttpRequestException exception)
         {
-            logger.LogWarning(exception, "BGG manual game lookup failed.");
+            logger.LogWarning(exception, "BGG manual game search failed.");
             await botClient.SendMessage(
                 chatId,
-                "BGG временно недоступен. Попробуйте ещё раз позже.",
+                "BGG временно недоступен. Можно добавить игру по ссылке Tesera.",
                 cancellationToken: cancellationToken);
         }
     }
@@ -688,6 +1079,33 @@ public sealed partial class GamesHandler(
         long bggId,
         CancellationToken cancellationToken)
     {
+        var existingGame = await dbContext.Games
+            .AsNoTracking()
+            .SingleOrDefaultAsync(value => value.BggId == bggId, cancellationToken);
+        if (existingGame is not null)
+        {
+            await RenderAsync(
+                callbackQuery,
+                chatId,
+                $"{existingGame.Name}\n\nВы возьмёте эту игру с собой?",
+                BringStatusKeyboard(existingGame.Id),
+                cancellationToken);
+            return;
+        }
+
+        if (!searchService.IsBggAvailable)
+        {
+            await RenderAsync(
+                callbackQuery,
+                chatId,
+                "BGG API сейчас недоступен, поэтому нельзя загрузить метаданные выбранной новой игры. Используйте ссылку Tesera или повторите после включения BGG.",
+                new InlineKeyboardMarkup([
+                    [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
+                ]),
+                cancellationToken);
+            return;
+        }
+
         try
         {
             var externalGame = await searchService.GetBggGameAsync(bggId, cancellationToken);
@@ -698,7 +1116,7 @@ public sealed partial class GamesHandler(
                     chatId,
                     "Не удалось загрузить игру с BGG.",
                     new InlineKeyboardMarkup([
-                        [InlineKeyboardButton.WithCallbackData("⬅️ Каталог", "game:menu")]
+                        [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                     ]),
                     cancellationToken);
                 return;
@@ -718,9 +1136,9 @@ public sealed partial class GamesHandler(
             await RenderAsync(
                 callbackQuery,
                 chatId,
-                "BGG временно недоступен. Попробуйте ещё раз позже.",
+                "BGG временно недоступен. Можно добавить игру по ссылке Tesera.",
                 new InlineKeyboardMarkup([
-                    [InlineKeyboardButton.WithCallbackData("⬅️ Каталог", "game:menu")]
+                    [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
                 cancellationToken);
         }
@@ -819,8 +1237,11 @@ public sealed partial class GamesHandler(
             return;
         }
 
-        copy.BringStatus = bringStatus;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (copy.BringStatus != bringStatus)
+        {
+            copy.BringStatus = bringStatus;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         await ShowGameCardAsync(
             callbackQuery,
@@ -865,7 +1286,15 @@ public sealed partial class GamesHandler(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        await botClient.SendMessage(chatId, prompt, cancellationToken: cancellationToken);
+        await botClient.SendMessage(
+            chatId,
+            prompt,
+            replyMarkup: state == AddSearchState
+                ? new InlineKeyboardMarkup([
+                    [InlineKeyboardButton.WithCallbackData("← Назад", "collection:menu")]
+                ])
+                : null,
+            cancellationToken: cancellationToken);
     }
 
     private async Task ClearConversationStateAsync(
@@ -973,7 +1402,8 @@ public sealed partial class GamesHandler(
         long chatId,
         string text,
         InlineKeyboardMarkup keyboard,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ParseMode? parseMode = null)
     {
         if (callbackQuery?.Message is { } message)
         {
@@ -981,6 +1411,7 @@ public sealed partial class GamesHandler(
                 message.Chat.Id,
                 message.Id,
                 text,
+                parseMode: parseMode,
                 replyMarkup: keyboard,
                 cancellationToken: cancellationToken);
             return;
@@ -989,21 +1420,36 @@ public sealed partial class GamesHandler(
         await botClient.SendMessage(
             chatId,
             text,
+            parseMode: parseMode,
             replyMarkup: keyboard,
             cancellationToken: cancellationToken);
     }
 
-    private static string BuildBackCallback(string context, int page) => context switch
+    private string BuildManualAddPrompt() => searchService.IsBggAvailable
+        ? "Отправьте ссылку Tesera вида tesera.ru/game/... или ссылку BGG вида boardgamegeek.com/boardgame/12345. Можно также отправить название — поиск по названию использует BGG."
+        : "Отправьте ссылку Tesera вида tesera.ru/game/... . Ссылку BGG тоже можно прислать: ID распознаётся без API, а уже известную каталогу игру можно добавить себе. Метаданные новой BGG-игры без API бот не выдумывает.";
+
+    private static string BuildBackCallback(string context, int page)
     {
-        "cb" => $"game:list:b:{page}",
-        "cm" => $"game:list:m:{page}",
-        "w" => $"game:wanted:{page}",
-        "mw" => $"game:mywanted:{page}",
-        "mb" => $"game:my:b:{page}",
-        "mm" => $"game:my:m:{page}",
-        "md" or "mg" => $"game:my:d:{page}",
-        _ => $"game:list:p:{page}"
-    };
+        if (context.Length > 1
+            && context[0] == 'u'
+            && long.TryParse(context[1..], out var participantId))
+        {
+            return $"game:collection:{participantId}:{page}";
+        }
+
+        return context switch
+        {
+            "cb" => $"game:list:b:{page}",
+            "cm" => $"game:list:m:{page}",
+            "w" => $"game:wanted:{page}",
+            "mw" => $"game:mywanted:{page}",
+            "mb" => $"game:my:b:{page}",
+            "mm" => $"game:my:m:{page}",
+            "md" or "mg" => $"game:my:d:{page}",
+            _ => $"game:list:p:{page}"
+        };
+    }
 
     private static string FormatPlayers(int? minPlayers, int? maxPlayers) =>
         (minPlayers, maxPlayers) switch
@@ -1034,12 +1480,43 @@ public sealed partial class GamesHandler(
     private static string FormatBringStatus(BringStatus bringStatus) =>
         bringStatus == BringStatus.Bringing ? "b" : "m";
 
+    private static string BringEmoji(BringStatus bringStatus) =>
+        bringStatus == BringStatus.Bringing ? "✅" : "🤔";
+
     private static bool TryParseBggId(string value, out long bggId)
     {
         bggId = default;
         var match = BggUrlRegex().Match(value.Trim());
         return match.Success && long.TryParse(match.Groups[1].Value, out bggId);
     }
+
+    private static IReadOnlyList<string> SplitLines(
+        string firstHeader,
+        IReadOnlyList<string> lines,
+        int maxLength)
+    {
+        var result = new List<string>();
+        var builder = new StringBuilder(firstHeader);
+        foreach (var line in lines)
+        {
+            if (builder.Length + line.Length + 1 > maxLength && builder.Length > 0)
+            {
+                result.Add(builder.ToString().TrimEnd());
+                builder.Clear();
+            }
+
+            builder.AppendLine(line);
+        }
+
+        if (builder.Length > 0)
+        {
+            result.Add(builder.ToString().TrimEnd());
+        }
+
+        return result;
+    }
+
+    private static string Encode(string value) => WebUtility.HtmlEncode(value);
 
     [GeneratedRegex(
         @"(?:https?://)?(?:www\.)?boardgamegeek\.com/boardgame/(\d+)(?:/[^\s]*)?",
@@ -1048,4 +1525,6 @@ public sealed partial class GamesHandler(
 
     private sealed record GameListItem(long Id, string Name, int InterestCount);
     private sealed record PageResult(IReadOnlyList<GameListItem> Items, bool HasMore);
+    private sealed record ParticipantCollectionItem(long ParticipantId, string DisplayName, int GameCount);
+    private sealed record ParticipantGameItem(long GameId, string Name, BringStatus BringStatus, int InterestCount);
 }
