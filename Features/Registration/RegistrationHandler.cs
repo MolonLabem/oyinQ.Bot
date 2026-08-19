@@ -7,6 +7,7 @@ using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 
 namespace oyinQ.Bot.Features.Registration;
 
@@ -16,6 +17,7 @@ public sealed class RegistrationHandler(
     IOptions<CampOptions> campOptions)
 {
     private const string AwaitingAccommodationState = "registration:awaiting-accommodation";
+    private const string AwaitingDisplayNameState = "registration:awaiting-display-name";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(30);
 
     public async Task HandleStartAsync(
@@ -37,7 +39,7 @@ public sealed class RegistrationHandler(
 
         await botClient.SendMessage(
             message.Chat.Id,
-            "На сколько дней вы едете?",
+            "Регистрация займёт три коротких шага.\n\n1/3. На сколько дней вы едете?",
             replyMarkup: Keyboards.RegistrationDays,
             cancellationToken: cancellationToken);
     }
@@ -54,7 +56,7 @@ public sealed class RegistrationHandler(
         {
             await botClient.SendMessage(
                 message.Chat.Id,
-                "Сначала завершите регистрацию.",
+                "Сначала завершите регистрацию. Выберите количество дней.",
                 replyMarkup: Keyboards.RegistrationDays,
                 cancellationToken: cancellationToken);
             return;
@@ -114,9 +116,10 @@ public sealed class RegistrationHandler(
             await dbContext.SaveChangesAsync(cancellationToken);
 
             var price = campOptions.Value.AccommodationPricePerDay;
-            await botClient.SendMessage(
+            await botClient.EditMessageText(
                 chatId.Value,
-                $"Нужно жильё? Стоимость — {price:0} ₸ в день.",
+                callbackQuery.Message!.Id,
+                $"2/3. Нужно жильё? Стоимость — {price:0} ₸ в день.",
                 replyMarkup: Keyboards.Accommodation,
                 cancellationToken: cancellationToken);
             return true;
@@ -139,8 +142,9 @@ public sealed class RegistrationHandler(
                     await dbContext.SaveChangesAsync(cancellationToken);
                 }
 
-                await botClient.SendMessage(
+                await botClient.EditMessageText(
                     chatId.Value,
+                    callbackQuery.Message!.Id,
                     "Регистрация устарела. Выберите количество дней ещё раз.",
                     replyMarkup: Keyboards.RegistrationDays,
                     cancellationToken: cancellationToken);
@@ -162,14 +166,42 @@ public sealed class RegistrationHandler(
             participant.DaysStaying = draft.DaysStaying;
             participant.NeedsAccommodation = needsAccommodation.Value;
             participant.UpdatedAt = DateTimeOffset.UtcNow;
+            await SetConversationStateAsync(
+                participant.Id,
+                AwaitingDisplayNameState,
+                null,
+                cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            await botClient.EditMessageText(
+                chatId.Value,
+                callbackQuery.Message!.Id,
+                "3/3. Как вас показывать другим участникам?\n\nОтправьте предпочтительное имя одним сообщением. Можно нажать «Пропустить» — тогда бот будет использовать имя из Telegram.",
+                replyMarkup: Keyboards.DisplayName,
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
+        if (callbackData == "reg:name:skip")
+        {
+            var state = await dbContext.ParticipantConversationStates
+                .SingleOrDefaultAsync(x => x.ParticipantId == participant.Id, cancellationToken);
+            if (state?.State != AwaitingDisplayNameState)
+            {
+                return true;
+            }
+
+            participant.PreferredDisplayName = null;
+            participant.UpdatedAt = DateTimeOffset.UtcNow;
             dbContext.ParticipantConversationStates.Remove(state);
             await dbContext.SaveChangesAsync(cancellationToken);
 
-            await botClient.SendMessage(
+            await botClient.EditMessageText(
                 chatId.Value,
-                "✅ Готово",
-                replyMarkup: Keyboards.MainMenu,
+                callbackQuery.Message!.Id,
+                $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
                 cancellationToken: cancellationToken);
+            await ShowMainMenuAsync(chatId.Value, cancellationToken);
             return true;
         }
 
@@ -180,7 +212,7 @@ public sealed class RegistrationHandler(
 
             await botClient.SendMessage(
                 chatId.Value,
-                "Изменение регистрации. На сколько дней вы едете?",
+                "Изменение регистрации. После дней и жилья можно также обновить отображаемое имя.\n\n1/3. На сколько дней вы едете?",
                 replyMarkup: Keyboards.RegistrationDays,
                 cancellationToken: cancellationToken);
             return true;
@@ -189,11 +221,53 @@ public sealed class RegistrationHandler(
         return false;
     }
 
-    public Task<bool> HandleConversationTextAsync(
+    public async Task<bool> HandleConversationTextAsync(
         Participant participant,
         ParticipantConversationState conversationState,
         Message message,
-        CancellationToken cancellationToken) => Task.FromResult(false);
+        CancellationToken cancellationToken)
+    {
+        if (conversationState.State != AwaitingDisplayNameState)
+        {
+            return false;
+        }
+
+        if (message.Chat.Type != ChatType.Private)
+        {
+            return true;
+        }
+
+        var preferredName = message.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(preferredName))
+        {
+            await botClient.SendMessage(
+                message.Chat.Id,
+                "Имя не может быть пустым. Отправьте имя или нажмите «Пропустить» в предыдущем сообщении.",
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
+        if (preferredName.Length > 128)
+        {
+            await botClient.SendMessage(
+                message.Chat.Id,
+                "Слишком длинное имя. Максимум 128 символов.",
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
+        participant.PreferredDisplayName = preferredName;
+        participant.UpdatedAt = DateTimeOffset.UtcNow;
+        dbContext.ParticipantConversationStates.Remove(conversationState);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await botClient.SendMessage(
+            message.Chat.Id,
+            $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
+            replyMarkup: Keyboards.MainMenu,
+            cancellationToken: cancellationToken);
+        return true;
+    }
 
     private async Task SendProfileAsync(
         long chatId,
@@ -201,7 +275,8 @@ public sealed class RegistrationHandler(
         CancellationToken cancellationToken)
     {
         var accommodation = participant.NeedsAccommodation == true ? "Да" : "Нет";
-        var text = $"👤 Моё\n\nДней: {participant.DaysStaying}\nЖильё: {accommodation}";
+        var name = ParticipantPresentation.GetDisplayName(participant);
+        var text = $"👤 Моё\n\nИмя для участников: {name}\nДней: {participant.DaysStaying}\nЖильё: {accommodation}\n\nЗдесь можно изменить регистрацию, открыть свои игры или свои хотелки.";
 
         await botClient.SendMessage(
             chatId,
@@ -212,9 +287,20 @@ public sealed class RegistrationHandler(
 
     private async Task ShowMainMenuAsync(long chatId, CancellationToken cancellationToken)
     {
+        const string text = """
+            Главное меню
+
+            🎲 Игры — каталог: спрос, подтверждённые привозы, возможные игры и коллекции участников.
+            ➕ Добавить игры — добавить одну игру или импортировать личную коллекцию.
+            🔥 Хочу сыграть — посмотреть спрос и управлять своими хотелками.
+            ▶️ Собрать игру — создать новый набор игроков.
+            🎲 Текущие сборы — открытые сейчас наборы, к которым можно присоединиться.
+            👤 Моё — регистрация, мои игры и мои хотелки.
+            """;
+
         await botClient.SendMessage(
             chatId,
-            "Главное меню",
+            text,
             replyMarkup: Keyboards.MainMenu,
             cancellationToken: cancellationToken);
     }
@@ -284,11 +370,11 @@ public sealed class RegistrationHandler(
         }
 
         participant.TelegramUsername = user.Username;
-        participant.DisplayName = BuildDisplayName(user);
+        participant.DisplayName = BuildTelegramDisplayName(user);
         participant.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    private static string BuildDisplayName(User user)
+    private static string BuildTelegramDisplayName(User user)
     {
         var name = string.Join(
             ' ',
