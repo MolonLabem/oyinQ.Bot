@@ -42,15 +42,22 @@ jobs:
   tesera-reader-probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe game through Reader
+      - name: Probe public game page through Reader
         run: |
           set -euo pipefail
           curl --fail-with-body --silent --show-error --max-time 45 \
-            'https://r.jina.ai/https://api.tesera.ru/games/carcassonne' \
-            | head -c 4000
-      - name: Probe collection through Reader
+            'https://r.jina.ai/https://tesera.ru/game/carcassonne/' \
+            | head -c 6000
+      - name: Probe public user collection page through Reader
         run: |
           set -euo pipefail
           curl --fail-with-body --silent --show-error --max-time 45 \
-            'https://r.jina.ai/https://api.tesera.ru/collections/base/own/Karn?GamesType=SelfGame&Limit=5&Offset=0' \
-            | head -c 4000
+            'https://r.jina.ai/https://tesera.ru/user/Karn/games/owns/' \
+            | head -c 12000
+      - name: Probe mobile public collection through Reader
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --max-time 45 \
+            'https://r.jina.ai/https://m.tesera.ru/collections/karn/own' \
+            | head -c 12000
