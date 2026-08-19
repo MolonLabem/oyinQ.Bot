@@ -342,14 +342,22 @@ public sealed class RegistrationHandler(
     {
         var accommodation = participant.NeedsAccommodation == true ? "Да" : "Нет";
         var name = ParticipantPresentation.GetDisplayName(participant);
+        var participation = participant.DaysStaying switch
+        {
+            1 => "1 день",
+            2 => "2 дня",
+            3 => "3 дня",
+            _ => "—"
+        };
+
         return $"""
-            👤 Моё
+            👤 Профиль
 
-            Имя для участников: {name}
-            Дней: {participant.DaysStaying}
-            Жильё: {accommodation}
+            Имя: {name}
+            Участие: {participation}
+            Проживание: {accommodation}
 
-            Здесь можно посмотреть реквизиты для оплаты, изменить регистрацию, открыть свои игры или свои хотелки.
+            Здесь можно изменить регистрацию, посмотреть свои игры и хотелки или открыть реквизиты для оплаты.
             """;
     }
 
@@ -377,8 +385,8 @@ public sealed class RegistrationHandler(
             🎲 Текущие сборы
             Посмотреть открытые наборы и присоединиться.
 
-            👤 Моё
-            Регистрация, мои игры и мои хотелки.
+            👤 Профиль
+            Регистрация, ваши игры, хотелки и оплата участия.
             """;
 
         if (isAdmin)
