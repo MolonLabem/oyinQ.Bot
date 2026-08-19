@@ -19,8 +19,10 @@ jobs:
           token=$(openssl rand -hex 32)
           echo "::add-mask::$token"
 
+          npx -y wrangler@4.102.0 --version
+
           set +e
-          output=$(npx -y wrangler@latest deploy --temporary --yes --var "PROXY_TOKEN:$token" 2>&1)
+          output=$(npx -y wrangler@4.102.0 deploy --temporary --var "PROXY_TOKEN:$token" 2>&1)
           deploy_code=$?
           set -e
 
