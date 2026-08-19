@@ -302,7 +302,7 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
-            if (text == "👤 Моё")
+            if (text is "👤 Профиль" or "👤 Моё")
             {
                 await registrationHandler.HandleProfileAsync(
                     participant,
@@ -451,7 +451,7 @@ public sealed class TelegramUpdateHandler(
 
         return text is not null
             && (IsGameMenuText(text)
-                || text is "👤 Моё" or "🛠 Админ-панель");
+                || text is "👤 Профиль" or "👤 Моё" or "🛠 Админ-панель");
     }
 
     private static string? GetCommand(string? text)
