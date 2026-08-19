@@ -9,7 +9,7 @@ public sealed record TeseraAvailabilitySnapshot(
     DateTimeOffset CheckedAt);
 
 public sealed class TeseraAvailabilityService(
-    ITeseraClient teseraClient,
+    IServiceScopeFactory scopeFactory,
     IMemoryCache memoryCache,
     ILogger<TeseraAvailabilityService> logger)
 {
@@ -65,6 +65,8 @@ public sealed class TeseraAvailabilityService(
 
         try
         {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var teseraClient = scope.ServiceProvider.GetRequiredService<ITeseraClient>();
             var game = await teseraClient.GetGameByAliasAsync(ProbeAlias, timeout.Token);
             if (game is null)
             {
