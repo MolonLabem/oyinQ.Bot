@@ -38,3 +38,13 @@ jobs:
 
       - name: Build Docker image
         run: docker build --file Dockerfile --tag oyinq-bot:ci .
+
+  tesera-production-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Probe Tesera through Northflank
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --max-time 45 \
+            https://p01--oyinqbot--668p7wnqfhrf.code.run/health/tesera
