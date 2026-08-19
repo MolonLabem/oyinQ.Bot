@@ -30,7 +30,7 @@ public sealed class RegistrationHandler(
         if (IsRegistrationComplete(participant))
         {
             await dbContext.SaveChangesAsync(cancellationToken);
-            await ShowMainMenuAsync(message.Chat.Id, cancellationToken);
+            await ShowMainMenuAsync(message.Chat.Id, participant.TelegramUserId, cancellationToken);
             return;
         }
 
@@ -62,7 +62,7 @@ public sealed class RegistrationHandler(
             return;
         }
 
-        await ShowMainMenuAsync(message.Chat.Id, cancellationToken);
+        await ShowMainMenuAsync(message.Chat.Id, participant.TelegramUserId, cancellationToken);
     }
 
     public async Task HandleProfileAsync(
@@ -201,7 +201,7 @@ public sealed class RegistrationHandler(
                 callbackQuery.Message!.Id,
                 $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
                 cancellationToken: cancellationToken);
-            await ShowMainMenuAsync(chatId.Value, cancellationToken);
+            await ShowMainMenuAsync(chatId.Value, participant.TelegramUserId, cancellationToken);
             return true;
         }
 
@@ -264,7 +264,7 @@ public sealed class RegistrationHandler(
         await botClient.SendMessage(
             message.Chat.Id,
             $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
-            replyMarkup: Keyboards.MainMenu,
+            replyMarkup: Keyboards.MainMenuFor(IsAdmin(participant.TelegramUserId)),
             cancellationToken: cancellationToken);
         return true;
     }
@@ -285,9 +285,13 @@ public sealed class RegistrationHandler(
             cancellationToken: cancellationToken);
     }
 
-    private async Task ShowMainMenuAsync(long chatId, CancellationToken cancellationToken)
+    private async Task ShowMainMenuAsync(
+        long chatId,
+        long telegramUserId,
+        CancellationToken cancellationToken)
     {
-        const string text = """
+        var isAdmin = IsAdmin(telegramUserId);
+        var text = """
             Главное меню
 
             🎲 Игры — каталог: спрос, подтверждённые привозы, возможные игры и коллекции участников.
@@ -298,10 +302,15 @@ public sealed class RegistrationHandler(
             👤 Моё — регистрация, мои игры и мои хотелки.
             """;
 
+        if (isAdmin)
+        {
+            text += "\n🛠 Админ-панель — участники, игры, статистика, коллекция клуба и CSV-экспорт.";
+        }
+
         await botClient.SendMessage(
             chatId,
             text,
-            replyMarkup: Keyboards.MainMenu,
+            replyMarkup: Keyboards.MainMenuFor(isAdmin),
             cancellationToken: cancellationToken);
     }
 
@@ -340,6 +349,9 @@ public sealed class RegistrationHandler(
             dbContext.ParticipantConversationStates.Remove(state);
         }
     }
+
+    private bool IsAdmin(long telegramUserId) =>
+        campOptions.Value.AdminTelegramIds.Contains(telegramUserId);
 
     private static RegistrationDraft? DeserializeDraft(string? dataJson)
     {

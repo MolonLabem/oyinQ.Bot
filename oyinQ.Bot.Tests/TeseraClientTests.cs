@@ -126,7 +126,7 @@ public sealed class TeseraClientTests
 
         Assert.Equal(3, games.Count);
         Assert.Equal([0, 2, 3], offsets);
-        Assert.Equal(["g1", "g2", "g3"], games.Select(value => value.TeseraAlias).ToArray());
+        Assert.Equal(["g1", "g2", "g3"], games.Select(value => value.TeseraAlias!).ToArray());
     }
 
     [Fact]
@@ -183,6 +183,32 @@ public sealed class TeseraClientTests
         Assert.Equal(2, detailAttempts);
         Assert.Equal("retry-game", game.TeseraAlias);
         Assert.Equal("2", game.BestPlayers);
+    }
+
+    [Fact]
+    public async Task GetGameByAliasAsync_WhenDetailIsAddition_ReturnsNull()
+    {
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal("/games/expansion", request.RequestUri!.AbsolutePath);
+            return JsonResponse(
+                HttpStatusCode.OK,
+                """
+                {
+                  "game": {
+                    "alias": "expansion",
+                    "title": "Expansion",
+                    "isAddition": true
+                  }
+                }
+                """);
+        });
+
+        var client = CreateClient(handler);
+
+        var game = await client.GetGameByAliasAsync("expansion", CancellationToken.None);
+
+        Assert.Null(game);
     }
 
     [Fact]

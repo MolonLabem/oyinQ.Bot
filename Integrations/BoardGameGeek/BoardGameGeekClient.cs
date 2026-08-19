@@ -87,7 +87,8 @@ public sealed class BoardGameGeekClient(
             cancellationToken);
 
         return collection
-            .Select(item => Merge(item, enriched.GetValueOrDefault(item.BggId)))
+            .Where(item => enriched.ContainsKey(item.BggId))
+            .Select(item => Merge(item, enriched[item.BggId]))
             .ToArray();
     }
 
@@ -112,7 +113,8 @@ public sealed class BoardGameGeekClient(
             slice.Select(item => item.BggId).ToArray(),
             cancellationToken);
         var games = slice
-            .Select(item => Merge(item, enriched.GetValueOrDefault(item.BggId)))
+            .Where(item => enriched.ContainsKey(item.BggId))
+            .Select(item => Merge(item, enriched[item.BggId]))
             .ToArray();
 
         return new ExternalCollectionStep(
@@ -126,7 +128,7 @@ public sealed class BoardGameGeekClient(
         CancellationToken cancellationToken)
     {
         var document = await GetXmlAsync(
-            $"/xmlapi2/collection?username={Uri.EscapeDataString(username)}&own=1&excludesubtype=boardgameexpansion&stats=1",
+            $"/xmlapi2/collection?username={Uri.EscapeDataString(username)}&own=1&subtype=boardgame&excludesubtype=boardgameexpansion&stats=1",
             cancellationToken,
             acceptedAttempts: CollectionAcceptedAttempts);
 
@@ -155,7 +157,7 @@ public sealed class BoardGameGeekClient(
 
             var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
             var document = await GetXmlAsync(
-                $"/xmlapi2/thing?id={string.Join(',', batch)}&stats=1",
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgame&stats=1",
                 cancellationToken,
                 acceptedAttempts: ThingAttempts,
                 transientAttempts: ThingAttempts);
@@ -231,6 +233,14 @@ public sealed class BoardGameGeekClient(
 
     private static ExternalGame? ParseThing(XElement item)
     {
+        if (!string.Equals(
+                (string?)item.Attribute("type"),
+                "boardgame",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
         var bggId = ReadLongAttribute(item, "id");
         var primaryName = item.Elements("name")
             .FirstOrDefault(name => string.Equals(
@@ -254,21 +264,12 @@ public sealed class BoardGameGeekClient(
             $"https://boardgamegeek.com/boardgame/{bggId.Value}");
     }
 
-    private static ExternalGame Merge(CollectionItem collectionItem, ExternalGame? enriched) =>
-        enriched is null
-            ? new ExternalGame(
-                collectionItem.BggId,
-                null,
-                collectionItem.Name,
-                collectionItem.MinPlayers,
-                collectionItem.MaxPlayers,
-                null,
-                $"https://boardgamegeek.com/boardgame/{collectionItem.BggId}")
-            : enriched with
-            {
-                MinPlayers = enriched.MinPlayers ?? collectionItem.MinPlayers,
-                MaxPlayers = enriched.MaxPlayers ?? collectionItem.MaxPlayers
-            };
+    private static ExternalGame Merge(CollectionItem collectionItem, ExternalGame enriched) =>
+        enriched with
+        {
+            MinPlayers = enriched.MinPlayers ?? collectionItem.MinPlayers,
+            MaxPlayers = enriched.MaxPlayers ?? collectionItem.MaxPlayers
+        };
 
     private static int? ReadIntValue(XElement? element)
     {

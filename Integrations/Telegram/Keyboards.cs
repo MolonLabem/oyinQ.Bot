@@ -4,17 +4,10 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public static class Keyboards
 {
-    public static ReplyKeyboardMarkup MainMenu { get; } = new(
-        new KeyboardButton[][]
-        {
-            ["🎲 Игры", "➕ Добавить игры"],
-            ["🔥 Хочу сыграть", "▶️ Собрать игру"],
-            ["🎲 Текущие сборы", "👤 Моё"]
-        })
-    {
-        ResizeKeyboard = true,
-        IsPersistent = true
-    };
+    public static ReplyKeyboardMarkup MainMenu { get; } = BuildMainMenu(includeAdmin: false);
+
+    public static ReplyKeyboardMarkup MainMenuFor(bool includeAdmin) =>
+        includeAdmin ? BuildMainMenu(includeAdmin: true) : MainMenu;
 
     public static InlineKeyboardMarkup RegistrationDays { get; } = new(
         new InlineKeyboardButton[][]
@@ -48,4 +41,37 @@ public static class Keyboards
             [InlineKeyboardButton.WithCallbackData("Мои игры", "game:my:menu")],
             [InlineKeyboardButton.WithCallbackData("Мои хотелки", "game:mywanted:0")]
         });
+
+    private static ReplyKeyboardMarkup BuildMainMenu(bool includeAdmin)
+    {
+        var rows = new List<KeyboardButton[]>
+        {
+            new KeyboardButton[]
+            {
+                new("🎲 Игры"),
+                new("➕ Добавить игры")
+            },
+            new KeyboardButton[]
+            {
+                new("🔥 Хочу сыграть"),
+                new("▶️ Собрать игру")
+            },
+            new KeyboardButton[]
+            {
+                new("🎲 Текущие сборы"),
+                new("👤 Моё")
+            }
+        };
+
+        if (includeAdmin)
+        {
+            rows.Add([new KeyboardButton("🛠 Админ-панель")]);
+        }
+
+        return new ReplyKeyboardMarkup(rows)
+        {
+            ResizeKeyboard = true,
+            IsPersistent = true
+        };
+    }
 }

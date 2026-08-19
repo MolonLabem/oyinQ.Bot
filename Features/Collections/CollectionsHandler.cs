@@ -261,7 +261,7 @@ public sealed class CollectionsHandler(
         await botClient.SendMessage(
             chatId,
             responseMessage,
-            replyMarkup: Keyboards.MainMenu,
+            replyMarkup: Keyboards.MainMenuFor(IsAdmin(telegramUserId)),
             cancellationToken: cancellationToken);
     }
 
