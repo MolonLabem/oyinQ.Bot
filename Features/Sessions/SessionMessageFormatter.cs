@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Sessions;
 
@@ -18,8 +19,8 @@ public sealed class SessionMessageFormatter
         var neededPlayers = Math.Max(totalPlayers - currentPlayers, 0);
 
         var text = new StringBuilder();
-        text.AppendLine($"🎲 <b>{Encode(session.Game.Name)}</b>");
-        text.AppendLine($"👤 Организатор: {Encode(session.HostParticipant.DisplayName)}");
+        text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(session.Game.Name)}</b>");
+        text.AppendLine($"👤 Организатор: {ParticipantPresentation.ToHtmlLink(session.HostParticipant)}");
         text.AppendLine($"👥 Игроки: {currentPlayers}/{totalPlayers}");
 
         if (cancelled)
@@ -38,14 +39,12 @@ public sealed class SessionMessageFormatter
 
         text.AppendLine();
         text.AppendLine("Участники:");
-        text.AppendLine($"• {Encode(session.HostParticipant.DisplayName)} (организатор)");
+        text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(session.HostParticipant)} (организатор)");
         foreach (var participant in otherParticipants)
         {
-            text.AppendLine($"• {Encode(participant.DisplayName)}");
+            text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant)}");
         }
 
         return text.ToString().TrimEnd();
     }
-
-    private static string Encode(string value) => WebUtility.HtmlEncode(value);
 }
