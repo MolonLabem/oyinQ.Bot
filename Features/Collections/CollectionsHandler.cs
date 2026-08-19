@@ -17,12 +17,14 @@ public sealed class CollectionsHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     CollectionImportService importService,
+    TeseraAvailabilityService teseraAvailabilityService,
     IOptions<CampOptions> campOptions,
     IOptions<BggOptions> bggOptions)
 {
     private const string GameAddSearchState = "games:add-search";
     private const string ImportStatePrefix = "collections:import:";
-    private const string BggUnavailableMessage = "BGG пока недоступен — ждём подтверждение API-доступа. Tesera работает независимо.";
+    private const string BggUnavailableMessage = "BGG пока недоступен — ждём подтверждение API-доступа.";
+    private const string TeseraUnavailableMessage = "Tesera сейчас недоступна с сервера бота. Попробуйте позже или используйте другой доступный способ добавления игр.";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(30);
 
     public async Task<bool> TryHandleMessageAsync(
@@ -107,6 +109,7 @@ public sealed class CollectionsHandler(
 
         if (data == "collection:add:single")
         {
+            await teseraAvailabilityService.GetAsync(forceRefresh: false, cancellationToken);
             await SetStateAsync(telegramUserId, GameAddSearchState, cancellationToken);
             await SendOrEditAsync(
                 callbackQuery,
@@ -144,6 +147,22 @@ public sealed class CollectionsHandler(
                 return true;
             }
 
+            if (provider == ExternalGameProvider.Tesera)
+            {
+                var tesera = await teseraAvailabilityService.GetAsync(
+                    forceRefresh: false,
+                    cancellationToken);
+                if (!tesera.IsAvailable)
+                {
+                    await botClient.AnswerCallbackQuery(
+                        callbackQuery.Id,
+                        TeseraUnavailableMessage,
+                        showAlert: true,
+                        cancellationToken: cancellationToken);
+                    return true;
+                }
+            }
+
             await SetStateAsync(
                 telegramUserId,
                 BuildImportState(provider, target),
@@ -151,7 +170,7 @@ public sealed class CollectionsHandler(
 
             var prompt = provider == ExternalGameProvider.Bgg
                 ? "Импорт BGG\n\nОтправьте имя пользователя BGG или ссылку на его профиль/коллекцию. Импорт работает в фоне и не меняет ваши статусы уже добавленных игр."
-                : "Импорт Tesera\n\nОтправьте alias пользователя Tesera или ссылку на его профиль. Импорт работает в фоне; сбой Tesera не влияет на BGG или остальные функции бота.";
+                : "Импорт Tesera\n\nОтправьте alias пользователя Tesera или ссылку на его профиль. После завершения бот напишет результат в этот чат.";
             await SendOrEditAsync(
                 callbackQuery,
                 chatId,
@@ -200,6 +219,23 @@ public sealed class CollectionsHandler(
                 replyMarkup: BuildAddMenu(telegramUserId),
                 cancellationToken: cancellationToken);
             return;
+        }
+
+        if (provider == ExternalGameProvider.Tesera)
+        {
+            var tesera = await teseraAvailabilityService.GetAsync(
+                forceRefresh: false,
+                cancellationToken);
+            if (!tesera.IsAvailable)
+            {
+                await ClearStateAsync(conversationState, cancellationToken);
+                await botClient.SendMessage(
+                    chatId,
+                    TeseraUnavailableMessage,
+                    replyMarkup: BuildAddMenu(telegramUserId),
+                    cancellationToken: cancellationToken);
+                return;
+            }
         }
 
         var externalUsername = provider == ExternalGameProvider.Bgg
@@ -254,7 +290,7 @@ public sealed class CollectionsHandler(
             CollectionImportEnqueueStatus.RecentlyCompleted
                 => "Эта коллекция уже импортировалась за последние 2 дня. Повторный импорт пока пропущен.",
             CollectionImportEnqueueStatus.Unavailable
-                => BggUnavailableMessage,
+                => provider == ExternalGameProvider.Bgg ? BggUnavailableMessage : TeseraUnavailableMessage,
             _ => "Импорт не поставлен в очередь."
         };
 
@@ -270,6 +306,7 @@ public sealed class CollectionsHandler(
         long telegramUserId,
         CancellationToken cancellationToken)
     {
+        await teseraAvailabilityService.GetAsync(forceRefresh: false, cancellationToken);
         await botClient.SendMessage(
             chatId,
             BuildAddMenuText(),
@@ -281,70 +318,112 @@ public sealed class CollectionsHandler(
         CallbackQuery callbackQuery,
         long chatId,
         long telegramUserId,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken)
+    {
+        await teseraAvailabilityService.GetAsync(forceRefresh: false, cancellationToken);
         await SendOrEditAsync(
             callbackQuery,
             chatId,
             BuildAddMenuText(),
             BuildAddMenu(telegramUserId),
             cancellationToken);
+    }
 
     private string BuildAddMenuText()
     {
         var bggState = bggOptions.Value.IsAvailable
             ? "BGG доступен."
-            : "BGG API пока недоступен: ссылку BGG можно распознать, но новые метаданные без API не загружаются.";
+            : "BGG пока недоступен: ждём подтверждение API-доступа.";
+        var teseraState = teseraAvailabilityService.IsKnownUnavailable
+            ? "Tesera сейчас недоступна с сервера бота, поэтому её импорт временно скрыт."
+            : "Tesera доступна.";
 
         return $"""
             ➕ Добавить игры
 
-            Одна игра — добавление по внешней ссылке, независимо от импорта коллекции.
-            Личная коллекция — массовый импорт ваших игр; импортированные личные игры получают статус «Возможно».
-            Коллекция клуба — отдельный админский импорт; обычным участникам он недоступен.
+            Одна игра — добавить отдельную игру из доступного внешнего каталога.
+            Личная коллекция — массово добавить свои игры со статусом «Возможно».
+            Коллекция клуба — отдельный импорт для администраторов.
 
             {bggState}
-            Tesera работает независимо от BGG.
+            {teseraState}
             """;
     }
 
-    private string BuildSingleGamePrompt() => bggOptions.Value.IsAvailable
-        ? "Одна игра\n\nОтправьте ссылку Tesera вида tesera.ru/game/... или ссылку BGG вида boardgamegeek.com/boardgame/12345. Можно также отправить название — поиск по названию использует BGG."
-        : "Одна игра\n\nОтправьте ссылку Tesera вида tesera.ru/game/... — её можно добавить независимо от BGG.\n\nСсылку BGG вида boardgamegeek.com/boardgame/12345 бот распознает по ID. Если игра уже есть в каталоге, её можно добавить себе. Для новой игры BGG метаданные требуют API-доступа; без него бот ничего не выдумывает.";
+    private string BuildSingleGamePrompt()
+    {
+        var bggAvailable = bggOptions.Value.IsAvailable;
+        var teseraAvailable = !teseraAvailabilityService.IsKnownUnavailable;
+
+        if (bggAvailable && teseraAvailable)
+        {
+            return "Одна игра\n\nОтправьте ссылку Tesera вида tesera.ru/game/... или ссылку BGG вида boardgamegeek.com/boardgame/12345. Можно также отправить название — поиск по названию использует BGG.";
+        }
+
+        if (bggAvailable)
+        {
+            return "Одна игра\n\nTesera сейчас недоступна. Отправьте ссылку BGG вида boardgamegeek.com/boardgame/12345 или название игры.";
+        }
+
+        if (teseraAvailable)
+        {
+            return "Одна игра\n\nОтправьте ссылку Tesera вида tesera.ru/game/... . BGG пока недоступен.";
+        }
+
+        return "Одна игра\n\nВнешние каталоги сейчас недоступны. Вернитесь к своим играм и выберите уже существующую игру из каталога.";
+    }
 
     private InlineKeyboardMarkup BuildAddMenu(long telegramUserId)
     {
-        var rows = new List<InlineKeyboardButton[]>
+        var bggAvailable = bggOptions.Value.IsAvailable;
+        var teseraAvailable = !teseraAvailabilityService.IsKnownUnavailable;
+        var rows = new List<InlineKeyboardButton[]>();
+
+        if (bggAvailable || teseraAvailable)
         {
-            new[]
-            {
+            rows.Add([
                 InlineKeyboardButton.WithCallbackData("➕ Одна игра по ссылке", "collection:add:single")
-            }
-        };
+            ]);
+        }
 
         var personalImportButtons = new List<InlineKeyboardButton>();
-        if (bggOptions.Value.IsAvailable)
+        if (bggAvailable)
         {
             personalImportButtons.Add(
                 InlineKeyboardButton.WithCallbackData("Коллекция BGG", "collection:import:bgg:personal"));
         }
-
-        personalImportButtons.Add(
-            InlineKeyboardButton.WithCallbackData("Коллекция Tesera", "collection:import:tesera:personal"));
-        rows.Add(personalImportButtons.ToArray());
+        if (teseraAvailable)
+        {
+            personalImportButtons.Add(
+                InlineKeyboardButton.WithCallbackData("Коллекция Tesera", "collection:import:tesera:personal"));
+        }
+        if (personalImportButtons.Count > 0)
+        {
+            rows.Add(personalImportButtons.ToArray());
+        }
 
         if (IsAdmin(telegramUserId))
         {
             var clubButtons = new List<InlineKeyboardButton>();
-            if (bggOptions.Value.IsAvailable)
+            if (bggAvailable)
             {
                 clubButtons.Add(
                     InlineKeyboardButton.WithCallbackData("🏢 BGG клуба", "collection:import:bgg:club"));
             }
-
-            clubButtons.Add(
-                InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club"));
-            rows.Add(clubButtons.ToArray());
+            if (teseraAvailable)
+            {
+                clubButtons.Add(
+                    InlineKeyboardButton.WithCallbackData("🏢 Tesera клуба", "collection:import:tesera:club"));
+            }
+            if (clubButtons.Count > 0)
+            {
+                rows.Add(clubButtons.ToArray());
+            }
         }
+
+        rows.Add([
+            InlineKeyboardButton.WithCallbackData("← К моим играм", "game:my:menu")
+        ]);
 
         return new InlineKeyboardMarkup(rows);
     }
