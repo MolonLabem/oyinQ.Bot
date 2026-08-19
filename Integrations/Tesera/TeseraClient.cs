@@ -12,7 +12,9 @@ public sealed class TeseraClient(
     private const int PageSize = 100;
     private const int MaxPages = 200;
     private const int DetailBatchSize = 12;
+    private const string UserAgent = "oyinQ.Bot/1.0";
     private static readonly TimeSpan DetailBatchDelay = TimeSpan.FromMilliseconds(120);
+    private static readonly Uri TeseraSiteUri = new("https://tesera.ru/");
     private static readonly string[] CollectionPaths =
     [
         "/collections/base/own/{0}",
@@ -79,8 +81,13 @@ public sealed class TeseraClient(
             var statuses = failures.Count == 0
                 ? "нет ответа"
                 : string.Join(", ", failures.Select(status => ((int)status).ToString()).Distinct());
+            var accessRejected = failures.Any(status =>
+                status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden);
+
             throw new TeseraUnavailableException(
-                $"Tesera API временно недоступен ({statuses}). Попробуйте импорт BGG или повторите позже.");
+                accessRejected
+                    ? $"Tesera отклонила запрос с сервера бота ({statuses}). В браузере тот же адрес может открываться, потому что браузер использует другой IP и свою сессию защиты Tesera. Попробуйте позже."
+                    : $"Tesera API временно недоступен ({statuses}). Попробуйте импорт BGG или повторите позже.");
         }
 
         var collectionItems = new List<JsonElement>();
@@ -196,7 +203,7 @@ public sealed class TeseraClient(
                     if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                     {
                         throw new TeseraUnavailableException(
-                            $"Tesera API отклонил запрос ({(int)response.StatusCode.Value}).");
+                            $"Tesera отклонила запрос с сервера бота ({(int)response.StatusCode.Value}). В браузере запрос может работать с другого IP или с браузерной сессией Tesera.");
                     }
 
                     if (attempt == 2)
@@ -264,6 +271,9 @@ public sealed class TeseraClient(
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, relativeUrl);
         request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.UserAgent.ParseAdd(UserAgent);
+        request.Headers.AcceptLanguage.ParseAdd("ru-RU,ru;q=0.9,en;q=0.8");
+        request.Headers.Referrer = TeseraSiteUri;
 
         using var response = await httpClient.SendAsync(
             request,
@@ -271,6 +281,11 @@ public sealed class TeseraClient(
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            logger.LogWarning(
+                "Tesera request {Path} from the bot host returned HTTP {StatusCode} ({ReasonPhrase}).",
+                relativeUrl,
+                (int)response.StatusCode,
+                response.ReasonPhrase);
             return new JsonResponse(false, response.StatusCode, null);
         }
 
