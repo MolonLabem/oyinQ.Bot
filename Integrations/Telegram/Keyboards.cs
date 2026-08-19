@@ -46,14 +46,26 @@ public static class Keyboards
     {
         var rows = new List<KeyboardButton[]>
         {
-            ["🎲 Игры", "➕ Добавить игры"],
-            ["🔥 Хочу сыграть", "▶️ Собрать игру"],
-            ["🎲 Текущие сборы", "👤 Моё"]
+            new KeyboardButton[]
+            {
+                new("🎲 Игры"),
+                new("➕ Добавить игры")
+            },
+            new KeyboardButton[]
+            {
+                new("🔥 Хочу сыграть"),
+                new("▶️ Собрать игру")
+            },
+            new KeyboardButton[]
+            {
+                new("🎲 Текущие сборы"),
+                new("👤 Моё")
+            }
         };
 
         if (includeAdmin)
         {
-            rows.Add(["🛠 Админ-панель"]);
+            rows.Add([new KeyboardButton("🛠 Админ-панель")]);
         }
 
         return new ReplyKeyboardMarkup(rows)
