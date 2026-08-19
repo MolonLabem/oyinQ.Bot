@@ -31,7 +31,7 @@ public static class Keyboards
     public static InlineKeyboardMarkup DisplayName { get; } = new(
         new InlineKeyboardButton[][]
         {
-            [InlineKeyboardButton.WithCallbackData("Использовать имя Telegram", "reg:name:skip")]
+            [InlineKeyboardButton.WithCallbackData("Оставить имя из Telegram", "reg:name:skip")]
         });
 
     public static InlineKeyboardMarkup Profile { get; } = new(
@@ -61,7 +61,7 @@ public static class Keyboards
             new KeyboardButton[]
             {
                 new("🔥 Хотелки"),
-                new("👤 Моё")
+                new("👤 Профиль")
             }
         };
 
