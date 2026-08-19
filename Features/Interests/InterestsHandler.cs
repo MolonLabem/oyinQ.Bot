@@ -8,7 +8,7 @@ namespace oyinQ.Bot.Features.Interests;
 
 public sealed class InterestsHandler(
     AppDbContext dbContext,
-    GamesHandler gamesHandler)
+    GamesUxPresenter gamesUxPresenter)
 {
     public async Task<bool> TryHandleCallbackAsync(
         CallbackQuery callbackQuery,
@@ -54,7 +54,7 @@ public sealed class InterestsHandler(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        await gamesHandler.ShowGameCardAsync(
+        await gamesUxPresenter.ShowGameCardAsync(
             callbackQuery,
             telegramUserId,
             gameId,
