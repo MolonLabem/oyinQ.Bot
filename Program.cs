@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Normalization;
@@ -26,10 +27,12 @@ if (string.IsNullOrWhiteSpace(connectionString))
 var botOptions = BotOptions.FromConfiguration(builder.Configuration);
 var campOptions = CampOptions.FromConfiguration(builder.Configuration);
 var bggOptions = BggOptions.FromConfiguration(builder.Configuration);
+var teseraOptions = TeseraOptions.FromConfiguration(builder.Configuration);
 
 builder.Services.AddSingleton(Options.Create(botOptions));
 builder.Services.AddSingleton(Options.Create(campOptions));
 builder.Services.AddSingleton(Options.Create(bggOptions));
+builder.Services.AddSingleton(Options.Create(teseraOptions));
 
 builder.Services.AddDbContext<AppDbContext>(
     options => options.UseNpgsql(connectionString));
@@ -42,8 +45,14 @@ builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client
 });
 builder.Services.AddHttpClient<ITeseraClient, TeseraClient>(client =>
 {
-    client.BaseAddress = new Uri("https://api.tesera.ru");
+    client.BaseAddress = teseraOptions.BaseAddress;
     client.Timeout = TimeSpan.FromSeconds(30);
+
+    if (teseraOptions.ProxySecret is not null)
+    {
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", teseraOptions.ProxySecret);
+    }
 });
 builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
@@ -81,6 +90,27 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.MapGet("/health", static () => Results.Ok());
+
+app.MapGet(
+    "/health/tesera",
+    async Task<IResult> (ITeseraClient client, CancellationToken cancellationToken) =>
+    {
+        try
+        {
+            var game = await client.GetGameByAliasAsync("carcassonne", cancellationToken);
+            return game is null
+                ? Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable)
+                : Results.Ok();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TeseraUnavailableException)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    });
 
 app.MapPost(
     "/telegram/webhook/{secret}",

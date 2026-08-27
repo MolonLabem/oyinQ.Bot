@@ -38,3 +38,27 @@ jobs:
 
       - name: Build Docker image
         run: docker build --file Dockerfile --tag oyinq-bot:ci .
+
+  tesera-proxy:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: cloudflare/tesera-proxy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloudflare/tesera-proxy/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck, test, and validate Worker bundle
+        run: npm run check

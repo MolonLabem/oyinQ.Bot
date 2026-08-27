@@ -23,7 +23,9 @@ The application reads configuration from environment variables or .NET user secr
 | `BOARD_CAMP_CHAT_ID` | sessions | Telegram group/supergroup ID used for recruitment messages. Usually a negative number. |
 | `ADMIN_TELEGRAM_IDS` | admin | Comma-separated Telegram user IDs allowed to use `/admin`. |
 | `ACCOMMODATION_PRICE_PER_DAY` | no | Accommodation price used by registration/configuration. Default: `3000`. Admin accommodation reporting currently uses the project-fixed value `3000 ₸`. |
-| `BGG_API_TOKEN` | no | Bearer token for BoardGameGeek API access. When missing or blank, BGG features are disabled while the rest of the bot continues to run. |
+| `BGG_API_TOKEN` | production | Bearer token for BoardGameGeek API access. When missing or blank, BGG features are disabled while the rest of the bot continues to run. |
+| `TESERA_PROXY_BASE_URL` | production when direct Tesera is blocked | HTTPS origin of the authenticated Tesera Cloudflare Worker. Configure together with `TESERA_PROXY_SECRET`. |
+| `TESERA_PROXY_SECRET` | with Tesera proxy | Shared backend-to-Worker secret. Never expose it to clients or commit it. |
 | `USE_LONG_POLLING` | no | `true` for local development. Default: `false` (webhook mode). |
 | `PORT` | hosting | HTTP port supplied by the hosting platform. Docker defaults to `8080`. |
 
@@ -59,15 +61,20 @@ dotnet user-secrets set "ADMIN_TELEGRAM_IDS" "<telegram-user-id>[,<another-id>]"
 dotnet user-secrets set "USE_LONG_POLLING" "true" --project oyinQ.Bot.csproj
 ```
 
-`BGG_API_TOKEN` is intentionally optional. Until BGG approves API access, leave it unset. BGG import and manual BGG lookup actions are hidden or return a friendly unavailable message; Tesera and all non-BGG features remain usable.
-
-After BGG API access is approved, enable BGG with:
+Enable the approved BGG integration with:
 
 ```bash
 dotnet user-secrets set "BGG_API_TOKEN" "<bgg-api-token>" --project oyinQ.Bot.csproj
 ```
 
 Then restart the application. No code or database change is required.
+
+For a local Tesera Worker, set both proxy variables (plain HTTP is accepted only for a loopback URL). Leave both unset to call Tesera directly:
+
+```bash
+dotnet user-secrets set "TESERA_PROXY_BASE_URL" "http://127.0.0.1:8787" --project oyinQ.Bot.csproj
+dotnet user-secrets set "TESERA_PROXY_SECRET" "<shared-secret>" --project oyinQ.Bot.csproj
+```
 
 Long polling does not require `PUBLIC_BASE_URL` or `TELEGRAM_WEBHOOK_SECRET`.
 
@@ -160,7 +167,7 @@ Deploy the Dockerfile to any container host that provides a stable public HTTPS 
 4. Set `PUBLIC_BASE_URL` to the final public HTTPS origin with no Telegram webhook path appended.
 5. Set a strong `TELEGRAM_WEBHOOK_SECRET` consisting only of letters, digits, `_`, and `-`.
 6. Deploy the Docker image. The process listens on `${PORT:-8080}`.
-7. Verify `GET /health` returns HTTP 200.
+7. Verify `GET /health` returns HTTP 200 and `GET /health/tesera` returns HTTP 200 through the configured Tesera transport.
 8. Check application logs for successful startup/migration and webhook setup.
 9. Send `/start` to the bot and complete registration.
 10. Verify the bot can post and edit a recruitment message in `BOARD_CAMP_CHAT_ID`.
@@ -198,4 +205,4 @@ dotnet test oyinQ.Bot.slnx --configuration Release --no-build --no-restore
 
 ## Health check
 
-`GET /health` returns HTTP 200 when the ASP.NET Core process is running. It is a process-level health endpoint; it does not currently perform a PostgreSQL, Telegram, BGG, or Tesera dependency probe. BGG being disabled therefore does not make the health endpoint unhealthy.
+`GET /health` remains the lightweight process health endpoint. `GET /health/tesera` performs a live Tesera game lookup through the same configured transport used by imports, so production checks exercise OyinQ → Worker → Tesera when the proxy is enabled.
