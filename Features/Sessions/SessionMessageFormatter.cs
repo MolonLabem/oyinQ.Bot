@@ -20,8 +20,10 @@ public sealed class SessionMessageFormatter
 
         var text = new StringBuilder();
         text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(session.Game.Name)}</b>");
+        text.AppendLine();
         text.AppendLine($"👤 Организатор: {ParticipantPresentation.ToHtmlLink(session.HostParticipant)}");
         text.AppendLine($"👥 Игроки: {currentPlayers}/{totalPlayers}");
+        text.AppendLine();
 
         if (cancelled)
         {

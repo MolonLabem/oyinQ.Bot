@@ -37,6 +37,7 @@ builder.Services.AddSingleton(Options.Create(teseraOptions));
 builder.Services.AddDbContext<AppDbContext>(
     options => options.UseNpgsql(connectionString));
 
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client =>
 {
@@ -54,6 +55,7 @@ builder.Services.AddHttpClient<ITeseraClient, TeseraClient>(client =>
             new AuthenticationHeaderValue("Bearer", teseraOptions.ProxySecret);
     }
 });
+builder.Services.AddSingleton<TeseraAvailabilityService>();
 builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
@@ -63,6 +65,7 @@ builder.Services.AddScoped<RegistrationHandler>();
 builder.Services.AddScoped<GameDedupService>();
 builder.Services.AddScoped<GameSearchService>();
 builder.Services.AddScoped<GamesHandler>();
+builder.Services.AddScoped<GamesUxPresenter>();
 builder.Services.AddScoped<InterestsHandler>();
 builder.Services.AddScoped<SessionsHandler>();
 builder.Services.AddScoped<CollectionImportService>();
@@ -70,6 +73,7 @@ builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddHostedService<TeseraAvailabilityMonitorService>();
 builder.Services.AddHostedService<CollectionImportWorker>();
 
 if (botOptions.UseLongPolling)
@@ -93,23 +97,25 @@ app.MapGet("/health", static () => Results.Ok());
 
 app.MapGet(
     "/health/tesera",
-    async Task<IResult> (ITeseraClient client, CancellationToken cancellationToken) =>
+    async Task<IResult> (
+        TeseraAvailabilityService availabilityService,
+        CancellationToken cancellationToken) =>
     {
-        try
+        var availability = await availabilityService.GetAsync(
+            forceRefresh: false,
+            cancellationToken);
+
+        var body = new
         {
-            var game = await client.GetGameByAliasAsync("carcassonne", cancellationToken);
-            return game is null
-                ? Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable)
-                : Results.Ok();
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TeseraUnavailableException)
-        {
-            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
+            dependency = "tesera",
+            status = availability.IsAvailable ? "ok" : "unavailable",
+            reason = availability.Reason,
+            checkedAt = availability.CheckedAt
+        };
+
+        return availability.IsAvailable
+            ? Results.Ok(body)
+            : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
     });
 
 app.MapPost(

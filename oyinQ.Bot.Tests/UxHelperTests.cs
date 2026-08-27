@@ -51,7 +51,7 @@ public sealed class UxHelperTests
     }
 
     [Fact]
-    public void MainMenuFor_ShowsAdminPanelOnlyForAdmins()
+    public void MainMenuFor_ShowsProfileLabel_AndAdminPanelOnlyForAdmins()
     {
         var regularButtons = Keyboards.MainMenuFor(includeAdmin: false)
             .Keyboard
@@ -64,7 +64,9 @@ public sealed class UxHelperTests
             .Select(button => button.Text)
             .ToArray();
 
-        Assert.DoesNotContain("🛠 Админ-панель", regularButtons);
-        Assert.Contains("🛠 Админ-панель", adminButtons);
+        Assert.Contains("👤 Профиль", regularButtons);
+        Assert.DoesNotContain("👤 Моё", regularButtons);
+        Assert.DoesNotContain("🛠 Админ", regularButtons);
+        Assert.Contains("🛠 Админ", adminButtons);
     }
 }

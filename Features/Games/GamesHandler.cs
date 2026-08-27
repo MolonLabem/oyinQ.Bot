@@ -352,15 +352,16 @@ public sealed partial class GamesHandler(
 
         var text = new StringBuilder();
         text.AppendLine($"🎲 <b>{Encode(game.Name)}</b>");
-        text.AppendLine($"Игроки: {FormatPlayers(game.MinPlayers, game.MaxPlayers)}");
-        text.AppendLine($"Лучше всего: {Encode(game.BestPlayers ?? "—")}");
+        text.AppendLine();
+        text.AppendLine($"👥 Игроки: {FormatPlayers(game.MinPlayers, game.MaxPlayers)}");
+        text.AppendLine($"⭐ Лучше всего: {Encode(game.BestPlayers ?? "—")}");
         text.AppendLine($"🔥 Хотят сыграть: {game.Interests.Count}");
         text.AppendLine();
-        text.AppendLine("Копии:");
+        text.AppendLine("📦 Доступность:");
 
         if (game.Copies.Count == 0)
         {
-            text.AppendLine("— пока нет");
+            text.AppendLine("— пока нет доступных копий");
         }
         else
         {
@@ -372,15 +373,17 @@ public sealed partial class GamesHandler(
             {
                 if (copy.Source == GameCopySource.Club)
                 {
-                    text.AppendLine("🏢 Клуб — точно будет");
+                    text.AppendLine("🏢 Клуб — будет на мероприятии");
                     continue;
                 }
 
                 var owner = copy.OwnerParticipant is null
                     ? "Участник"
                     : ParticipantPresentation.ToHtmlLink(copy.OwnerParticipant);
-                var status = copy.BringStatus == BringStatus.Bringing ? "✅ возьмёт" : "🤔 возможно";
-                text.AppendLine($"{status} — {owner}");
+                var status = copy.BringStatus == BringStatus.Bringing
+                    ? $"✅ {owner} — возьмёт с собой"
+                    : $"🤔 {owner} — пока не решил";
+                text.AppendLine(status);
             }
         }
 
@@ -453,18 +456,27 @@ public sealed partial class GamesHandler(
     private static string CatalogMenuText() => """
         🎲 Игры
 
-        🔥 Популярные — спрос: какие игры больше всего хотят сыграть. Это не обещание, что конкретную игру привезут.
-        ✅ Точно привезут — клубные игры и личные копии со статусом «Возьму».
-        🤔 Возможно привезут — личные копии, владельцы которых ещё не подтвердили привоз.
-        📚 Коллекции участников — посмотреть, какие игры загрузил конкретный участник.
-        🎒 Мои игры — управлять только своими копиями и их статусом.
+        🔥 Популярные
+        Игры с самым высоким спросом среди участников.
+
+        ✅ Точно будут
+        Игры клуба и личные игры, которые владельцы подтвердили.
+
+        🤔 Возможно будут
+        Игры есть у участников, но они ещё не подтвердили, что возьмут их с собой.
+
+        📚 Коллекции участников
+        Посмотреть игры конкретного участника.
+
+        🎒 Мои игры
+        Управлять своими играми и их статусом.
         """;
 
     private static InlineKeyboardMarkup CatalogMenuKeyboard() =>
         new([
             [InlineKeyboardButton.WithCallbackData("🔥 Популярные — спрос", "game:list:p:0")],
-            [InlineKeyboardButton.WithCallbackData("✅ Точно привезут", "game:list:b:0")],
-            [InlineKeyboardButton.WithCallbackData("🤔 Возможно привезут", "game:list:m:0")],
+            [InlineKeyboardButton.WithCallbackData("✅ Точно будут", "game:list:b:0")],
+            [InlineKeyboardButton.WithCallbackData("🤔 Возможно будут", "game:list:m:0")],
             [InlineKeyboardButton.WithCallbackData("📚 Коллекции участников", "game:collections:0")],
             [InlineKeyboardButton.WithCallbackData("🔎 Поиск по каталогу", "game:search:catalog")],
             [InlineKeyboardButton.WithCallbackData("🎒 Мои игры", "game:my:menu")]
@@ -499,9 +511,9 @@ public sealed partial class GamesHandler(
         var pageResult = await ReadPageAsync(ordered, page, cancellationToken);
         var title = filter switch
         {
-            "b" => "✅ Точно привезут\nКлубные игры и личные игры со статусом «Возьму».",
-            "m" => "🤔 Возможно привезут\nВладельцы этих личных копий ещё не подтвердили, что возьмут их.",
-            _ => "🔥 Популярные по спросу\nРейтинг по количеству отметок «Хочу сыграть»; это спрос, а не гарантия привоза."
+            "b" => "✅ Точно будут\n\nКлубные игры и личные игры, которые владельцы подтвердили.",
+            "m" => "🤔 Возможно будут\n\nИгры есть у участников, но владельцы ещё не подтвердили, что возьмут их с собой.",
+            _ => "🔥 Популярные по спросу\n\nРейтинг по количеству отметок «Хочу сыграть». Это спрос, а не подтверждение доступности игры."
         };
 
         await RenderGameListAsync(
@@ -542,7 +554,7 @@ public sealed partial class GamesHandler(
             callbackQuery,
             chatId,
             BuildListText(
-                "🔥 Хочу сыграть\nЭто общий рейтинг спроса. Откройте игру, чтобы поставить или убрать свою отметку; отметка не означает, что вы обязуетесь привезти игру.",
+                "🔥 Хочу сыграть\n\nОбщий рейтинг спроса. Откройте игру, чтобы поставить или убрать свою отметку. Отметка не означает, что вы обязуетесь взять игру с собой.",
                 pageResult.Items),
             new InlineKeyboardMarkup(rows),
             cancellationToken);
@@ -566,7 +578,7 @@ public sealed partial class GamesHandler(
         await RenderGameListAsync(
             callbackQuery,
             chatId,
-            "🔥 Мои хотелки\nИгры, которые именно вы отметили «Хочу сыграть».",
+            "🔥 Мои хотелки\n\nИгры, которые именно вы отметили «Хочу сыграть».",
             pageResult,
             page,
             "mw",
@@ -586,10 +598,16 @@ public sealed partial class GamesHandler(
             """
             🎒 Мои игры
 
-            Здесь только ваши личные копии — добавленные вручную или импортированные из личной коллекции.
-            ✅ «Возьму» означает подтверждённый привоз на BoardCamp.
-            🤔 «Возможно» означает, что игра у вас есть, но привоз пока не подтверждён.
-            «Самые востребованные» сортирует ваши игры по общему спросу участников.
+            Здесь только ваши личные игры — добавленные вручную или импортированные из личной коллекции.
+
+            ✅ «Возьму»
+            Вы подтверждаете, что возьмёте игру с собой на Настолкомарафон-2026.
+
+            🤔 «Возможно»
+            Игра у вас есть, но вы ещё не решили, будете ли брать её с собой.
+
+            🔥 «Самые востребованные»
+            Ваши игры, отсортированные по общему спросу участников.
             """,
             new InlineKeyboardMarkup([
                 [InlineKeyboardButton.WithCallbackData("🔥 Самые востребованные", "game:my:d:0")],
@@ -635,9 +653,9 @@ public sealed partial class GamesHandler(
         var pageResult = await ReadPageAsync(ordered, page, cancellationToken);
         var title = filter switch
         {
-            "b" => "✅ Я возьму\nЭти копии вы подтвердили к привозу.",
-            "m" => "🤔 Возможно возьму\nЭти копии есть у вас, но привоз пока не подтверждён.",
-            _ => "🔥 Мои самые востребованные\nВаши игры, отсортированные по спросу других участников."
+            "b" => "✅ Я возьму\n\nЭти игры вы подтвердили — они будут с вами на мероприятии.",
+            "m" => "🤔 Возможно возьму\n\nЭти игры у вас есть, но вы ещё не решили, брать ли их с собой.",
+            _ => "🔥 Мои самые востребованные\n\nВаши игры, отсортированные по спросу других участников."
         };
 
         await RenderGameListAsync(
@@ -697,7 +715,7 @@ public sealed partial class GamesHandler(
 
         var text = items.Length == 0
             ? "📚 Коллекции участников\n\nПока никто не добавил личные игры."
-            : "📚 Коллекции участников\n\nВыберите участника. Показываются только люди, у которых есть личные копии игр. Внутри можно открыть карточки или получить весь список одним поисковым текстом.";
+            : "📚 Коллекции участников\n\nВыберите участника.\n\nПоказываются только люди, у которых есть личные игры. Внутри можно открыть карточки или получить весь список отдельным сообщением.";
 
         await RenderAsync(
             callbackQuery,
@@ -755,7 +773,9 @@ public sealed partial class GamesHandler(
 
         var text = new StringBuilder($"📚 Коллекция: {participant.DisplayName}")
             .AppendLine()
-            .AppendLine("✅ — владелец точно возьмёт; 🤔 — пока возможно.")
+            .AppendLine()
+            .AppendLine("✅ — владелец возьмёт с собой")
+            .AppendLine("🤔 — владелец пока не решил")
             .AppendLine();
         if (items.Length == 0)
         {
@@ -834,7 +854,7 @@ public sealed partial class GamesHandler(
             return;
         }
 
-        var header = $"📄 Полный список — {ParticipantPresentation.ToHtmlLink(participant)}\n✅ точно возьмёт · 🤔 возможно\n\n";
+        var header = $"📄 Полный список — {ParticipantPresentation.ToHtmlLink(participant)}\n\n✅ возьмёт с собой\n🤔 пока не решил\n\n";
         var lines = games
             .Select(game => $"{BringEmoji(game.BringStatus)} {Encode(game.Name)}")
             .ToArray();
@@ -918,7 +938,7 @@ public sealed partial class GamesHandler(
 
         await botClient.SendMessage(
             chatId,
-            $"🔎 Результаты поиска: {text}",
+            $"🔎 Результаты поиска\n\n{text}",
             replyMarkup: new InlineKeyboardMarkup(rows),
             cancellationToken: cancellationToken);
     }
@@ -939,7 +959,7 @@ public sealed partial class GamesHandler(
                 {
                     await botClient.SendMessage(
                         chatId,
-                        "Tesera не вернула данные этой игры. Проверьте ссылку и попробуйте ещё раз.",
+                        "Tesera не вернула данные этой игры.\n\nПроверьте ссылку и попробуйте ещё раз.",
                         cancellationToken: cancellationToken);
                     return;
                 }
@@ -953,7 +973,7 @@ public sealed partial class GamesHandler(
                 logger.LogWarning(exception, "Tesera manual game lookup failed for {Alias}.", teseraAlias);
                 await botClient.SendMessage(
                     chatId,
-                    "Tesera сейчас не отдала данные игры. Попробуйте позже; BGG и остальные функции от этого не зависят.",
+                    $"Tesera сейчас не отдала данные игры.\n\n{exception.Message}",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -962,7 +982,7 @@ public sealed partial class GamesHandler(
                 logger.LogWarning(exception, "Tesera manual game request failed for {Alias}.", teseraAlias);
                 await botClient.SendMessage(
                     chatId,
-                    "Tesera временно недоступна. Попробуйте позже.",
+                    "Tesera временно недоступна.\n\nПопробуйте позже.",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -987,7 +1007,7 @@ public sealed partial class GamesHandler(
             {
                 await botClient.SendMessage(
                     chatId,
-                    $"Ссылку BGG распознал: ID {bggId}. Но этой игры ещё нет в каталоге, а без BGG API нельзя надёжно получить её название и метаданные. Ничего не добавлено.\n\nЕсли у игры есть страница Tesera, пришлите ссылку tesera.ru/game/... — этот путь работает независимо от BGG.",
+                    $"Ссылку BGG распознал: ID {bggId}.\n\nЭтой игры ещё нет в каталоге, а без BGG API нельзя надёжно получить её название и метаданные. Ничего не добавлено.\n\nЕсли у игры есть страница Tesera, пришлите ссылку tesera.ru/game/... — этот путь работает независимо от BGG.",
                     replyMarkup: new InlineKeyboardMarkup([
                         [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                     ]),
@@ -1016,7 +1036,7 @@ public sealed partial class GamesHandler(
                 logger.LogWarning(exception, "BGG manual game lookup failed for {BggId}.", bggId);
                 await botClient.SendMessage(
                     chatId,
-                    "BGG временно недоступен. ID ссылки сохранён только в текущем вводе; игра не добавлена без метаданных. Можно использовать ссылку Tesera.",
+                    "BGG временно недоступен.\n\nИгра не добавлена без метаданных. Можно использовать ссылку Tesera.",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -1026,7 +1046,7 @@ public sealed partial class GamesHandler(
         {
             await botClient.SendMessage(
                 chatId,
-                "Поиск новой игры по названию использует BGG и сейчас недоступен. Пришлите прямую ссылку Tesera на игру. Ссылку BGG тоже можно прислать: если игра уже есть в каталоге, бот добавит её вам без нового запроса к BGG.",
+                "Поиск новой игры по названию использует BGG и сейчас недоступен.\n\nПришлите прямую ссылку Tesera на игру. Ссылку BGG тоже можно прислать: если игра уже есть в каталоге, бот добавит её вам без нового запроса к BGG.",
                 replyMarkup: new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
@@ -1041,7 +1061,7 @@ public sealed partial class GamesHandler(
             {
                 await botClient.SendMessage(
                     chatId,
-                    "BGG ничего не нашёл. Попробуйте другое название, ссылку BGG или ссылку Tesera.",
+                    "BGG ничего не нашёл.\n\nПопробуйте другое название, ссылку BGG или ссылку Tesera.",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -1068,7 +1088,7 @@ public sealed partial class GamesHandler(
             logger.LogWarning(exception, "BGG manual game search failed.");
             await botClient.SendMessage(
                 chatId,
-                "BGG временно недоступен. Можно добавить игру по ссылке Tesera.",
+                "BGG временно недоступен.\n\nМожно добавить игру по ссылке Tesera.",
                 cancellationToken: cancellationToken);
         }
     }
@@ -1098,7 +1118,7 @@ public sealed partial class GamesHandler(
             await RenderAsync(
                 callbackQuery,
                 chatId,
-                "BGG API сейчас недоступен, поэтому нельзя загрузить метаданные выбранной новой игры. Используйте ссылку Tesera или повторите после включения BGG.",
+                "BGG API сейчас недоступен, поэтому нельзя загрузить метаданные выбранной новой игры.\n\nИспользуйте ссылку Tesera или повторите после включения BGG.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
@@ -1136,7 +1156,7 @@ public sealed partial class GamesHandler(
             await RenderAsync(
                 callbackQuery,
                 chatId,
-                "BGG временно недоступен. Можно добавить игру по ссылке Tesera.",
+                "BGG временно недоступен.\n\nМожно добавить игру по ссылке Tesera.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
@@ -1403,7 +1423,7 @@ public sealed partial class GamesHandler(
         string text,
         InlineKeyboardMarkup keyboard,
         CancellationToken cancellationToken,
-        ParseMode? parseMode = null)
+        ParseMode parseMode = default)
     {
         if (callbackQuery?.Message is { } message)
         {
@@ -1426,8 +1446,8 @@ public sealed partial class GamesHandler(
     }
 
     private string BuildManualAddPrompt() => searchService.IsBggAvailable
-        ? "Отправьте ссылку Tesera вида tesera.ru/game/... или ссылку BGG вида boardgamegeek.com/boardgame/12345. Можно также отправить название — поиск по названию использует BGG."
-        : "Отправьте ссылку Tesera вида tesera.ru/game/... . Ссылку BGG тоже можно прислать: ID распознаётся без API, а уже известную каталогу игру можно добавить себе. Метаданные новой BGG-игры без API бот не выдумывает.";
+        ? "Добавление одной игры\n\nОтправьте ссылку Tesera вида tesera.ru/game/... или ссылку BGG вида boardgamegeek.com/boardgame/12345.\n\nМожно также отправить название — поиск по названию использует BGG."
+        : "Добавление одной игры\n\nОтправьте ссылку Tesera вида tesera.ru/game/... .\n\nСсылку BGG тоже можно прислать: ID распознаётся без API, а уже известную каталогу игру можно добавить себе. Метаданные новой BGG-игры без API бот не выдумывает.";
 
     private static string BuildBackCallback(string context, int page)
     {

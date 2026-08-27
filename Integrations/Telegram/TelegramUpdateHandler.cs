@@ -22,6 +22,7 @@ public sealed class TelegramUpdateHandler(
     RegistrationHandler registrationHandler,
     CollectionsHandler collectionsHandler,
     GamesHandler gamesHandler,
+    GamesUxPresenter gamesUxPresenter,
     InterestsHandler interestsHandler,
     SessionsHandler sessionsHandler,
     AdminHandler adminHandler,
@@ -249,6 +250,15 @@ public sealed class TelegramUpdateHandler(
                 callback.Id,
                 cancellationToken: cancellationToken);
 
+            if (callbackData.StartsWith("game:", StringComparison.Ordinal)
+                && await gamesUxPresenter.TryHandleCallbackAsync(
+                    callback,
+                    telegramUser.Id,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (callbackData.StartsWith("collection:", StringComparison.Ordinal)
                 && await collectionsHandler.TryHandleCallbackAsync(
                     callback,
@@ -293,7 +303,7 @@ public sealed class TelegramUpdateHandler(
 
         if (update.Message is { Text: { } text } message)
         {
-            if (text == "🛠 Админ-панель")
+            if (text is "🛠 Админ" or "🛠 Админ-панель")
             {
                 await adminHandler.HandleCommandAsync(
                     message,
@@ -302,7 +312,7 @@ public sealed class TelegramUpdateHandler(
                 return;
             }
 
-            if (text == "👤 Моё")
+            if (text is "👤 Профиль" or "👤 Моё")
             {
                 await registrationHandler.HandleProfileAsync(
                     participant,
@@ -314,6 +324,23 @@ public sealed class TelegramUpdateHandler(
             if (IsGameMenuText(text) && !IsRegistrationComplete(participant))
             {
                 await SendRegistrationRequiredAsync(message.Chat.Id, cancellationToken);
+                return;
+            }
+
+            if (text == "🎲 Игры")
+            {
+                await gamesUxPresenter.ShowCatalogHomeAsync(
+                    message.Chat.Id,
+                    cancellationToken);
+                return;
+            }
+
+            if (text == "🔥 Хотелки")
+            {
+                await gamesUxPresenter.ShowWishlistHomeAsync(
+                    message.Chat.Id,
+                    telegramUser.Id,
+                    cancellationToken);
                 return;
             }
 
@@ -434,6 +461,7 @@ public sealed class TelegramUpdateHandler(
     private static bool IsGameMenuText(string text) =>
         text is "🎲 Игры"
             or "➕ Добавить игры"
+            or "🔥 Хотелки"
             or "🔥 Хочу сыграть"
             or "▶️ Собрать игру"
             or "🎲 Текущие сборы"
@@ -451,7 +479,7 @@ public sealed class TelegramUpdateHandler(
 
         return text is not null
             && (IsGameMenuText(text)
-                || text is "👤 Моё" or "🛠 Админ-панель");
+                || text is "👤 Профиль" or "👤 Моё" or "🛠 Админ" or "🛠 Админ-панель");
     }
 
     private static string? GetCommand(string? text)

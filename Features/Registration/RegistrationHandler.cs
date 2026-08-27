@@ -19,6 +19,39 @@ public sealed class RegistrationHandler(
     private const string AwaitingAccommodationState = "registration:awaiting-accommodation";
     private const string AwaitingDisplayNameState = "registration:awaiting-display-name";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(30);
+    private const string RegistrationIntro = """
+        🍂 Осенний Астанинский Настолкомарафон-2026
+
+        📍 Клуб «Кинь-Двинь»
+        🗓 26–29 сентября 2026
+
+        Регистрация — 3 коротких шага.
+
+        1/3. На сколько дней вы приезжаете?
+        """;
+    private const string MainMenuGuide = """
+        Главное меню
+
+        🎲 Игры — посмотреть игры участников и отметить, во что хочется сыграть.
+        ▶️ Собрать игру — создать сбор и позвать людей в партию.
+        🔥 Хотелки — посмотреть популярные игры и свой список.
+        👤 Профиль — регистрация, ваши игры и реквизиты для оплаты.
+
+        Свои коробки добавляются через «Профиль» → «Мои игры».
+        Все настройки делаются здесь, в личном чате. В общий чат бот отправляет только сборы на партии.
+        """;
+    private const string PaymentDetails = """
+        💳 Оплата участия
+
+        Бот не принимает платежи — здесь только реквизиты организатора.
+
+        Kaspi: +7 747 120 8577
+        Получатель: Andrei K.
+
+        После перевода отправьте чек в ЛС @andreyjugg.
+
+        Если оплачиваете проживание, укажите количество дней.
+        """;
 
     public async Task HandleStartAsync(
         Participant participant,
@@ -39,7 +72,7 @@ public sealed class RegistrationHandler(
 
         await botClient.SendMessage(
             message.Chat.Id,
-            "Регистрация займёт три коротких шага.\n\n1/3. На сколько дней вы едете?",
+            RegistrationIntro,
             replyMarkup: Keyboards.RegistrationDays,
             cancellationToken: cancellationToken);
     }
@@ -56,7 +89,7 @@ public sealed class RegistrationHandler(
         {
             await botClient.SendMessage(
                 message.Chat.Id,
-                "Сначала завершите регистрацию. Выберите количество дней.",
+                "Сначала завершите регистрацию.\n\n1/3. На сколько дней вы приезжаете?",
                 replyMarkup: Keyboards.RegistrationDays,
                 cancellationToken: cancellationToken);
             return;
@@ -100,6 +133,30 @@ public sealed class RegistrationHandler(
 
         RefreshTelegramIdentity(participant, callbackQuery.From);
 
+        if (callbackData == "reg:payment")
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await botClient.EditMessageText(
+                chatId.Value,
+                callbackQuery.Message!.Id,
+                PaymentDetails,
+                replyMarkup: Keyboards.Payment,
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
+        if (callbackData == "reg:profile")
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await botClient.EditMessageText(
+                chatId.Value,
+                callbackQuery.Message!.Id,
+                BuildProfileText(participant),
+                replyMarkup: Keyboards.Profile,
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
         if (callbackData.StartsWith("reg:days:", StringComparison.Ordinal))
         {
             if (!int.TryParse(callbackData["reg:days:".Length..], out var days)
@@ -119,7 +176,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                $"2/3. Нужно жильё? Стоимость — {price:0} ₸ в день.",
+                $"2/3. Нужно место в жилье?\n\nСтоимость — {price:0} ₸ за сутки с человека.",
                 replyMarkup: Keyboards.Accommodation,
                 cancellationToken: cancellationToken);
             return true;
@@ -145,7 +202,7 @@ public sealed class RegistrationHandler(
                 await botClient.EditMessageText(
                     chatId.Value,
                     callbackQuery.Message!.Id,
-                    "Регистрация устарела. Выберите количество дней ещё раз.",
+                    "Регистрация устарела.\n\nВыберите количество дней ещё раз.",
                     replyMarkup: Keyboards.RegistrationDays,
                     cancellationToken: cancellationToken);
                 return true;
@@ -176,7 +233,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                "3/3. Как вас показывать другим участникам?\n\nОтправьте предпочтительное имя одним сообщением. Можно нажать «Пропустить» — тогда бот будет использовать имя из Telegram.",
+                "3/3. Как вас подписать в боте?\n\nОтправьте имя одним сообщением или оставьте имя из Telegram.",
                 replyMarkup: Keyboards.DisplayName,
                 cancellationToken: cancellationToken);
             return true;
@@ -199,7 +256,7 @@ public sealed class RegistrationHandler(
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
+                BuildRegistrationSuccessText(participant),
                 cancellationToken: cancellationToken);
             await ShowMainMenuAsync(chatId.Value, participant.TelegramUserId, cancellationToken);
             return true;
@@ -212,7 +269,7 @@ public sealed class RegistrationHandler(
 
             await botClient.SendMessage(
                 chatId.Value,
-                "Изменение регистрации. После дней и жилья можно также обновить отображаемое имя.\n\n1/3. На сколько дней вы едете?",
+                "Изменение регистрации\n\n1/3. На сколько дней вы приезжаете?",
                 replyMarkup: Keyboards.RegistrationDays,
                 cancellationToken: cancellationToken);
             return true;
@@ -242,7 +299,7 @@ public sealed class RegistrationHandler(
         {
             await botClient.SendMessage(
                 message.Chat.Id,
-                "Имя не может быть пустым. Отправьте имя или нажмите «Пропустить» в предыдущем сообщении.",
+                "Имя не может быть пустым.\n\nОтправьте имя или нажмите «Оставить имя из Telegram» в предыдущем сообщении.",
                 cancellationToken: cancellationToken);
             return true;
         }
@@ -263,9 +320,9 @@ public sealed class RegistrationHandler(
 
         await botClient.SendMessage(
             message.Chat.Id,
-            $"✅ Готово. Буду показывать вас как {ParticipantPresentation.GetDisplayName(participant)}.",
-            replyMarkup: Keyboards.MainMenuFor(IsAdmin(participant.TelegramUserId)),
+            BuildRegistrationSuccessText(participant),
             cancellationToken: cancellationToken);
+        await ShowMainMenuAsync(message.Chat.Id, participant.TelegramUserId, cancellationToken);
         return true;
     }
 
@@ -274,15 +331,43 @@ public sealed class RegistrationHandler(
         Participant participant,
         CancellationToken cancellationToken)
     {
-        var accommodation = participant.NeedsAccommodation == true ? "Да" : "Нет";
-        var name = ParticipantPresentation.GetDisplayName(participant);
-        var text = $"👤 Моё\n\nИмя для участников: {name}\nДней: {participant.DaysStaying}\nЖильё: {accommodation}\n\nЗдесь можно изменить регистрацию, открыть свои игры или свои хотелки.";
-
         await botClient.SendMessage(
             chatId,
-            text,
+            BuildProfileText(participant),
             replyMarkup: Keyboards.Profile,
             cancellationToken: cancellationToken);
+    }
+
+    private static string BuildProfileText(Participant participant)
+    {
+        var accommodation = participant.NeedsAccommodation == true ? "нужно" : "не нужно";
+        var name = ParticipantPresentation.GetDisplayName(participant);
+        var participation = GetParticipationLabel(participant.DaysStaying);
+
+        return $"""
+            👤 Профиль
+
+            Имя: {name}
+            Участие: {participation}
+            Жильё: {accommodation}
+
+            Здесь можно изменить регистрацию, посмотреть свои игры, отметить, во что хочется сыграть, и открыть реквизиты для оплаты.
+            """;
+    }
+
+    private static string BuildRegistrationSuccessText(Participant participant)
+    {
+        var accommodation = participant.NeedsAccommodation == true ? "нужно" : "не нужно";
+        var name = ParticipantPresentation.GetDisplayName(participant);
+        var participation = GetParticipationLabel(participant.DaysStaying);
+
+        return $"""
+            ✅ Регистрация готова
+
+            Участие: {participation}
+            Жильё: {accommodation}
+            Имя: {name}
+            """;
     }
 
     private async Task ShowMainMenuAsync(
@@ -290,27 +375,10 @@ public sealed class RegistrationHandler(
         long telegramUserId,
         CancellationToken cancellationToken)
     {
-        var isAdmin = IsAdmin(telegramUserId);
-        var text = """
-            Главное меню
-
-            🎲 Игры — каталог: спрос, подтверждённые привозы, возможные игры и коллекции участников.
-            ➕ Добавить игры — добавить одну игру или импортировать личную коллекцию.
-            🔥 Хочу сыграть — посмотреть спрос и управлять своими хотелками.
-            ▶️ Собрать игру — создать новый набор игроков.
-            🎲 Текущие сборы — открытые сейчас наборы, к которым можно присоединиться.
-            👤 Моё — регистрация, мои игры и мои хотелки.
-            """;
-
-        if (isAdmin)
-        {
-            text += "\n🛠 Админ-панель — участники, игры, статистика, коллекция клуба и CSV-экспорт.";
-        }
-
         await botClient.SendMessage(
             chatId,
-            text,
-            replyMarkup: Keyboards.MainMenuFor(isAdmin),
+            MainMenuGuide,
+            replyMarkup: Keyboards.MainMenuFor(IsAdmin(telegramUserId)),
             cancellationToken: cancellationToken);
     }
 
@@ -369,6 +437,15 @@ public sealed class RegistrationHandler(
             return null;
         }
     }
+
+    private static string GetParticipationLabel(int? daysStaying) =>
+        daysStaying switch
+        {
+            1 => "1 день",
+            2 => "2 дня",
+            3 => "3 дня",
+            _ => "—"
+        };
 
     private static bool IsRegistrationComplete(Participant participant) =>
         participant.DaysStaying is >= 1 and <= 3
