@@ -11,7 +11,7 @@ public sealed class CommunityOptionsTests
     {
         var configuration = new ConfigurationManager
         {
-            ["OYINQ_COMMUNITIES"] = """
+            ["CommunityBootstrap:CommunitiesJson"] = """
                 [
                   { "key": "club", "name": "Клуб", "telegramChatId": -1001, "mode": "Club", "timeZone": "UTC" },
                   { "key": "camp", "name": "Кэмп", "telegramChatId": -1002, "mode": "Camp", "timeZone": "UTC" }
@@ -26,30 +26,24 @@ public sealed class CommunityOptionsTests
     }
 
     [Fact]
-    public void FromConfiguration_AcceptsLegacyModeAliasesDuringDeploymentTransition()
+    public void FromConfiguration_RejectsLegacyModeAliases()
     {
         var configuration = new ConfigurationManager
         {
-            ["OYINQ_COMMUNITIES"] = """
+            ["CommunityBootstrap:CommunitiesJson"] = """
                 [{ "key": "club", "name": "Клуб", "telegramChatId": -1001, "mode": "Gatherer", "timeZone": "UTC" }]
                 """
         };
 
-        Assert.Equal(BotMode.Club, CommunityOptions.FromConfiguration(configuration).Communities.Single().Mode);
+        Assert.Throws<InvalidOperationException>(() => CommunityOptions.FromConfiguration(configuration));
     }
 
     [Fact]
-    public void FromConfiguration_RequiresExplicitCommunities()
+    public void FromConfiguration_AllowsEmptyBootstrap()
     {
-        var configuration = new ConfigurationManager
-        {
-            ["BOARD_CAMP_CHAT_ID"] = "-1007"
-        };
+        var options = CommunityOptions.FromConfiguration(new ConfigurationManager());
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            CommunityOptions.FromConfiguration(configuration));
-
-        Assert.Contains("OYINQ_COMMUNITIES", exception.Message, StringComparison.Ordinal);
+        Assert.Empty(options.Communities);
     }
 
     [Fact]
@@ -57,7 +51,7 @@ public sealed class CommunityOptionsTests
     {
         BotCommunity[] communities = [
             new("club", "Клуб", -1001, BotMode.Club, "UTC"),
-            new("camp", "BoardCamp", -1002, BotMode.Camp, "UTC")
+            new("camp", "Camp", -1002, BotMode.Camp, "UTC")
         ];
         var resolver = new CommunityContextResolver(
             new StubCommunityStore(communities),
@@ -75,8 +69,8 @@ public sealed class CommunityOptionsTests
     {
         var configuration = new ConfigurationManager
         {
-            ["OYINQ_COMMUNITIES"] = """
-                [{ "key": "club", "name": "Клуб", "telegramChatId": 1001, "mode": "Gatherer", "timeZone": "UTC" }]
+            ["CommunityBootstrap:CommunitiesJson"] = """
+                [{ "key": "club", "name": "Клуб", "telegramChatId": 1001, "mode": "Club", "timeZone": "UTC" }]
                 """
         };
 

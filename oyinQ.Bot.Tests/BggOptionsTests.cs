@@ -21,7 +21,7 @@ public sealed class BggOptionsTests
     {
         var configuration = new ConfigurationManager
         {
-            ["BGG_API_TOKEN"] = "  test-token  "
+            ["BoardGameGeek:ApiToken"] = "  test-token  "
         };
 
         var options = BggOptions.FromConfiguration(configuration);

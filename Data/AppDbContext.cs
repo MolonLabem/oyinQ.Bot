@@ -8,6 +8,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<Participant> Participants => Set<Participant>();
     public DbSet<OyinQCommunity> OyinQCommunities => Set<OyinQCommunity>();
+    public DbSet<OyinQAdministrator> OyinQAdministrators => Set<OyinQAdministrator>();
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<Camp> Camps => Set<Camp>();
     public DbSet<CampRegistration> CampRegistrations => Set<CampRegistration>();
@@ -34,6 +35,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Key).HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.TimeZoneId).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<OyinQAdministrator>(entity =>
+        {
+            entity.ToTable("OyinQAdministrators");
+            entity.HasKey(x => x.TelegramUserId);
+            entity.Property(x => x.TelegramUserId).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<Club>(entity =>

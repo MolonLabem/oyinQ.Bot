@@ -1,18 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using oyinQ.Bot.Common.Normalization;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Communities;
-using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Gatherings;
-using oyinQ.Bot.Features.Interests;
 using oyinQ.Bot.Features.MiniApp;
-using oyinQ.Bot.Features.Registration;
-using oyinQ.Bot.Features.Sessions;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
@@ -20,19 +15,19 @@ using Telegram.Bot.Types;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration["CONNECTION_STRING"]?.Trim();
+var connectionString = builder.Configuration["Database:ConnectionString"]?.Trim();
 if (string.IsNullOrWhiteSpace(connectionString))
 {
-    throw new InvalidOperationException("CONNECTION_STRING is required.");
+    throw new InvalidOperationException("Database:ConnectionString is required.");
 }
 
 var botOptions = BotOptions.FromConfiguration(builder.Configuration);
-var campOptions = CampOptions.FromConfiguration(builder.Configuration);
+var administrationOptions = AdministrationOptions.FromConfiguration(builder.Configuration);
 var bggOptions = BggOptions.FromConfiguration(builder.Configuration);
 var communityOptions = CommunityOptions.FromConfiguration(builder.Configuration);
 
 builder.Services.AddSingleton(Options.Create(botOptions));
-builder.Services.AddSingleton(Options.Create(campOptions));
+builder.Services.AddSingleton(Options.Create(administrationOptions));
 builder.Services.AddSingleton(Options.Create(bggOptions));
 builder.Services.AddSingleton(TimeProvider.System);
 
@@ -48,12 +43,11 @@ builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client
 builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
-builder.Services.AddSingleton<GameNameNormalizer>();
-builder.Services.AddSingleton<SessionMessageFormatter>();
 builder.Services.AddSingleton<GatheringPresentationService>();
 builder.Services.AddSingleton<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
 builder.Services.AddSingleton<ICampChatValidator, TelegramCampChatValidator>();
 builder.Services.AddScoped<ICommunityStore, CommunityStore>();
+builder.Services.AddScoped<IAdministratorStore, AdministratorStore>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<CampCreationService>();
 builder.Services.AddScoped<ClubCollectionService>();
@@ -64,19 +58,9 @@ builder.Services.AddScoped<GatheringGameSelectionService>();
 builder.Services.AddScoped<GatheringService>();
 builder.Services.AddSingleton<TelegramMiniAppAuthenticator>();
 builder.Services.AddSingleton<GatheringTelegramPublisher>();
-builder.Services.AddScoped<RegistrationHandler>();
-builder.Services.AddScoped<GameDedupService>();
-builder.Services.AddScoped<GameSearchService>();
-builder.Services.AddScoped<GamesHandler>();
-builder.Services.AddScoped<GamesUxPresenter>();
-builder.Services.AddScoped<InterestsHandler>();
-builder.Services.AddScoped<SessionsHandler>();
-builder.Services.AddScoped<CollectionImportService>();
-builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
-builder.Services.AddHostedService<CollectionImportWorker>();
 
 if (botOptions.UseLongPolling)
 {
@@ -96,6 +80,17 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
+
+    var administratorBootstrapTime = DateTimeOffset.UtcNow;
+    foreach (var administratorId in administrationOptions.BootstrapTelegramUserIds)
+    {
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO "OyinQAdministrators" ("TelegramUserId", "AddedByTelegramUserId", "CreatedAt")
+            VALUES ({administratorId}, NULL, {administratorBootstrapTime})
+            ON CONFLICT ("TelegramUserId") DO NOTHING
+            """);
+    }
 
     var existingCommunities = await dbContext.OyinQCommunities
         .Select(value => new { value.Key, value.TelegramChatId })

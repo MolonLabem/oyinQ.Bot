@@ -286,8 +286,7 @@ FakesAssemblies/
 node_modules/
 /.pnpm-store/
 /wwwroot/app/
-.dev.vars
-.wrangler/
+/MiniApp/*.tsbuildinfo
 
 # Visual Studio 6 build log
 *.plg

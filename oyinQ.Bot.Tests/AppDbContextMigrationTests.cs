@@ -83,6 +83,22 @@ public sealed class AppDbContextMigrationTests
             dbContext.Database.GetMigrations());
     }
 
+    [Fact]
+    public void Model_ConfiguresPersistentAdministrators()
+    {
+        using var dbContext = CreateDbContext();
+
+        var entity = dbContext.Model.FindEntityType(typeof(OyinQAdministrator));
+
+        Assert.NotNull(entity);
+        Assert.Equal(
+            Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never,
+            entity.FindProperty(nameof(OyinQAdministrator.TelegramUserId))!.ValueGenerated);
+        Assert.Contains(
+            "20260828230514_PersistAdministrators",
+            dbContext.Database.GetMigrations());
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

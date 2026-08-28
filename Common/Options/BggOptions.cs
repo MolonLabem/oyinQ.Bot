@@ -2,6 +2,8 @@ namespace oyinQ.Bot.Common.Options;
 
 public sealed class BggOptions
 {
+    public const string SectionName = "BoardGameGeek";
+
     public string ApiToken { get; init; } = string.Empty;
 
     public bool IsAvailable => !string.IsNullOrWhiteSpace(ApiToken);
@@ -9,6 +11,6 @@ public sealed class BggOptions
     public static BggOptions FromConfiguration(IConfiguration configuration) =>
         new()
         {
-            ApiToken = configuration["BGG_API_TOKEN"]?.Trim() ?? string.Empty
+            ApiToken = configuration[$"{SectionName}:ApiToken"]?.Trim() ?? string.Empty
         };
 }

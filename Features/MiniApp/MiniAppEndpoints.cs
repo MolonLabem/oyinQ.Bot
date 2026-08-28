@@ -4,6 +4,7 @@ using System.Globalization;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
@@ -20,6 +21,9 @@ public static class MiniAppEndpoints
         group.MapGet("/communities", GetCommunitiesAsync);
         group.MapGet("/admin/communities", GetAdminCommunitiesAsync);
         group.MapPost("/admin/communities", CreateCommunityAsync);
+        group.MapGet("/admin/administrators", GetAdministratorsAsync);
+        group.MapPost("/admin/administrators", AddAdministratorAsync);
+        group.MapDelete("/admin/administrators/{telegramUserId:long}", RemoveAdministratorAsync);
         group.MapGet("/admin/clubs", GetAdminClubsAsync);
         group.MapGet("/admin/clubs/{clubId:long}/collection", GetClubCollectionAsync);
         group.MapPut("/admin/clubs/{clubId:long}/bgg", UpdateClubBggAsync);
@@ -43,14 +47,68 @@ public static class MiniAppEndpoints
         return endpoints;
     }
 
+    private static async Task<IResult> GetAdministratorsAsync(
+        HttpRequest request,
+        TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administratorStore,
+        CancellationToken cancellationToken)
+    {
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
+        if (access.Result is not null) return access.Result;
+        return Results.Ok(await administratorStore.ListAsync(cancellationToken));
+    }
+
+    private static async Task<IResult> AddAdministratorAsync(
+        HttpRequest request,
+        AddAdministratorRequest body,
+        TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administratorStore,
+        CancellationToken cancellationToken)
+    {
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
+        if (access.Result is not null) return access.Result;
+        try
+        {
+            await administratorStore.AddAsync(
+                body.TelegramUserId,
+                access.Identity!.TelegramUserId,
+                cancellationToken);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.BadRequest(new { message = exception.Message });
+        }
+    }
+
+    private static async Task<IResult> RemoveAdministratorAsync(
+        HttpRequest request,
+        long telegramUserId,
+        TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administratorStore,
+        CancellationToken cancellationToken)
+    {
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
+        if (access.Result is not null) return access.Result;
+        try
+        {
+            await administratorStore.RemoveAsync(telegramUserId, cancellationToken);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.BadRequest(new { message = exception.Message });
+        }
+    }
+
     private static async Task<IResult> GetAdminClubsAsync(
         HttpRequest request,
         AppDbContext dbContext,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         var clubs = await dbContext.Clubs.AsNoTracking().OrderBy(value => value.Name).ToArrayAsync(cancellationToken);
         return Results.Ok(clubs.Select(value => new
@@ -68,10 +126,10 @@ public static class MiniAppEndpoints
         long clubId,
         ClubCollectionService collectionService,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         try { return Results.Ok(await collectionService.GetAsync(clubId, cancellationToken)); }
         catch (KeyNotFoundException) { return Results.NotFound(); }
@@ -83,10 +141,10 @@ public static class MiniAppEndpoints
         UpdateClubBggRequest body,
         ClubCollectionService collectionService,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         var username = string.IsNullOrWhiteSpace(body.BggInput)
             ? null
@@ -117,15 +175,15 @@ public static class MiniAppEndpoints
         ClubCollectionService collectionService,
         ClubBggSyncService syncService,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         IOptions<BggOptions> bggOptions,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         if (!bggOptions.Value.IsAvailable)
         {
-            return Results.BadRequest(new { message = "BGG недоступен: настройте BGG_API_TOKEN." });
+            return Results.BadRequest(new { message = "BGG недоступен: администратору нужно настроить API-токен BGG." });
         }
 
         try
@@ -157,10 +215,10 @@ public static class MiniAppEndpoints
         ClubCollectionDocument document,
         ClubCollectionService collectionService,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         try
         {
@@ -178,10 +236,10 @@ public static class MiniAppEndpoints
         ClubCollectionService collectionService,
         IBoardGameGeekClient bggClient,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         var details = await bggClient.GetGameDetailsAsync(body.BggId, cancellationToken);
         if (details is null) return Results.NotFound();
@@ -219,10 +277,10 @@ public static class MiniAppEndpoints
         long bggId,
         ClubCollectionService collectionService,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        var access = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (access.Result is not null) return access.Result;
         try
         {
@@ -436,10 +494,10 @@ public static class MiniAppEndpoints
         HttpRequest request,
         AppDbContext dbContext,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var identity = AuthenticateAdmin(request, authenticator, campOptions);
+        var identity = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (identity.Result is not null) return identity.Result;
 
         var communities = await dbContext.OyinQCommunities.AsNoTracking()
@@ -462,10 +520,10 @@ public static class MiniAppEndpoints
         CreateCommunityRequest body,
         AppDbContext dbContext,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions,
+        IAdministratorStore administratorStore,
         CancellationToken cancellationToken)
     {
-        var identity = AuthenticateAdmin(request, authenticator, campOptions);
+        var identity = await AuthenticateAdminAsync(request, authenticator, administratorStore, cancellationToken);
         if (identity.Result is not null) return identity.Result;
 
         BotCommunity community;
@@ -969,14 +1027,15 @@ public static class MiniAppEndpoints
             : new(identity, community, null);
     }
 
-    private static AccessResult AuthenticateAdmin(
+    private static async Task<AccessResult> AuthenticateAdminAsync(
         HttpRequest request,
         TelegramMiniAppAuthenticator authenticator,
-        IOptions<CampOptions> campOptions)
+        IAdministratorStore administratorStore,
+        CancellationToken cancellationToken)
     {
         var identity = authenticator.Authenticate(request.Headers["X-Telegram-Init-Data"].FirstOrDefault());
         if (identity is null) return new(null, null, Results.Unauthorized());
-        return campOptions.Value.AdminTelegramIds.Contains(identity.TelegramUserId)
+        return await administratorStore.IsAdministratorAsync(identity.TelegramUserId, cancellationToken)
             ? new(identity, null, null)
             : new(identity, null, Results.Forbid());
     }
@@ -1073,4 +1132,5 @@ public static class MiniAppEndpoints
         string Mode,
         string TimeZoneId,
         long? SourceClubId = null);
+    public sealed record AddAdministratorRequest(long TelegramUserId);
 }

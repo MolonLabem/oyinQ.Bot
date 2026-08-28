@@ -1,9 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using System.Text.Json;
-using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
@@ -18,18 +17,15 @@ public sealed class AdminHandler(
     ITelegramBotClient botClient,
     CsvExportService csvExportService,
     CampCreationService campCreationService,
-    IOptions<CampOptions> campOptions,
-    IOptions<BggOptions> bggOptions)
+    IAdministratorStore administratorStore)
 {
-    private const decimal AccommodationPricePerDay = 3000m;
-    private const string BggUnavailableMessage = "BGG пока недоступен — ждём подтверждение API-доступа.";
 
     public async Task HandleCommandAsync(
         Message message,
         long telegramUserId,
         CancellationToken cancellationToken)
     {
-        if (!IsAdmin(telegramUserId))
+        if (!await administratorStore.IsAdministratorAsync(telegramUserId, cancellationToken))
         {
             await botClient.SendMessage(
                 message.Chat.Id,
@@ -62,7 +58,7 @@ public sealed class AdminHandler(
             return false;
         }
 
-        if (!IsAdmin(telegramUserId))
+        if (!await administratorStore.IsAdministratorAsync(telegramUserId, cancellationToken))
         {
             await botClient.AnswerCallbackQuery(
                 callbackQuery.Id,
@@ -100,14 +96,6 @@ public sealed class AdminHandler(
                 await ShowGamesAsync(callbackQuery, telegramUserId, cancellationToken);
                 break;
 
-            case "admin:top":
-                await ShowTopGamesAsync(callbackQuery, telegramUserId, cancellationToken);
-                break;
-
-            case "admin:club":
-                await ShowClubCollectionAsync(callbackQuery, telegramUserId, cancellationToken);
-                break;
-
             case "admin:camp:create":
                 await BeginCampCreationAsync(callbackQuery, telegramUserId, cancellationToken);
                 break;
@@ -136,7 +124,7 @@ public sealed class AdminHandler(
         Message message,
         CancellationToken cancellationToken)
     {
-        if (!IsAdmin(participant.TelegramUserId)) return false;
+        if (!await administratorStore.IsAdministratorAsync(participant.TelegramUserId, cancellationToken)) return false;
         var state = await dbContext.ParticipantConversationStates
             .SingleOrDefaultAsync(value => value.ParticipantId == participant.Id, cancellationToken);
         if (state is null || !state.State.StartsWith("admin:camp:", StringComparison.Ordinal)) return false;
@@ -316,19 +304,22 @@ public sealed class AdminHandler(
         long chatId,
         CancellationToken cancellationToken)
     {
-        var query = RegisteredParticipantsQuery();
+        var query = CampRegistrationsQuery();
         var total = await query.CountAsync(cancellationToken);
-        var oneDay = await query.CountAsync(value => value.DaysStaying == 1, cancellationToken);
-        var twoDays = await query.CountAsync(value => value.DaysStaying == 2, cancellationToken);
-        var threeDays = await query.CountAsync(value => value.DaysStaying == 3, cancellationToken);
         var participants = await query
-            .OrderBy(value => value.PreferredDisplayName ?? value.DisplayName)
+            .OrderBy(value => value.Participant.PreferredDisplayName ?? value.Participant.DisplayName)
             .ThenBy(value => value.Id)
             .Take(50)
+            .Select(value => new
+            {
+                value.DaysStaying,
+                CampName = value.Camp.Name,
+                value.Participant
+            })
             .ToListAsync(cancellationToken);
 
         var lines = participants.Select(value =>
-            $"• {ParticipantPresentation.ToHtmlLink(value)} — {value.DaysStaying} дн.");
+            $"• {ParticipantPresentation.ToHtmlLink(value.Participant)} — {value.CampName}, {value.DaysStaying} дн.");
         var listText = participants.Count == 0
             ? "Участников пока нет."
             : string.Join('\n', lines);
@@ -340,9 +331,6 @@ public sealed class AdminHandler(
             👥 Участники
 
             Всего: {total}
-            • 1 день: {oneDay}
-            • 2 дня: {twoDays}
-            • 3 дня: {threeDays}
 
             {listText}{truncated}
             """;
@@ -361,22 +349,17 @@ public sealed class AdminHandler(
         long chatId,
         CancellationToken cancellationToken)
     {
-        var query = RegisteredParticipantsQuery()
+        var query = CampRegistrationsQuery()
             .Where(value => value.NeedsAccommodation == true);
         var participantCount = await query.CountAsync(cancellationToken);
         var personDays = await query.SumAsync(
             value => value.DaysStaying ?? 0,
             cancellationToken);
-        var estimatedTotal = personDays * AccommodationPricePerDay;
-
         var text = $"""
             🏠 Жильё
 
             Нужно жильё: {participantCount}
             Человеко-дней: {personDays}
-            Ориентировочная сумма: {estimatedTotal:0} ₸
-
-            Расчёт справочный: 3 000 ₸ за сутки с человека.
             """;
 
         await SendOrEditAsync(
@@ -392,31 +375,18 @@ public sealed class AdminHandler(
         long chatId,
         CancellationToken cancellationToken)
     {
-        var uniqueGames = await dbContext.Games.AsNoTracking().CountAsync(cancellationToken);
-        var personalCopies = await dbContext.GameCopies
-            .AsNoTracking()
-            .CountAsync(value => value.Source == GameCopySource.Personal, cancellationToken);
-        var clubCopies = await dbContext.GameCopies
-            .AsNoTracking()
-            .CountAsync(value => value.Source == GameCopySource.Club, cancellationToken);
-        var bringingCopies = await dbContext.GameCopies
-            .AsNoTracking()
-            .CountAsync(value => value.BringStatus == BringStatus.Bringing, cancellationToken);
-        var maybeCopies = await dbContext.GameCopies
-            .AsNoTracking()
-            .CountAsync(value => value.BringStatus == BringStatus.Maybe, cancellationToken);
+        var clubs = await dbContext.Clubs.AsNoTracking().Select(value => value.CollectionJson).ToArrayAsync(cancellationToken);
+        var camps = await dbContext.Camps.AsNoTracking().Select(value => value.BaseCollectionJson).ToArrayAsync(cancellationToken);
+        var clubGames = clubs.Sum(value => ClubCollectionSerializer.Deserialize(value).Games.Count);
+        var campBaseGames = camps.Sum(value => ClubCollectionSerializer.Deserialize(value).Games.Count);
+        var contributions = await dbContext.CampGameContributions.AsNoTracking().CountAsync(cancellationToken);
 
         var text = $"""
             🎲 Игры
 
-            Каталог:
-            • Уникальных игр: {uniqueGames}
-            • Копий клуба: {clubCopies}
-            • Личных копий: {personalCopies}
-
-            Доступность:
-            • ✅ Точно будут: {bringingCopies}
-            • 🤔 Возможно будут: {maybeCopies}
+            • Игр в коллекциях клубов: {clubGames}
+            • Игр в базовых снимках кэмпов: {campBaseGames}
+            • Вкладов участников кэмпов: {contributions}
             """;
 
         await SendOrEditAsync(
@@ -427,85 +397,23 @@ public sealed class AdminHandler(
             cancellationToken);
     }
 
-    private async Task ShowTopGamesAsync(
-        CallbackQuery callbackQuery,
-        long chatId,
-        CancellationToken cancellationToken)
-    {
-        var games = await dbContext.Games
-            .AsNoTracking()
-            .Select(value => new
-            {
-                value.Name,
-                InterestCount = value.Interests.Count()
-            })
-            .Where(value => value.InterestCount > 0)
-            .OrderByDescending(value => value.InterestCount)
-            .ThenBy(value => value.Name)
-            .Take(10)
-            .ToListAsync(cancellationToken);
-
-        var text = games.Count == 0
-            ? "🔥 Топ игр\n\nИнтересов пока нет."
-            : "🔥 Топ игр по спросу\n\nКоличество отметок «Хочу сыграть». Это спрос, а не подтверждение доступности игры.\n\n" + string.Join(
-                "\n",
-                games.Select((game, index) => $"{index + 1}. {game.Name} — 🔥 {game.InterestCount}"));
-
-        await SendOrEditAsync(
-            callbackQuery,
-            chatId,
-            text,
-            BuildBackKeyboard(),
-            cancellationToken);
-    }
-
-    private async Task ShowClubCollectionAsync(
-        CallbackQuery callbackQuery,
-        long chatId,
-        CancellationToken cancellationToken)
-    {
-        var rows = new List<IEnumerable<InlineKeyboardButton>>();
-        if (bggOptions.Value.IsAvailable)
-        {
-            rows.Add(
-            [
-                InlineKeyboardButton.WithCallbackData("BGG", "collection:import:bgg:club")
-            ]);
-        }
-
-        rows.Add([InlineKeyboardButton.WithCallbackData("← Админ-панель", "admin:menu")]);
-        var text = bggOptions.Value.IsAvailable
-            ? "🏢 Коллекция клуба\n\nОтдельный админский импорт BGG. Игры клуба считаются подтверждённо доступными на мероприятии."
-            : $"🏢 Коллекция клуба\n\n{BggUnavailableMessage}";
-
-        await SendOrEditAsync(
-            callbackQuery,
-            chatId,
-            text,
-            new InlineKeyboardMarkup(rows),
-            cancellationToken);
-    }
-
     private async Task ShowStatisticsAsync(
         CallbackQuery callbackQuery,
         long chatId,
         CancellationToken cancellationToken)
     {
-        var registeredParticipants = await RegisteredParticipantsQuery().CountAsync(cancellationToken);
-        var accommodationParticipants = await RegisteredParticipantsQuery()
+        var registeredParticipants = await CampRegistrationsQuery().CountAsync(cancellationToken);
+        var accommodationParticipants = await CampRegistrationsQuery()
             .CountAsync(value => value.NeedsAccommodation == true, cancellationToken);
-        var uniqueGames = await dbContext.Games.AsNoTracking().CountAsync(cancellationToken);
-        var interests = await dbContext.GameInterests.AsNoTracking().CountAsync(cancellationToken);
-        var sessions = await dbContext.GameSessions.AsNoTracking().CountAsync(cancellationToken);
-        var recruitingSessions = await dbContext.GameSessions
-            .AsNoTracking()
-            .CountAsync(value => value.Status == SessionStatus.Recruiting, cancellationToken);
-        var fullSessions = await dbContext.GameSessions
-            .AsNoTracking()
-            .CountAsync(value => value.Status == SessionStatus.Full, cancellationToken);
-        var closedSessions = await dbContext.GameSessions
-            .AsNoTracking()
-            .CountAsync(value => value.Status == SessionStatus.Closed, cancellationToken);
+        var clubs = await dbContext.Clubs.AsNoTracking().CountAsync(cancellationToken);
+        var camps = await dbContext.Camps.AsNoTracking().CountAsync(cancellationToken);
+        var gatherings = await dbContext.GameGatherings.AsNoTracking().CountAsync(cancellationToken);
+        var recruitingGatherings = await dbContext.GameGatherings.AsNoTracking()
+            .CountAsync(value => value.Status == GatheringStatus.Recruiting, cancellationToken);
+        var readyGatherings = await dbContext.GameGatherings.AsNoTracking()
+            .CountAsync(value => value.Status == GatheringStatus.Ready || value.Status == GatheringStatus.Full, cancellationToken);
+        var completedGatherings = await dbContext.GameGatherings.AsNoTracking()
+            .CountAsync(value => value.Status == GatheringStatus.Completed, cancellationToken);
 
         var text = $"""
             📊 Статистика
@@ -514,15 +422,15 @@ public sealed class AdminHandler(
             • Зарегистрировано: {registeredParticipants}
             • Нужно жильё: {accommodationParticipants}
 
-            Игры:
-            • Уникальных игр: {uniqueGames}
-            • Хотелок: {interests}
+            Сообщества:
+            • Клубов: {clubs}
+            • Кэмпов: {camps}
 
             Сборы:
-            • Всего: {sessions}
-            • Набор открыт: {recruitingSessions}
-            • Состав набран: {fullSessions}
-            • Закрыто: {closedSessions}
+            • Всего: {gatherings}
+            • Набор открыт: {recruitingGatherings}
+            • Готовы или заполнены: {readyGatherings}
+            • Завершены: {completedGatherings}
             """;
 
         await SendOrEditAsync(
@@ -541,7 +449,7 @@ public sealed class AdminHandler(
         await SendOrEditAsync(
             callbackQuery,
             chatId,
-            "📤 Экспорт\n\nОтправляю четыре CSV-файла отдельными сообщениями:\n\n• participants.csv\n• games.csv\n• interests.csv\n• sessions.csv",
+            "📤 Экспорт\n\nОтправляю четыре CSV-файла новой модели:\n\n• communities.csv\n• camp-registrations.csv\n• camp-contributions.csv\n• gatherings.csv",
             BuildBackKeyboard(),
             cancellationToken);
 
@@ -571,12 +479,11 @@ public sealed class AdminHandler(
         }
     }
 
-    private IQueryable<Participant> RegisteredParticipantsQuery() =>
-        dbContext.Participants
+    private IQueryable<CampRegistration> CampRegistrationsQuery() =>
+        dbContext.CampRegistrations
             .AsNoTracking()
             .Where(value => value.DaysStaying.HasValue
                 && value.DaysStaying.Value >= 1
-                && value.DaysStaying.Value <= 3
                 && value.NeedsAccommodation.HasValue);
 
     private async Task EnsureAdminParticipantStubAsync(
@@ -616,32 +523,23 @@ public sealed class AdminHandler(
             : displayName;
     }
 
-    private bool IsAdmin(long telegramUserId) =>
-        campOptions.Value.AdminTelegramIds.Contains(telegramUserId);
-
     private static string BuildMenuText() => """
         🛠 Админ-панель
 
         👥 Участники
-        Регистрация и список участников.
+        Регистрации по кэмпам.
 
         🏠 Жильё
         Сводка по проживанию.
 
         🎲 Игры
-        Размер каталога и доступность игр.
-
-        🔥 Топ игр
-        Спрос по отметкам «Хочу сыграть».
-
-        🏢 Коллекция клуба
-        Импорт клубных игр.
+        Коллекции клубов, снимки кэмпов и вклады участников.
 
         📊 Статистика
         Общие счётчики.
 
         📤 Экспорт
-        Четыре CSV-файла в личный чат.
+        Четыре CSV-файла новой модели в личный чат.
         """;
 
     private static InlineKeyboardMarkup BuildMenu() =>
@@ -651,11 +549,7 @@ public sealed class AdminHandler(
                 InlineKeyboardButton.WithCallbackData("👥 Участники", "admin:participants"),
                 InlineKeyboardButton.WithCallbackData("🏠 Жильё", "admin:accommodation")
             ],
-            [
-                InlineKeyboardButton.WithCallbackData("🎲 Игры", "admin:games"),
-                InlineKeyboardButton.WithCallbackData("🔥 Топ игр", "admin:top")
-            ],
-            [InlineKeyboardButton.WithCallbackData("🏢 Коллекция клуба", "admin:club")],
+            [InlineKeyboardButton.WithCallbackData("🎲 Игры", "admin:games")],
             [InlineKeyboardButton.WithCallbackData("🏕 Создать кэмп", "admin:camp:create")],
             [
                 InlineKeyboardButton.WithCallbackData("📊 Статистика", "admin:stats"),

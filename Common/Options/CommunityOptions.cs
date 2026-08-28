@@ -5,9 +5,7 @@ namespace oyinQ.Bot.Common.Options;
 public enum BotMode
 {
     Club = 0,
-    Camp = 1,
-    Gatherer = Club,
-    BoardCamp = Camp
+    Camp = 1
 }
 
 public sealed record BotCommunity(
@@ -23,11 +21,10 @@ public sealed class CommunityOptions
 
     public static CommunityOptions FromConfiguration(IConfiguration configuration)
     {
-        var json = configuration["OYINQ_COMMUNITIES"]?.Trim();
+        var json = configuration["CommunityBootstrap:CommunitiesJson"]?.Trim();
         if (string.IsNullOrWhiteSpace(json))
         {
-            throw new InvalidOperationException(
-                "OYINQ_COMMUNITIES is required and must contain every OyinQ community.");
+            return new CommunityOptions();
         }
 
         return new CommunityOptions { Communities = Parse(json) };
@@ -44,23 +41,23 @@ public sealed class CommunityOptions
         }
         catch (JsonException exception)
         {
-            throw new InvalidOperationException("OYINQ_COMMUNITIES must be a valid JSON array.", exception);
+            throw new InvalidOperationException("CommunityBootstrap:CommunitiesJson must be a valid JSON array.", exception);
         }
 
         var communities = values.Select(ToCommunity).ToArray();
         if (communities.Length == 0)
         {
-            throw new InvalidOperationException("OYINQ_COMMUNITIES must contain at least one community.");
+            throw new InvalidOperationException("CommunityBootstrap:CommunitiesJson must contain at least one community when configured.");
         }
 
         if (communities.Select(value => value.Key).Distinct(StringComparer.OrdinalIgnoreCase).Count() != communities.Length)
         {
-            throw new InvalidOperationException("OYINQ_COMMUNITIES contains duplicate keys.");
+            throw new InvalidOperationException("CommunityBootstrap:CommunitiesJson contains duplicate keys.");
         }
 
         if (communities.Select(value => value.TelegramChatId).Distinct().Count() != communities.Length)
         {
-            throw new InvalidOperationException("OYINQ_COMMUNITIES contains duplicate Telegram chat IDs.");
+            throw new InvalidOperationException("CommunityBootstrap:CommunitiesJson contains duplicate Telegram chat IDs.");
         }
 
         return communities;
