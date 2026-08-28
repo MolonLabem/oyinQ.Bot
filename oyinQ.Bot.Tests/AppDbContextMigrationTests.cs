@@ -67,6 +67,22 @@ public sealed class AppDbContextMigrationTests
             .FindProperty(nameof(GameGathering.GameSnapshotJson))?.GetColumnType());
     }
 
+    [Fact]
+    public void Model_ConfiguresClubBggUsername_AsNullableMax100()
+    {
+        using var dbContext = CreateDbContext();
+
+        var property = dbContext.Model.FindEntityType(typeof(Club))?
+            .FindProperty(nameof(Club.BggUsername));
+
+        Assert.NotNull(property);
+        Assert.True(property.IsNullable);
+        Assert.Equal(100, property.GetMaxLength());
+        Assert.Contains(
+            "20260828195607_ClubBggUsername",
+            dbContext.Database.GetMigrations());
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

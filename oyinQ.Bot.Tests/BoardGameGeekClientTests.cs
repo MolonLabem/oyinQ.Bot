@@ -155,7 +155,8 @@ public sealed class BoardGameGeekClientTests
                 ? XmlResponse(HttpStatusCode.OK, """
                     <items><item type="boardgameexpansion" id="20">
                       <name type="primary" value="Expansion A" />
-                      <link type="boardgameexpansion" id="10" value="Base A" />
+                      <link type="boardgameexpansion" id="10" value="Base A" inbound="true" />
+                      <link type="boardgameexpansion" id="30" value="Child Expansion" />
                     </item></items>
                     """)
                 : XmlResponse(HttpStatusCode.OK, """

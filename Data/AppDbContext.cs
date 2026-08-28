@@ -44,6 +44,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.BotChatKey).IsUnique();
             entity.Property(x => x.BotChatKey).HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(160);
+            entity.Property(x => x.BggUsername).HasMaxLength(100);
             entity.Property(x => x.CollectionJson).HasColumnType("jsonb");
 
             entity.HasOne(x => x.BotChat)

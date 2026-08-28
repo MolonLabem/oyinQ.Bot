@@ -127,7 +127,7 @@ Then send `/start` in a configured group and use its **Open OyinQ** entry point.
 - **Camp:** registration is required before catalog, contributions, interests, or gatherings. The effective catalog is the immutable `Camp.BaseCollectionJson` snapshot plus relational participant contributions. Multiple contributors for one BGG item appear as one logical catalog entry while contributor IDs/copies remain available.
 - **Both modes:** `GameGathering.GameSnapshotJson` contains the immutable game name, BGG ID, images, player metadata, and selected expansions. Join/leave and waitlist promotion are serialized by PostgreSQL and the group recruitment message is edited in place.
 
-Club collection administration supports viewing/searching in the Mini App, adding a BGG game, editing/removing games and expansions through the validated version-1 JSON document, and exporting/replacing that JSON for deliberate recovery. Camp personal import requests BGG base games and expansions separately, shows a select-all preview, keeps base/expansion toggles independent, and uses `🟨` when an expansion is selected without its base game.
+Club collection administration supports viewing/searching in the Mini App, adding a BGG game, editing/removing games and expansions through the validated version-1 JSON document, and exporting/replacing that JSON for deliberate recovery. An administrator may also store an optional BGG username on each Club, preview a mirror of that account's Owned collection, review added/removed/changed games and excluded orphan expansions, and explicitly apply the proposed version-1 snapshot. Previewing never mutates PostgreSQL. An empty BGG collection requires a separate destructive confirmation before the existing JSON replacement path is used. Camp personal import requests BGG base games and expansions separately, shows a select-all preview, keeps base/expansion toggles independent, and uses `🟨` when an expansion is selected without its base game.
 
 ## Database migrations
 
@@ -217,7 +217,8 @@ Do not expose the webhook secret in source control or public logs.
 - Telegram identity always comes from the incoming Telegram update. Community context from a deep link is checked against configured communities and Telegram group membership before it is persisted.
 - Admin authorization is based on `ADMIN_TELEGRAM_IDS`.
 - A nonblank `BGG_API_TOKEN` enables BGG search, transient direct lookup, Club management, and Camp import. Missing access degrades with a clear Russian error.
-- BGG game details use only API-declared expansion relationships. Camp collection import sends separate base-game and expansion requests, then enriches relationship data.
+- BGG game details use only API-declared expansion relationships. Club synchronization and Camp collection import send separate base-game and expansion requests, then enrich relationship data. A Club expansion is attached to every owned officially linked base game; expansions without an owned linked base are excluded from the proposed document and reported in the preview.
+- BGG synchronization is reviewed replacement, not a background write. API errors or pending responses leave `Club.CollectionJson` unchanged, while removals shown in a successful preview are applied only after administrator confirmation.
 - Images remain hosted by BGG and are stored as URLs in collection/contribution/gathering snapshots; OyinQ does not download or duplicate them.
 - Gathering descriptions are optional and limited to 300 characters. Rule-teaching preference uses positive or neutral Russian wording.
 - Camp creation uses `KeyboardButtonRequestChat`/`chat_shared`, then separately verifies group type and bot membership.

@@ -162,7 +162,7 @@ public sealed class BoardGameGeekClient(
                 if (expansion is null) continue;
                 var parentIds = item.Elements("link")
                     .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
+                        && string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
                     .Select(link => ReadLongAttribute(link, "id"))
                     .Where(value => value is > 0)
                     .Select(value => value!.Value)

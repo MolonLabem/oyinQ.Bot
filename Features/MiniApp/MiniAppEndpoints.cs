@@ -22,6 +22,8 @@ public static class MiniAppEndpoints
         group.MapPost("/admin/communities", CreateCommunityAsync);
         group.MapGet("/admin/clubs", GetAdminClubsAsync);
         group.MapGet("/admin/clubs/{clubId:long}/collection", GetClubCollectionAsync);
+        group.MapPut("/admin/clubs/{clubId:long}/bgg", UpdateClubBggAsync);
+        group.MapPost("/admin/clubs/{clubId:long}/collection/bgg-preview", PreviewClubBggSyncAsync);
         group.MapPut("/admin/clubs/{clubId:long}/collection", ReplaceClubCollectionAsync);
         group.MapPost("/admin/clubs/{clubId:long}/games", AddClubGameAsync);
         group.MapDelete("/admin/clubs/{clubId:long}/games/{bggId:long}", RemoveClubGameAsync);
@@ -56,6 +58,7 @@ public static class MiniAppEndpoints
             value.Id,
             value.BotChatKey,
             value.Name,
+            value.BggUsername,
             GameCount = value.ReadCollection().Games.Count
         }));
     }
@@ -72,6 +75,80 @@ public static class MiniAppEndpoints
         if (access.Result is not null) return access.Result;
         try { return Results.Ok(await collectionService.GetAsync(clubId, cancellationToken)); }
         catch (KeyNotFoundException) { return Results.NotFound(); }
+    }
+
+    private static async Task<IResult> UpdateClubBggAsync(
+        HttpRequest request,
+        long clubId,
+        UpdateClubBggRequest body,
+        ClubCollectionService collectionService,
+        TelegramMiniAppAuthenticator authenticator,
+        IOptions<CampOptions> campOptions,
+        CancellationToken cancellationToken)
+    {
+        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        if (access.Result is not null) return access.Result;
+        var username = string.IsNullOrWhiteSpace(body.BggInput)
+            ? null
+            : BggUsernameParser.Parse(body.BggInput);
+        if (!string.IsNullOrWhiteSpace(body.BggInput) && username is null)
+        {
+            return Results.BadRequest(new { message = "Не удалось распознать имя пользователя BGG." });
+        }
+
+        try
+        {
+            await collectionService.UpdateBggUsernameAsync(
+                clubId,
+                username,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+            return Results.NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound();
+        }
+    }
+
+    private static async Task<IResult> PreviewClubBggSyncAsync(
+        HttpRequest request,
+        long clubId,
+        ClubCollectionService collectionService,
+        ClubBggSyncService syncService,
+        TelegramMiniAppAuthenticator authenticator,
+        IOptions<CampOptions> campOptions,
+        IOptions<BggOptions> bggOptions,
+        CancellationToken cancellationToken)
+    {
+        var access = AuthenticateAdmin(request, authenticator, campOptions);
+        if (access.Result is not null) return access.Result;
+        if (!bggOptions.Value.IsAvailable)
+        {
+            return Results.BadRequest(new { message = "BGG недоступен: настройте BGG_API_TOKEN." });
+        }
+
+        try
+        {
+            var settings = await collectionService.GetSettingsAsync(clubId, cancellationToken);
+            if (string.IsNullOrWhiteSpace(settings.BggUsername))
+            {
+                return Results.BadRequest(new { message = "Сначала сохраните имя пользователя BGG для клуба." });
+            }
+
+            return Results.Ok(await syncService.PreviewAsync(
+                settings.BggUsername,
+                settings.Collection,
+                cancellationToken));
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound();
+        }
+        catch (HttpRequestException exception)
+        {
+            return Results.BadRequest(new { message = $"BGG временно недоступен: {exception.Message}" });
+        }
     }
 
     private static async Task<IResult> ReplaceClubCollectionAsync(
@@ -978,6 +1055,7 @@ public static class MiniAppEndpoints
     public sealed record SaveCampContributionsRequest(
         string CommunityKey,
         IReadOnlyList<CampImportSelectionItem> Items);
+    public sealed record UpdateClubBggRequest(string? BggInput);
     public sealed record AddClubGameRequest(long BggId, long[]? ExpansionBggIds);
     public sealed record CampManualGameRequest(string CommunityKey, string BggInput, long[]? ExpansionBggIds);
     private sealed record CatalogGameResponse(

@@ -4,6 +4,10 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Collections;
 
+public sealed record ClubCollectionSettings(
+    ClubCollectionDocument Collection,
+    string? BggUsername);
+
 public sealed class ClubCollectionService(AppDbContext dbContext)
 {
     public async Task<ClubCollectionDocument> GetAsync(long clubId, CancellationToken cancellationToken)
@@ -14,6 +18,32 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Club was not found.");
         return ClubCollectionSerializer.Deserialize(json);
+    }
+
+    public async Task<ClubCollectionSettings> GetSettingsAsync(
+        long clubId,
+        CancellationToken cancellationToken)
+    {
+        var value = await dbContext.Clubs.AsNoTracking()
+            .Where(club => club.Id == clubId)
+            .Select(club => new { club.CollectionJson, club.BggUsername })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Club was not found.");
+        return new ClubCollectionSettings(
+            ClubCollectionSerializer.Deserialize(value.CollectionJson),
+            value.BggUsername);
+    }
+
+    public async Task UpdateBggUsernameAsync(
+        long clubId,
+        string? bggUsername,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var club = await FindClubAsync(clubId, cancellationToken);
+        club.BggUsername = bggUsername;
+        club.UpdatedAt = now.ToUniversalTime();
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task AddOrReplaceGameAsync(

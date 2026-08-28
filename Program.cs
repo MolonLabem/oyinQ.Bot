@@ -57,6 +57,7 @@ builder.Services.AddScoped<ICommunityStore, CommunityStore>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<CampCreationService>();
 builder.Services.AddScoped<ClubCollectionService>();
+builder.Services.AddScoped<ClubBggSyncService>();
 builder.Services.AddScoped<CampContributionSelectionService>();
 builder.Services.AddScoped<CampBggImportService>();
 builder.Services.AddScoped<GatheringGameSelectionService>();
