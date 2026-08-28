@@ -17,11 +17,11 @@ public sealed class RollMoveImportArtifactTests
             .Trim()
             .Split(';', StringSplitOptions.RemoveEmptyEntries);
 
-        Assert.Equal(210, document.Games.Count);
-        Assert.Equal(91, expansions.Length);
-        Assert.Equal(85, expansions.Select(value => value.BggId).Distinct().Count());
-        Assert.Equal(303, ownedIds.Length);
-        Assert.Equal(303, ownedIds.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(219, document.Games.Count);
+        Assert.Equal(119, expansions.Length);
+        Assert.Equal(109, expansions.Select(value => value.BggId).Distinct().Count());
+        Assert.Equal(340, ownedIds.Length);
+        Assert.Equal(340, ownedIds.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(364, File.ReadLines(Path.Combine(importDirectory, "match-audit.csv")).Count());
     }
 }
