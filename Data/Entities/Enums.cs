@@ -35,6 +35,44 @@ public enum ImportTarget
 
 public enum ExternalGameProvider
 {
-    Bgg = 0,
-    Tesera = 1
+    Bgg = 0
+}
+
+public enum GatheringStatus
+{
+    Recruiting = 0,
+    Ready = 1,
+    Full = 2,
+    Closed = 3,
+    Completed = 4,
+    Cancelled = 5
+}
+
+public enum GatheringParticipationStatus
+{
+    Confirmed = 0,
+    Waitlisted = 1,
+    Withdrawn = 2
+}
+
+public enum AttendanceOutcome
+{
+    Unknown = 0,
+    Attended = 1,
+    NoShow = 2,
+    CancelledInAdvance = 3
+}
+
+public enum CampStatus
+{
+    Draft = 0,
+    Active = 1,
+    Closed = 2,
+    Cancelled = 3
+}
+
+public enum CampContributionItemType
+{
+    BaseGame = 0,
+    Expansion = 1
 }

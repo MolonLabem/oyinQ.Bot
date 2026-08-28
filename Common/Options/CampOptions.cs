@@ -6,7 +6,6 @@ public sealed class CampOptions
 {
     public long? BoardCampChatId { get; init; }
     public IReadOnlySet<long> AdminTelegramIds { get; init; } = new HashSet<long>();
-    public decimal AccommodationPricePerDay { get; init; } = 3000m;
 
     public static CampOptions FromConfiguration(IConfiguration configuration)
     {
@@ -27,19 +26,10 @@ public sealed class CampOptions
             .Select(static id => id.GetValueOrDefault())
             .ToHashSet();
 
-        var accommodationPrice = decimal.TryParse(
-            configuration["ACCOMMODATION_PRICE_PER_DAY"],
-            NumberStyles.Number,
-            CultureInfo.InvariantCulture,
-            out var parsedPrice)
-            ? parsedPrice
-            : 3000m;
-
         return new CampOptions
         {
             BoardCampChatId = boardCampChatId,
-            AdminTelegramIds = adminTelegramIds,
-            AccommodationPricePerDay = accommodationPrice
+            AdminTelegramIds = adminTelegramIds
         };
     }
 }

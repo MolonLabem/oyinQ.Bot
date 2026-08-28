@@ -32,7 +32,10 @@ public static class CallbackDataValidator
             or "top"
             or "club"
             or "stats"
-            or "export";
+            or "export"
+        || parts is ["admin", "camp", "create"]
+        || parts is ["admin", "camp", "source", var source]
+            && (source == "none" || IsPositiveLong(source));
 
     private static bool IsRegistration(string[] parts) =>
         parts switch
@@ -54,7 +57,7 @@ public static class CallbackDataValidator
             ["collection", "cancel"] => true,
             ["collection", "add", "single"] => true,
             ["collection", "import", var provider, var target] =>
-                provider is "bgg" or "tesera"
+                provider is "bgg"
                 && target is "personal" or "club",
             _ => false
         };

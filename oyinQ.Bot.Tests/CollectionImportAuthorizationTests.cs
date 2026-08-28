@@ -21,7 +21,7 @@ public sealed class CollectionImportAuthorizationTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(
             () => service.EnqueueClubAsync(
                 100,
-                ExternalGameProvider.Tesera,
+                ExternalGameProvider.Bgg,
                 "club",
                 CancellationToken.None));
     }

@@ -81,7 +81,6 @@ public sealed class CsvExportService(
                 value.Id,
                 value.Name,
                 value.BggId,
-                value.TeseraAlias,
                 value.MinPlayers,
                 value.MaxPlayers,
                 value.BestPlayers,
@@ -102,7 +101,6 @@ public sealed class CsvExportService(
             value.Id,
             value.Name,
             value.BggId,
-            value.TeseraAlias,
             value.MinPlayers,
             value.MaxPlayers,
             value.BestPlayers,
@@ -116,7 +114,7 @@ public sealed class CsvExportService(
         return new CsvExportFile(
             "games.csv",
             BuildCsv(
-                ["id", "name", "bgg_id", "tesera_alias", "min_players", "max_players", "best_players", "external_url", "club_copies", "personal_bringing_copies", "personal_maybe_copies", "interest_count"],
+                ["id", "name", "bgg_id", "min_players", "max_players", "best_players", "external_url", "club_copies", "personal_bringing_copies", "personal_maybe_copies", "interest_count"],
                 rows));
     }
 

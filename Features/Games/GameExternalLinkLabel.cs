@@ -14,11 +14,6 @@ public static class GameExternalLinkLabel
             return "🔗 Открыть BGG";
         }
 
-        if (IsHost(uri.Host, "tesera.ru"))
-        {
-            return "🔗 Открыть Tesera";
-        }
-
         return "🔗 Открыть страницу игры";
     }
 

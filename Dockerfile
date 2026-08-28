@@ -5,6 +5,13 @@ EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 USER $APP_UID
 
+FROM node:22-alpine AS frontend
+WORKDIR /src/MiniApp
+COPY ["MiniApp/package.json", "MiniApp/package-lock.json", "./"]
+RUN npm ci
+COPY MiniApp .
+RUN npm run build
+
 # Build image
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
@@ -21,4 +28,5 @@ RUN dotnet publish "./oyinQ.Bot.csproj" -c $BUILD_CONFIGURATION -o /app/publish 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY --from=frontend /src/wwwroot/app ./wwwroot/app
 ENTRYPOINT ["sh", "-c", "ASPNETCORE_URLS=http://+:${PORT:-8080} exec dotnet oyinQ.Bot.dll"]

@@ -48,6 +48,8 @@ public sealed class BoardGameGeekClientTests
                     <items>
                       <item type="boardgame" id="1">
                         <name type="primary" value="Base Game" />
+                        <thumbnail>https://cf.geekdo-images.com/thumb.jpg</thumbnail>
+                        <image>https://cf.geekdo-images.com/full.jpg</image>
                         <minplayers value="2" />
                         <maxplayers value="4" />
                       </item>
@@ -70,6 +72,8 @@ public sealed class BoardGameGeekClientTests
         var game = Assert.Single(games);
         Assert.Equal(1, game.BggId);
         Assert.Equal("Base Game", game.Name);
+        Assert.Equal("https://cf.geekdo-images.com/thumb.jpg", game.ThumbnailImageUrl);
+        Assert.Equal("https://cf.geekdo-images.com/full.jpg", game.ImageUrl);
         Assert.DoesNotContain(games, value => value.BggId == 2);
         Assert.Equal(2, requests.Count);
     }
@@ -97,6 +101,77 @@ public sealed class BoardGameGeekClientTests
         var game = await client.GetGameAsync(2, CancellationToken.None);
 
         Assert.Null(game);
+    }
+
+    [Fact]
+    public async Task GetGameDetailsAsync_ReturnsOnlyReliablyLinkedInboundExpansions()
+    {
+        var handler = new StubHttpMessageHandler(_ => XmlResponse(
+            HttpStatusCode.OK,
+            """
+            <items>
+              <item type="boardgame" id="167791">
+                <name type="primary" value="Terraforming Mars" />
+                <minplayers value="1" />
+                <maxplayers value="5" />
+                <link type="boardgameexpansion" id="247030" value="Terraforming Mars: Prelude" inbound="true" />
+                <link type="boardgameexpansion" id="231965" value="Terraforming Mars: Hellas &amp; Elysium" inbound="true" />
+                <link type="boardgameexpansion" id="999" value="Unrelated outbound link" />
+                <link type="boardgamecategory" id="1016" value="Science Fiction" inbound="true" />
+              </item>
+            </items>
+            """));
+        var client = CreateClient(handler);
+
+        var details = await client.GetGameDetailsAsync(167791, CancellationToken.None);
+
+        Assert.NotNull(details);
+        Assert.Equal("Terraforming Mars", details.Game.Name);
+        Assert.Collection(
+            details.Expansions,
+            expansion => Assert.Equal(231965, expansion.BggId),
+            expansion => Assert.Equal(247030, expansion.BggId));
+    }
+
+    [Fact]
+    public async Task OwnedBaseGamesAndExpansions_UseSeparateRequests_AndMapParentLinks()
+    {
+        var collectionQueries = new List<string>();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/xmlapi2/collection")
+            {
+                collectionQueries.Add(request.RequestUri.Query);
+                return request.RequestUri.Query.Contains("&subtype=boardgameexpansion&", StringComparison.Ordinal)
+                    ? XmlResponse(HttpStatusCode.OK, """
+                        <items><item objectid="20"><name>Expansion A</name><stats /></item></items>
+                        """)
+                    : XmlResponse(HttpStatusCode.OK, """
+                        <items><item objectid="10"><name>Base A</name><stats minplayers="2" maxplayers="4" /></item></items>
+                        """);
+            }
+
+            return request.RequestUri.Query.Contains("type=boardgameexpansion", StringComparison.Ordinal)
+                ? XmlResponse(HttpStatusCode.OK, """
+                    <items><item type="boardgameexpansion" id="20">
+                      <name type="primary" value="Expansion A" />
+                      <link type="boardgameexpansion" id="10" value="Base A" />
+                    </item></items>
+                    """)
+                : XmlResponse(HttpStatusCode.OK, """
+                    <items><item type="boardgame" id="10"><name type="primary" value="Base A" /></item></items>
+                    """);
+        });
+        var client = CreateClient(handler);
+
+        var bases = await client.GetOwnedBaseGamesAsync("owner", default);
+        var expansions = await client.GetOwnedExpansionsAsync("owner", default);
+
+        Assert.Equal(10, Assert.Single(bases).BggId);
+        Assert.Equal(20, Assert.Single(expansions).Expansion.BggId);
+        Assert.Equal([10L], expansions[0].ParentBggIds);
+        Assert.Contains(collectionQueries, value => value.Contains("subtype=boardgame&", StringComparison.Ordinal));
+        Assert.Contains(collectionQueries, value => value.Contains("subtype=boardgameexpansion", StringComparison.Ordinal));
     }
 
     private static BoardGameGeekClient CreateClient(HttpMessageHandler handler)

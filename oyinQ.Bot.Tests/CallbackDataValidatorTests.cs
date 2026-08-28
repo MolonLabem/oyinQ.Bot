@@ -5,6 +5,12 @@ namespace oyinQ.Bot.Tests;
 public sealed class CallbackDataValidatorTests
 {
     [Theory]
+    [InlineData("admin:camp:create")]
+    [InlineData("admin:camp:source:none")]
+    [InlineData("admin:camp:source:42")]
+    public void CampCreationCallbacks_AreAccepted(string value) =>
+        Assert.True(CallbackDataValidator.IsValid(value));
+    [Theory]
     [InlineData("admin:menu")]
     [InlineData("admin:export")]
     [InlineData("reg:edit")]
@@ -17,7 +23,6 @@ public sealed class CallbackDataValidatorTests
     [InlineData("collection:cancel")]
     [InlineData("collection:add:single")]
     [InlineData("collection:import:bgg:personal")]
-    [InlineData("collection:import:tesera:club")]
     [InlineData("interest:toggle:42")]
     [InlineData("session:menu")]
     [InlineData("session:active:0")]

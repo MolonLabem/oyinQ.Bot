@@ -10,7 +10,6 @@ using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Integrations;
 using oyinQ.Bot.Integrations.BoardGameGeek;
-using oyinQ.Bot.Integrations.Tesera;
 using Telegram.Bot;
 
 namespace oyinQ.Bot.Features.Collections;
@@ -87,7 +86,8 @@ public sealed class CollectionImportWorker(
         {
             var importId = await dbContext.CollectionImports
                 .Where(value => value.Status == ImportStatus.Pending
-                    && (bggAvailable || value.Provider != ExternalGameProvider.Bgg)
+                    && value.Provider == ExternalGameProvider.Bgg
+                    && bggAvailable
                     && !excludedImportIds.Contains(value.Id))
                 .OrderBy(value => value.CreatedAt)
                 .Select(value => (long?)value.Id)
@@ -127,21 +127,25 @@ public sealed class CollectionImportWorker(
 
         try
         {
-            if (import.Provider == ExternalGameProvider.Bgg)
+            if (import.Provider != ExternalGameProvider.Bgg)
             {
-                if (!bggOptions.Value.IsAvailable)
-                {
-                    await FailImportAsUnavailableAsync(import, dbContext, cancellationToken);
-                    return;
-                }
-
-                var client = scope.ServiceProvider.GetRequiredService<IBoardGameGeekClient>();
-                await ProcessBggAsync(import, client, dedupService, dbContext, cancellationToken);
+                import.Status = ImportStatus.Failed;
+                import.Error = "Этот источник импорта больше не поддерживается. Используйте BGG.";
+                import.CompletedAt = DateTimeOffset.UtcNow;
+                import.UpdatedAt = import.CompletedAt.Value;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await NotifyFailureSafeAsync(import, cancellationToken);
                 return;
             }
 
-            var teseraClient = scope.ServiceProvider.GetRequiredService<ITeseraClient>();
-            await ProcessTeseraAsync(import, teseraClient, dedupService, dbContext, cancellationToken);
+            if (!bggOptions.Value.IsAvailable)
+            {
+                await FailImportAsUnavailableAsync(import, dbContext, cancellationToken);
+                return;
+            }
+
+            var client = scope.ServiceProvider.GetRequiredService<IBoardGameGeekClient>();
+            await ProcessBggAsync(import, client, dedupService, dbContext, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -196,26 +200,6 @@ public sealed class CollectionImportWorker(
 
         import.Status = ImportStatus.Completed;
         import.CompletedAt = now;
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await NotifySuccessSafeAsync(import, cancellationToken);
-    }
-
-    private async Task ProcessTeseraAsync(
-        CollectionImport import,
-        ITeseraClient client,
-        GameDedupService dedupService,
-        AppDbContext dbContext,
-        CancellationToken cancellationToken)
-    {
-        var games = await client.GetOwnedCollectionAsync(import.ExternalUsername, cancellationToken);
-        var counts = await UpsertGamesAsync(import, games, dedupService, cancellationToken);
-        import.AddedCount += counts.Added;
-        import.SkippedCount += counts.Skipped;
-
-        var now = DateTimeOffset.UtcNow;
-        import.Status = ImportStatus.Completed;
-        import.CompletedAt = now;
-        import.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
         await NotifySuccessSafeAsync(import, cancellationToken);
     }
@@ -367,14 +351,11 @@ public sealed class CollectionImportWorker(
         Exception exception) =>
         exception switch
         {
-            TeseraUnavailableException tesera => tesera.Message,
             HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden }
                 when provider == ExternalGameProvider.Bgg
                 => "BGG отклонил запрос. Проверьте BGG_API_TOKEN и регистрацию приложения.",
             HttpRequestException when provider == ExternalGameProvider.Bgg
                 => "BGG временно не отвечает. Попробуйте импорт ещё раз позже.",
-            _ when provider == ExternalGameProvider.Tesera
-                => "Tesera временно недоступна. Попробуйте импорт ещё раз позже.",
             _ => "Не удалось импортировать коллекцию. Попробуйте позже."
         };
 

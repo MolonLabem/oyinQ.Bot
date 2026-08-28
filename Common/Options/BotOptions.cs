@@ -37,6 +37,7 @@ public sealed partial class BotOptions
                 throw new InvalidOperationException(
                     "PUBLIC_BASE_URL is required in webhook mode and must be an absolute HTTPS URL.");
             }
+
         }
 
         return new BotOptions

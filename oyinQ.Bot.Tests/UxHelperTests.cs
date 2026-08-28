@@ -1,33 +1,13 @@
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Integrations.Telegram;
-using oyinQ.Bot.Integrations.Tesera;
 
 namespace oyinQ.Bot.Tests;
 
 public sealed class UxHelperTests
 {
     [Theory]
-    [InlineData("https://tesera.ru/game/ark-nova", "ark-nova")]
-    [InlineData("https://www.tesera.ru/game/%D0%B8%D0%B3%D1%80%D0%B0/", "игра")]
-    [InlineData("tesera.ru/game/catan?foo=bar", "catan")]
-    public void TeseraGameUrlParser_ParsesGameAlias(string value, string expected)
-    {
-        Assert.Equal(expected, TeseraGameUrlParser.Parse(value));
-    }
-
-    [Theory]
-    [InlineData("https://tesera.ru/user/sardar")]
-    [InlineData("https://example.com/game/catan")]
-    [InlineData("catan")]
-    public void TeseraGameUrlParser_RejectsNonGameLinks(string value)
-    {
-        Assert.Null(TeseraGameUrlParser.Parse(value));
-    }
-
-    [Theory]
     [InlineData("https://boardgamegeek.com/boardgame/13", "🔗 Открыть BGG")]
-    [InlineData("https://tesera.ru/game/catan", "🔗 Открыть Tesera")]
     [InlineData("https://example.com/game/1", "🔗 Открыть страницу игры")]
     public void GameExternalLinkLabel_IsSourceAware(string url, string expected)
     {

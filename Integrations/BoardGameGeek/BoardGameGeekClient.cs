@@ -72,11 +72,57 @@ public sealed class BoardGameGeekClient(
         return games.GetValueOrDefault(bggId);
     }
 
+    public async Task<BggGameDetails?> GetGameDetailsAsync(
+        long bggId,
+        CancellationToken cancellationToken)
+    {
+        if (bggId <= 0)
+        {
+            return null;
+        }
+
+        var document = await GetXmlAsync(
+            $"/xmlapi2/thing?id={bggId}&type=boardgame&stats=1",
+            cancellationToken,
+            acceptedAttempts: ThingAttempts,
+            transientAttempts: ThingAttempts);
+        var item = document.Root?.Elements("item").SingleOrDefault();
+        var game = item is null ? null : ParseThing(item);
+        if (game is null)
+        {
+            return null;
+        }
+
+        var expansions = item!.Elements("link")
+            .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion", StringComparison.OrdinalIgnoreCase)
+                && string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
+            .Select(link =>
+            {
+                var id = ReadLongAttribute(link, "id");
+                var name = ((string?)link.Attribute("value"))?.Trim();
+                return id is null || string.IsNullOrWhiteSpace(name)
+                    ? null
+                    : new BggExpansion(id.Value, name);
+            })
+            .Where(value => value is not null)
+            .Cast<BggExpansion>()
+            .DistinctBy(value => value.BggId)
+            .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return new BggGameDetails(game, expansions);
+    }
+
     public async Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
         string username,
         CancellationToken cancellationToken)
+        => await GetOwnedBaseGamesAsync(username, cancellationToken);
+
+    public async Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(
+        string username,
+        CancellationToken cancellationToken)
     {
-        var collection = await FetchCollectionAsync(username, cancellationToken);
+        var collection = await FetchCollectionAsync(username, "boardgame", "boardgameexpansion", cancellationToken);
         if (collection.Count == 0)
         {
             return [];
@@ -92,6 +138,43 @@ public sealed class BoardGameGeekClient(
             .ToArray();
     }
 
+    public async Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(
+        string username,
+        CancellationToken cancellationToken)
+    {
+        var collection = await FetchCollectionAsync(username, "boardgameexpansion", null, cancellationToken);
+        if (collection.Count == 0) return [];
+
+        var result = new List<BggOwnedExpansion>();
+        var ids = collection.Select(value => value.BggId).Distinct().ToArray();
+        for (var offset = 0; offset < ids.Length; offset += ThingBatchSize)
+        {
+            if (offset > 0) await Task.Delay(ThingBatchDelay, cancellationToken);
+            var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
+            var document = await GetXmlAsync(
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgameexpansion&stats=1",
+                cancellationToken,
+                acceptedAttempts: ThingAttempts,
+                transientAttempts: ThingAttempts);
+            foreach (var item in document.Root?.Elements("item") ?? [])
+            {
+                var expansion = ParseThing(item, "boardgameexpansion");
+                if (expansion is null) continue;
+                var parentIds = item.Elements("link")
+                    .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
+                    .Select(link => ReadLongAttribute(link, "id"))
+                    .Where(value => value is > 0)
+                    .Select(value => value!.Value)
+                    .Distinct()
+                    .ToArray();
+                result.Add(new BggOwnedExpansion(expansion, parentIds));
+            }
+        }
+
+        return result;
+    }
+
     public async Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
         string username,
         int offset,
@@ -102,7 +185,7 @@ public sealed class BoardGameGeekClient(
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
 
-        var collection = await FetchCollectionAsync(username, cancellationToken);
+        var collection = await FetchCollectionAsync(username, "boardgame", "boardgameexpansion", cancellationToken);
         var slice = collection.Skip(offset).Take(limit).ToArray();
         if (slice.Length == 0)
         {
@@ -125,10 +208,15 @@ public sealed class BoardGameGeekClient(
 
     private async Task<IReadOnlyList<CollectionItem>> FetchCollectionAsync(
         string username,
+        string subtype,
+        string? excludedSubtype,
         CancellationToken cancellationToken)
     {
+        var exclude = string.IsNullOrWhiteSpace(excludedSubtype)
+            ? string.Empty
+            : $"&excludesubtype={Uri.EscapeDataString(excludedSubtype)}";
         var document = await GetXmlAsync(
-            $"/xmlapi2/collection?username={Uri.EscapeDataString(username)}&own=1&subtype=boardgame&excludesubtype=boardgameexpansion&stats=1",
+            $"/xmlapi2/collection?username={Uri.EscapeDataString(username)}&own=1&subtype={Uri.EscapeDataString(subtype)}{exclude}&stats=1",
             cancellationToken,
             acceptedAttempts: CollectionAcceptedAttempts);
 
@@ -231,11 +319,11 @@ public sealed class BoardGameGeekClient(
             ReadIntAttribute(stats, "maxplayers"));
     }
 
-    private static ExternalGame? ParseThing(XElement item)
+    private static ExternalGame? ParseThing(XElement item, string expectedType = "boardgame")
     {
         if (!string.Equals(
                 (string?)item.Attribute("type"),
-                "boardgame",
+                expectedType,
                 StringComparison.OrdinalIgnoreCase))
         {
             return null;
@@ -256,12 +344,13 @@ public sealed class BoardGameGeekClient(
 
         return new ExternalGame(
             bggId,
-            null,
             name,
             ReadIntValue(item.Element("minplayers")),
             ReadIntValue(item.Element("maxplayers")),
             BggBestPlayerCalculator.Calculate(item),
-            $"https://boardgamegeek.com/boardgame/{bggId.Value}");
+            $"https://boardgamegeek.com/boardgame/{bggId.Value}",
+            ReadImageUrl(item.Element("thumbnail")),
+            ReadImageUrl(item.Element("image")));
     }
 
     private static ExternalGame Merge(CollectionItem collectionItem, ExternalGame enriched) =>
@@ -275,6 +364,15 @@ public sealed class BoardGameGeekClient(
     {
         var value = (string?)element?.Attribute("value");
         return int.TryParse(value, out var parsed) ? parsed : null;
+    }
+
+    private static string? ReadImageUrl(XElement? element)
+    {
+        var value = element?.Value.Trim();
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "https" or "http"
+                ? uri.AbsoluteUri
+                : null;
     }
 
     private static int? ReadIntAttribute(XElement? element, string attributeName)

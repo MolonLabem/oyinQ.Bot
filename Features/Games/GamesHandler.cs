@@ -1,11 +1,10 @@
 using System.Net;
 using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
-using oyinQ.Bot.Integrations.Tesera;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -13,7 +12,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Games;
 
-public sealed partial class GamesHandler(
+public sealed class GamesHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     GameSearchService searchService,
@@ -949,45 +948,6 @@ public sealed partial class GamesHandler(
         string text,
         CancellationToken cancellationToken)
     {
-        var teseraAlias = TeseraGameUrlParser.Parse(text);
-        if (!string.IsNullOrWhiteSpace(teseraAlias))
-        {
-            try
-            {
-                var externalGame = await searchService.GetTeseraGameAsync(teseraAlias, cancellationToken);
-                if (externalGame is null)
-                {
-                    await botClient.SendMessage(
-                        chatId,
-                        "Tesera не вернула данные этой игры.\n\nПроверьте ссылку и попробуйте ещё раз.",
-                        cancellationToken: cancellationToken);
-                    return;
-                }
-
-                var game = await dedupService.FindOrCreateAsync(externalGame, cancellationToken);
-                await SendChooseBringStatusAsync(chatId, game.Id, game.Name, cancellationToken);
-                return;
-            }
-            catch (TeseraUnavailableException exception)
-            {
-                logger.LogWarning(exception, "Tesera manual game lookup failed for {Alias}.", teseraAlias);
-                await botClient.SendMessage(
-                    chatId,
-                    $"Tesera сейчас не отдала данные игры.\n\n{exception.Message}",
-                    cancellationToken: cancellationToken);
-                return;
-            }
-            catch (HttpRequestException exception)
-            {
-                logger.LogWarning(exception, "Tesera manual game request failed for {Alias}.", teseraAlias);
-                await botClient.SendMessage(
-                    chatId,
-                    "Tesera временно недоступна.\n\nПопробуйте позже.",
-                    cancellationToken: cancellationToken);
-                return;
-            }
-        }
-
         if (TryParseBggId(text, out var bggId))
         {
             var existingGame = await dbContext.Games
@@ -1007,7 +967,7 @@ public sealed partial class GamesHandler(
             {
                 await botClient.SendMessage(
                     chatId,
-                    $"Ссылку BGG распознал: ID {bggId}.\n\nЭтой игры ещё нет в каталоге, а без BGG API нельзя надёжно получить её название и метаданные. Ничего не добавлено.\n\nЕсли у игры есть страница Tesera, пришлите ссылку tesera.ru/game/... — этот путь работает независимо от BGG.",
+                    $"Ссылку BGG распознал: ID {bggId}.\n\nЭтой игры ещё нет в каталоге, а без BGG API нельзя надёжно получить её название и метаданные. Ничего не добавлено.",
                     replyMarkup: new InlineKeyboardMarkup([
                         [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                     ]),
@@ -1036,7 +996,7 @@ public sealed partial class GamesHandler(
                 logger.LogWarning(exception, "BGG manual game lookup failed for {BggId}.", bggId);
                 await botClient.SendMessage(
                     chatId,
-                    "BGG временно недоступен.\n\nИгра не добавлена без метаданных. Можно использовать ссылку Tesera.",
+                    "BGG временно недоступен.\n\nИгра не добавлена без метаданных.",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -1046,7 +1006,7 @@ public sealed partial class GamesHandler(
         {
             await botClient.SendMessage(
                 chatId,
-                "Поиск новой игры по названию использует BGG и сейчас недоступен.\n\nПришлите прямую ссылку Tesera на игру. Ссылку BGG тоже можно прислать: если игра уже есть в каталоге, бот добавит её вам без нового запроса к BGG.",
+                "Поиск новой игры по названию использует BGG и сейчас недоступен.\n\nСсылку BGG всё ещё можно прислать: если игра уже есть в каталоге, бот добавит её без нового запроса к BGG.",
                 replyMarkup: new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
@@ -1061,7 +1021,7 @@ public sealed partial class GamesHandler(
             {
                 await botClient.SendMessage(
                     chatId,
-                    "BGG ничего не нашёл.\n\nПопробуйте другое название, ссылку BGG или ссылку Tesera.",
+                    "BGG ничего не нашёл.\n\nПопробуйте другое название или ссылку BGG.",
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -1088,7 +1048,7 @@ public sealed partial class GamesHandler(
             logger.LogWarning(exception, "BGG manual game search failed.");
             await botClient.SendMessage(
                 chatId,
-                "BGG временно недоступен.\n\nМожно добавить игру по ссылке Tesera.",
+                "BGG временно недоступен. Попробуйте позже.",
                 cancellationToken: cancellationToken);
         }
     }
@@ -1118,7 +1078,7 @@ public sealed partial class GamesHandler(
             await RenderAsync(
                 callbackQuery,
                 chatId,
-                "BGG API сейчас недоступен, поэтому нельзя загрузить метаданные выбранной новой игры.\n\nИспользуйте ссылку Tesera или повторите после включения BGG.",
+                "BGG API сейчас недоступен, поэтому нельзя загрузить метаданные выбранной новой игры. Повторите после проверки BGG_API_TOKEN.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
@@ -1156,7 +1116,7 @@ public sealed partial class GamesHandler(
             await RenderAsync(
                 callbackQuery,
                 chatId,
-                "BGG временно недоступен.\n\nМожно добавить игру по ссылке Tesera.",
+                "BGG временно недоступен. Попробуйте позже.",
                 new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("← К добавлению игр", "collection:menu")]
                 ]),
@@ -1446,8 +1406,8 @@ public sealed partial class GamesHandler(
     }
 
     private string BuildManualAddPrompt() => searchService.IsBggAvailable
-        ? "Добавление одной игры\n\nОтправьте ссылку Tesera вида tesera.ru/game/... или ссылку BGG вида boardgamegeek.com/boardgame/12345.\n\nМожно также отправить название — поиск по названию использует BGG."
-        : "Добавление одной игры\n\nОтправьте ссылку Tesera вида tesera.ru/game/... .\n\nСсылку BGG тоже можно прислать: ID распознаётся без API, а уже известную каталогу игру можно добавить себе. Метаданные новой BGG-игры без API бот не выдумывает.";
+        ? "Добавление одной игры\n\nОтправьте ссылку BGG вида boardgamegeek.com/boardgame/12345 или название игры."
+        : "Добавление одной игры\n\nСсылку BGG можно прислать: ID распознаётся без API, а уже известную каталогу игру можно добавить себе. Метаданные новой игры без BGG API бот не выдумывает.";
 
     private static string BuildBackCallback(string context, int page)
     {
@@ -1505,9 +1465,9 @@ public sealed partial class GamesHandler(
 
     private static bool TryParseBggId(string value, out long bggId)
     {
-        bggId = default;
-        var match = BggUrlRegex().Match(value.Trim());
-        return match.Success && long.TryParse(match.Groups[1].Value, out bggId);
+        var parsed = BggGameUrlParser.Parse(value);
+        bggId = parsed.GetValueOrDefault();
+        return parsed.HasValue;
     }
 
     private static IReadOnlyList<string> SplitLines(
@@ -1537,11 +1497,6 @@ public sealed partial class GamesHandler(
     }
 
     private static string Encode(string value) => WebUtility.HtmlEncode(value);
-
-    [GeneratedRegex(
-        @"(?:https?://)?(?:www\.)?boardgamegeek\.com/boardgame/(\d+)(?:/[^\s]*)?",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex BggUrlRegex();
 
     private sealed record GameListItem(long Id, string Name, int InterestCount);
     private sealed record PageResult(IReadOnlyList<GameListItem> Items, bool HasMore);

@@ -1,18 +1,20 @@
-using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Normalization;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
+using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Games;
+using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Features.Interests;
+using oyinQ.Bot.Features.MiniApp;
 using oyinQ.Bot.Features.Registration;
 using oyinQ.Bot.Features.Sessions;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
-using oyinQ.Bot.Integrations.Tesera;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -27,40 +29,40 @@ if (string.IsNullOrWhiteSpace(connectionString))
 var botOptions = BotOptions.FromConfiguration(builder.Configuration);
 var campOptions = CampOptions.FromConfiguration(builder.Configuration);
 var bggOptions = BggOptions.FromConfiguration(builder.Configuration);
-var teseraOptions = TeseraOptions.FromConfiguration(builder.Configuration);
+var communityOptions = CommunityOptions.FromConfiguration(builder.Configuration);
 
 builder.Services.AddSingleton(Options.Create(botOptions));
 builder.Services.AddSingleton(Options.Create(campOptions));
 builder.Services.AddSingleton(Options.Create(bggOptions));
-builder.Services.AddSingleton(Options.Create(teseraOptions));
+builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddDbContext<AppDbContext>(
     options => options.UseNpgsql(connectionString));
 
-builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<IBoardGameGeekClient, BoardGameGeekClient>(client =>
 {
     client.BaseAddress = new Uri("https://boardgamegeek.com");
     client.Timeout = TimeSpan.FromSeconds(60);
 });
-builder.Services.AddHttpClient<ITeseraClient, TeseraClient>(client =>
-{
-    client.BaseAddress = teseraOptions.BaseAddress;
-    client.Timeout = TimeSpan.FromSeconds(30);
-
-    if (teseraOptions.ProxySecret is not null)
-    {
-        client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", teseraOptions.ProxySecret);
-    }
-});
-builder.Services.AddSingleton<TeseraAvailabilityService>();
 builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
 builder.Services.AddSingleton<GameNameNormalizer>();
 builder.Services.AddSingleton<SessionMessageFormatter>();
+builder.Services.AddSingleton<GatheringPresentationService>();
+builder.Services.AddSingleton<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
+builder.Services.AddSingleton<ICampChatValidator, TelegramCampChatValidator>();
+builder.Services.AddScoped<ICommunityStore, CommunityStore>();
+builder.Services.AddScoped<CommunityContextResolver>();
+builder.Services.AddScoped<CampCreationService>();
+builder.Services.AddScoped<ClubCollectionService>();
+builder.Services.AddScoped<CampContributionSelectionService>();
+builder.Services.AddScoped<CampBggImportService>();
+builder.Services.AddScoped<GatheringGameSelectionService>();
+builder.Services.AddScoped<GatheringService>();
+builder.Services.AddSingleton<TelegramMiniAppAuthenticator>();
+builder.Services.AddSingleton<GatheringTelegramPublisher>();
 builder.Services.AddScoped<RegistrationHandler>();
 builder.Services.AddScoped<GameDedupService>();
 builder.Services.AddScoped<GameSearchService>();
@@ -73,7 +75,6 @@ builder.Services.AddScoped<CollectionsHandler>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
-builder.Services.AddHostedService<TeseraAvailabilityMonitorService>();
 builder.Services.AddHostedService<CollectionImportWorker>();
 
 if (botOptions.UseLongPolling)
@@ -87,36 +88,97 @@ else
 
 var app = builder.Build();
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
+
+    var existingCommunities = await dbContext.OyinQCommunities
+        .Select(value => new { value.Key, value.TelegramChatId })
+        .ToArrayAsync();
+    var existingCommunityKeys = existingCommunities
+        .Select(value => value.Key)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var existingCommunityChatIds = existingCommunities
+        .Select(value => value.TelegramChatId)
+        .ToHashSet();
+    var now = DateTimeOffset.UtcNow;
+    foreach (var community in communityOptions.Communities.Where(value =>
+                 !existingCommunityKeys.Contains(value.Key)
+                 && !existingCommunityChatIds.Contains(value.TelegramChatId)))
+    {
+        var botChat = new OyinQCommunity
+        {
+            Key = community.Key,
+            Name = community.Name,
+            TelegramChatId = community.TelegramChatId,
+            Mode = community.Mode,
+            TimeZoneId = community.TimeZoneId,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        dbContext.OyinQCommunities.Add(botChat);
+        if (community.Mode == BotMode.Club)
+        {
+            dbContext.Clubs.Add(new Club
+            {
+                BotChat = botChat,
+                BotChatKey = community.Key,
+                Name = community.Name,
+                CollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+        else
+        {
+            dbContext.Camps.Add(new Camp
+            {
+                BotChat = botChat,
+                BotChatKey = community.Key,
+                Name = community.Name,
+                BaseCollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
+                Status = CampStatus.Active,
+                CreatedByTelegramUserId = 0,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+    }
+
+    await dbContext.SaveChangesAsync();
+
+    var missingClubs = await dbContext.OyinQCommunities
+        .Where(value => value.Mode == BotMode.Club && value.Club == null)
+        .ToArrayAsync();
+    dbContext.Clubs.AddRange(missingClubs.Select(value => new Club
+    {
+        BotChatKey = value.Key,
+        Name = value.Name,
+        CollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
+        CreatedAt = now,
+        UpdatedAt = now
+    }));
+    var missingCamps = await dbContext.OyinQCommunities
+        .Where(value => value.Mode == BotMode.Camp && value.Camp == null)
+        .ToArrayAsync();
+    dbContext.Camps.AddRange(missingCamps.Select(value => new Camp
+    {
+        BotChatKey = value.Key,
+        Name = value.Name,
+        BaseCollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
+        Status = CampStatus.Active,
+        CreatedByTelegramUserId = 0,
+        CreatedAt = now,
+        UpdatedAt = now
+    }));
+    await dbContext.SaveChangesAsync();
 }
 
 app.MapGet("/health", static () => Results.Ok());
-
-app.MapGet(
-    "/health/tesera",
-    async Task<IResult> (
-        TeseraAvailabilityService availabilityService,
-        CancellationToken cancellationToken) =>
-    {
-        var availability = await availabilityService.GetAsync(
-            forceRefresh: false,
-            cancellationToken);
-
-        var body = new
-        {
-            dependency = "tesera",
-            status = availability.IsAvailable ? "ok" : "unavailable",
-            reason = availability.Reason,
-            checkedAt = availability.CheckedAt
-        };
-
-        return availability.IsAvailable
-            ? Results.Ok(body)
-            : Results.Json(body, statusCode: StatusCodes.Status503ServiceUnavailable);
-    });
 
 app.MapPost(
     "/telegram/webhook/{secret}",
@@ -138,5 +200,8 @@ app.MapPost(
         await handler.HandleAsync(update, cancellationToken);
         return Results.Ok();
     });
+
+app.MapMiniAppEndpoints();
+app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html");
 
 app.Run();

@@ -3,7 +3,6 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Integrations;
 using oyinQ.Bot.Integrations.BoardGameGeek;
-using oyinQ.Bot.Integrations.Tesera;
 
 namespace oyinQ.Bot.Tests;
 
@@ -32,24 +31,21 @@ public sealed class GameSearchServiceAvailabilityTests
     }
 
     [Fact]
-    public async Task GetTeseraGameAsync_WhenBggDisabled_StillCallsTesera()
+    public async Task GetBggGameDetailsAsync_WhenBggDisabled_DoesNotCallClient()
     {
-        var tesera = new TrackingTeseraClient();
-        var service = CreateService(new TrackingBggClient(), tesera);
+        var client = new TrackingBggClient();
+        var service = CreateService(client);
 
-        await service.GetTeseraGameAsync("catan", default);
-
-        Assert.Equal(1, tesera.CallCount);
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.GetBggGameDetailsAsync(13, default));
+        Assert.Equal(0, client.CallCount);
     }
 
-    private static GameSearchService CreateService(
-        IBoardGameGeekClient client,
-        ITeseraClient? teseraClient = null) =>
+    private static GameSearchService CreateService(IBoardGameGeekClient client) =>
         new(
             null!,
             null!,
             client,
-            teseraClient ?? new TrackingTeseraClient(),
             Options.Create(new BggOptions()));
 
     private sealed class TrackingBggClient : IBoardGameGeekClient
@@ -70,6 +66,9 @@ public sealed class GameSearchServiceAvailabilityTests
             return Task.FromResult<ExternalGame?>(null);
         }
 
+        public Task<BggGameDetails?> GetGameDetailsAsync(long bggId, CancellationToken cancellationToken) =>
+            Task.FromResult<BggGameDetails?>(null);
+
         public Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
             string username,
             CancellationToken cancellationToken)
@@ -89,24 +88,4 @@ public sealed class GameSearchServiceAvailabilityTests
         }
     }
 
-    private sealed class TrackingTeseraClient : ITeseraClient
-    {
-        public int CallCount { get; private set; }
-
-        public Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
-            string username,
-            CancellationToken cancellationToken)
-        {
-            CallCount++;
-            return Task.FromResult<IReadOnlyList<ExternalGame>>([]);
-        }
-
-        public Task<ExternalGame?> GetGameByAliasAsync(
-            string alias,
-            CancellationToken cancellationToken)
-        {
-            CallCount++;
-            return Task.FromResult<ExternalGame?>(null);
-        }
-    }
 }

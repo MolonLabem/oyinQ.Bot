@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -15,6 +17,7 @@ public sealed class AdminHandler(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     CsvExportService csvExportService,
+    CampCreationService campCreationService,
     IOptions<CampOptions> campOptions,
     IOptions<BggOptions> bggOptions)
 {
@@ -105,6 +108,10 @@ public sealed class AdminHandler(
                 await ShowClubCollectionAsync(callbackQuery, telegramUserId, cancellationToken);
                 break;
 
+            case "admin:camp:create":
+                await BeginCampCreationAsync(callbackQuery, telegramUserId, cancellationToken);
+                break;
+
             case "admin:stats":
                 await ShowStatisticsAsync(callbackQuery, telegramUserId, cancellationToken);
                 break;
@@ -112,9 +119,196 @@ public sealed class AdminHandler(
             case "admin:export":
                 await ExportAsync(callbackQuery, telegramUserId, cancellationToken);
                 break;
+
+            default:
+                if (data.StartsWith("admin:camp:source:", StringComparison.Ordinal))
+                {
+                    await SelectCampSourceAsync(callbackQuery, telegramUserId, data, cancellationToken);
+                }
+                break;
         }
 
         return true;
+    }
+
+    public async Task<bool> TryHandleMessageAsync(
+        Participant participant,
+        Message message,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAdmin(participant.TelegramUserId)) return false;
+        var state = await dbContext.ParticipantConversationStates
+            .SingleOrDefaultAsync(value => value.ParticipantId == participant.Id, cancellationToken);
+        if (state is null || !state.State.StartsWith("admin:camp:", StringComparison.Ordinal)) return false;
+
+        if (state.State == "admin:camp:name" && !string.IsNullOrWhiteSpace(message.Text))
+        {
+            var name = message.Text.Trim();
+            if (name.Length > 160)
+            {
+                await botClient.SendMessage(message.Chat.Id, "Название должно быть не длиннее 160 символов.", cancellationToken: cancellationToken);
+                return true;
+            }
+
+            state.State = "admin:camp:source";
+            state.DataJson = JsonSerializer.Serialize(new CampCreationState(name, null));
+            state.UpdatedAt = DateTimeOffset.UtcNow;
+            state.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            var clubs = await dbContext.Clubs.AsNoTracking().OrderBy(value => value.Name).ToArrayAsync(cancellationToken);
+            var rows = clubs.Select(value => new[]
+            {
+                InlineKeyboardButton.WithCallbackData(value.Name, $"admin:camp:source:{value.Id}")
+            }).ToList();
+            rows.Add([InlineKeyboardButton.WithCallbackData("Без коллекции клуба", "admin:camp:source:none")]);
+            await botClient.SendMessage(
+                message.Chat.Id,
+                "Использовать снимок коллекции клуба как основу кэмпа?",
+                replyMarkup: new InlineKeyboardMarkup(rows),
+                cancellationToken: cancellationToken);
+            return true;
+        }
+
+        if (state.State == "admin:camp:chat" && message.ChatShared is { } sharedChat)
+        {
+            if (sharedChat.RequestId != 2401)
+            {
+                await botClient.SendMessage(message.Chat.Id, "Telegram вернул неизвестный запрос выбора группы. Начните создание кэмпа заново.", cancellationToken: cancellationToken);
+                return true;
+            }
+            var data = JsonSerializer.Deserialize<CampCreationState>(state.DataJson ?? "{}")
+                ?? throw new InvalidOperationException("Состояние создания кэмпа повреждено.");
+            try
+            {
+                var key = $"camp-{DateTimeOffset.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..27];
+                var timeZoneId = data.SourceClubId is { } sourceClubId
+                    ? await dbContext.Clubs.Where(value => value.Id == sourceClubId)
+                        .Select(value => value.BotChat.TimeZoneId)
+                        .SingleAsync(cancellationToken)
+                    : "Asia/Qyzylorda";
+                var camp = await campCreationService.CreateAsync(
+                    new CreateCampCommand(
+                        key,
+                        data.Name,
+                        sharedChat.ChatId,
+                        timeZoneId,
+                        participant.TelegramUserId,
+                        data.SourceClubId),
+                    cancellationToken);
+                dbContext.ParticipantConversationStates.Remove(state);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await botClient.SendMessage(
+                    message.Chat.Id,
+                    $"✅ Кэмп «{camp.Name}» создан. Бот проверил доступ к выбранной группе.",
+                    replyMarkup: new ReplyKeyboardRemove(),
+                    cancellationToken: cancellationToken);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException)
+            {
+                await botClient.SendMessage(
+                    message.Chat.Id,
+                    $"Не удалось создать кэмп: {exception.Message}",
+                    cancellationToken: cancellationToken);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task BeginCampCreationAsync(
+        CallbackQuery callbackQuery,
+        long telegramUserId,
+        CancellationToken cancellationToken)
+    {
+        var participant = await dbContext.Participants.SingleAsync(
+            value => value.TelegramUserId == telegramUserId,
+            cancellationToken);
+        await SetStateAsync(participant.Id, "admin:camp:name", null, cancellationToken);
+        await botClient.SendMessage(
+            telegramUserId,
+            "Введите название нового кэмпа.",
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task SelectCampSourceAsync(
+        CallbackQuery callbackQuery,
+        long telegramUserId,
+        string data,
+        CancellationToken cancellationToken)
+    {
+        var participant = await dbContext.Participants.SingleAsync(
+            value => value.TelegramUserId == telegramUserId,
+            cancellationToken);
+        var state = await dbContext.ParticipantConversationStates.SingleOrDefaultAsync(
+            value => value.ParticipantId == participant.Id && value.State == "admin:camp:source",
+            cancellationToken);
+        if (state is null)
+        {
+            await botClient.AnswerCallbackQuery(callbackQuery.Id, "Сценарий устарел. Начните создание кэмпа заново.", showAlert: true, cancellationToken: cancellationToken);
+            return;
+        }
+
+        var current = JsonSerializer.Deserialize<CampCreationState>(state.DataJson ?? "{}")
+            ?? throw new InvalidOperationException("Состояние создания кэмпа повреждено.");
+        var sourceValue = data["admin:camp:source:".Length..];
+        long? sourceClubId = null;
+        var parsedClubId = 0L;
+        if (!string.Equals(sourceValue, "none", StringComparison.Ordinal)
+            && !long.TryParse(sourceValue, out parsedClubId))
+        {
+            await botClient.AnswerCallbackQuery(callbackQuery.Id, "Клуб не найден.", showAlert: true, cancellationToken: cancellationToken);
+            return;
+        }
+        else if (!string.Equals(sourceValue, "none", StringComparison.Ordinal))
+        {
+            sourceClubId = parsedClubId;
+        }
+
+        state.State = "admin:camp:chat";
+        state.DataJson = JsonSerializer.Serialize(current with { SourceClubId = sourceClubId });
+        state.UpdatedAt = DateTimeOffset.UtcNow;
+        state.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var requestChat = new KeyboardButtonRequestChat
+        {
+            RequestId = 2401,
+            ChatIsChannel = false,
+            BotIsMember = true,
+            RequestTitle = true
+        };
+        await botClient.SendMessage(
+            telegramUserId,
+            "Выберите Telegram-группу для кэмпа. Telegram передаст ID и название; после этого бот отдельно проверит доступ к группе.",
+            replyMarkup: new ReplyKeyboardMarkup([[new KeyboardButton("Выбрать группу") { RequestChat = requestChat }]])
+            {
+                ResizeKeyboard = true,
+                OneTimeKeyboard = true
+            },
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task SetStateAsync(
+        long participantId,
+        string stateName,
+        string? dataJson,
+        CancellationToken cancellationToken)
+    {
+        var state = await dbContext.ParticipantConversationStates.SingleOrDefaultAsync(
+            value => value.ParticipantId == participantId,
+            cancellationToken);
+        if (state is null)
+        {
+            state = new ParticipantConversationState { ParticipantId = participantId };
+            dbContext.ParticipantConversationStates.Add(state);
+        }
+        state.State = stateName;
+        state.DataJson = dataJson;
+        state.UpdatedAt = DateTimeOffset.UtcNow;
+        state.ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30);
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private async Task ShowParticipantsAsync(
@@ -275,22 +469,14 @@ public sealed class AdminHandler(
         {
             rows.Add(
             [
-                InlineKeyboardButton.WithCallbackData("BGG", "collection:import:bgg:club"),
-                InlineKeyboardButton.WithCallbackData("Tesera", "collection:import:tesera:club")
-            ]);
-        }
-        else
-        {
-            rows.Add(
-            [
-                InlineKeyboardButton.WithCallbackData("Tesera", "collection:import:tesera:club")
+                InlineKeyboardButton.WithCallbackData("BGG", "collection:import:bgg:club")
             ]);
         }
 
         rows.Add([InlineKeyboardButton.WithCallbackData("← Админ-панель", "admin:menu")]);
         var text = bggOptions.Value.IsAvailable
-            ? "🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными на мероприятии.\n\nВыберите источник."
-            : $"🏢 Коллекция клуба\n\nОтдельный админский импорт. Игры клуба считаются подтверждённо доступными на мероприятии.\n\n{BggUnavailableMessage}\n\nДля импорта сейчас доступна Tesera.";
+            ? "🏢 Коллекция клуба\n\nОтдельный админский импорт BGG. Игры клуба считаются подтверждённо доступными на мероприятии."
+            : $"🏢 Коллекция клуба\n\n{BggUnavailableMessage}";
 
         await SendOrEditAsync(
             callbackQuery,
@@ -470,11 +656,14 @@ public sealed class AdminHandler(
                 InlineKeyboardButton.WithCallbackData("🔥 Топ игр", "admin:top")
             ],
             [InlineKeyboardButton.WithCallbackData("🏢 Коллекция клуба", "admin:club")],
+            [InlineKeyboardButton.WithCallbackData("🏕 Создать кэмп", "admin:camp:create")],
             [
                 InlineKeyboardButton.WithCallbackData("📊 Статистика", "admin:stats"),
                 InlineKeyboardButton.WithCallbackData("📤 Экспорт", "admin:export")
             ]
         ]);
+
+    private sealed record CampCreationState(string Name, long? SourceClubId);
 
     private static InlineKeyboardMarkup BuildBackKeyboard() =>
         new(

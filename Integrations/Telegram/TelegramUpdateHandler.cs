@@ -5,6 +5,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Games;
 using oyinQ.Bot.Features.Interests;
 using oyinQ.Bot.Features.Registration;
@@ -26,8 +27,10 @@ public sealed class TelegramUpdateHandler(
     InterestsHandler interestsHandler,
     SessionsHandler sessionsHandler,
     AdminHandler adminHandler,
+    CommunityContextResolver communityContextResolver,
     IOptions<CampOptions> campOptions,
     IOptions<BggOptions> bggOptions,
+    IOptions<BotOptions> botOptions,
     ILogger<TelegramUpdateHandler> logger)
 {
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
@@ -73,44 +76,12 @@ public sealed class TelegramUpdateHandler(
             return;
         }
 
-        if (command == "/admin" && update.Message is { } adminMessage)
-        {
-            await adminHandler.HandleCommandAsync(
-                adminMessage,
-                telegramUser.Id,
-                cancellationToken);
-            return;
-        }
-
-        if (callbackQuery is { Data: { } adminCallbackData } adminCallback
-            && adminCallbackData.StartsWith("admin:", StringComparison.Ordinal))
-        {
-            if (!IsAdmin(telegramUser.Id))
-            {
-                await botClient.AnswerCallbackQuery(
-                    adminCallback.Id,
-                    "Доступ запрещён.",
-                    showAlert: true,
-                    cancellationToken: cancellationToken);
-                return;
-            }
-
-            await botClient.AnswerCallbackQuery(
-                adminCallback.Id,
-                cancellationToken: cancellationToken);
-            await adminHandler.TryHandleCallbackAsync(
-                adminCallback,
-                telegramUser.Id,
-                cancellationToken);
-            return;
-        }
-
         var participant = await dbContext.Participants
             .SingleOrDefaultAsync(
                 value => value.TelegramUserId == telegramUser.Id,
                 cancellationToken);
 
-        if (participant is null && command == "/start")
+        if (participant is null && (command == "/start" || command == "/admin" && IsAdmin(telegramUser.Id)))
         {
             var now = DateTimeOffset.UtcNow;
             participant = new Participant
@@ -147,6 +118,67 @@ public sealed class TelegramUpdateHandler(
             return;
         }
 
+        if (callbackQuery is { Data: { } adminCallbackData } adminCallback
+            && adminCallback.Message?.Chat.Type == ChatType.Private
+            && adminCallbackData.StartsWith("admin:", StringComparison.Ordinal))
+        {
+            await botClient.AnswerCallbackQuery(adminCallback.Id, cancellationToken: cancellationToken);
+            await adminHandler.TryHandleCallbackAsync(adminCallback, telegramUser.Id, cancellationToken);
+            return;
+        }
+
+        if (update.Message is { Chat.Type: ChatType.Private } adminMessage
+            && (command == "/admin" || adminMessage.Text is "🛠 Админ" or "🛠 Админ-панель"))
+        {
+            await adminHandler.HandleCommandAsync(adminMessage, telegramUser.Id, cancellationToken);
+            return;
+        }
+
+        if (update.Message is { Chat.Type: ChatType.Private } adminFlowMessage
+            && await adminHandler.TryHandleMessageAsync(participant, adminFlowMessage, cancellationToken))
+        {
+            return;
+        }
+
+        if (command == "/start" && update.Message is { Chat.Type: ChatType.Private } startMessage)
+        {
+            var startContext = MiniAppStartParameter.Parse(startMessage.Text);
+            await SendMiniAppEntryAsync(
+                participant,
+                startMessage.Chat.Id,
+                telegramUser.Id,
+                startContext,
+                cancellationToken);
+            return;
+        }
+
+        if (update.Message is { Chat.Type: ChatType.Private } privateMessage)
+        {
+            await SendMiniAppEntryAsync(
+                participant,
+                privateMessage.Chat.Id,
+                telegramUser.Id,
+                null,
+                cancellationToken);
+            return;
+        }
+
+        if (callbackQuery is { } privateCallback
+            && privateCallback.Message?.Chat.Type == ChatType.Private)
+        {
+            await botClient.AnswerCallbackQuery(
+                privateCallback.Id,
+                "Это действие перенесено в Mini App.",
+                cancellationToken: cancellationToken);
+            await SendMiniAppEntryAsync(
+                participant,
+                privateCallback.Message.Chat.Id,
+                telegramUser.Id,
+                null,
+                cancellationToken);
+            return;
+        }
+
         var conversationState = await dbContext.ParticipantConversationStates
             .SingleOrDefaultAsync(
                 value => value.ParticipantId == participant.Id,
@@ -172,16 +204,20 @@ public sealed class TelegramUpdateHandler(
             switch (command)
             {
                 case "/start":
-                    await registrationHandler.HandleStartAsync(
+                    await SendMiniAppEntryAsync(
                         participant,
-                        commandMessage,
+                        commandMessage.Chat.Id,
+                        telegramUser.Id,
+                        null,
                         cancellationToken);
                     return;
 
                 case "/menu":
-                    await registrationHandler.HandleMenuAsync(
+                    await SendMiniAppEntryAsync(
                         participant,
-                        commandMessage,
+                        commandMessage.Chat.Id,
+                        telegramUser.Id,
+                        null,
                         cancellationToken);
                     return;
             }
@@ -231,7 +267,7 @@ public sealed class TelegramUpdateHandler(
             {
                 await botClient.AnswerCallbackQuery(
                     callback.Id,
-                    "BGG API пока недоступен. Используйте Tesera или повторите после включения BGG.",
+                    "BGG API пока недоступен. Повторите после проверки BGG_API_TOKEN.",
                     showAlert: true,
                     cancellationToken: cancellationToken);
                 return;
@@ -406,12 +442,16 @@ public sealed class TelegramUpdateHandler(
             var me = await botClient.GetMe(cancellationToken);
             if (!string.IsNullOrWhiteSpace(me.Username))
             {
-                var url = $"https://t.me/{me.Username}?start=menu";
+                var community = await communityContextResolver.ResolveByChatIdAsync(
+                    groupChatId,
+                    cancellationToken);
+                var startParameter = community is null ? "menu" : $"community-{community.Key}";
+                var url = $"https://t.me/{me.Username}?start={startParameter}";
                 await botClient.SendMessage(
                     groupChatId,
-                    "Меню, поиск, импорт и управление выполняются в личном чате. В группе остаются сообщения сборов и точки входа.",
+                    "OyinQ работает в Mini App. В группе остаются объявления, уведомления и точки входа.",
                     replyMarkup: new InlineKeyboardMarkup([
-                        [InlineKeyboardButton.WithUrl("Открыть бота", url)]
+                        [InlineKeyboardButton.WithUrl("Открыть OyinQ", url)]
                     ]),
                     cancellationToken: cancellationToken);
                 return;
@@ -491,6 +531,100 @@ public sealed class TelegramUpdateHandler(
 
         var token = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)[0];
         return token.Split('@', 2)[0].ToLowerInvariant();
+    }
+
+    private async Task SendMiniAppEntryAsync(
+        Participant participant,
+        long privateChatId,
+        long telegramUserId,
+        MiniAppStartContext? startContext,
+        CancellationToken cancellationToken)
+    {
+        await botClient.SendMessage(
+            privateChatId,
+            "Открываем OyinQ в Mini App…",
+            replyMarkup: new ReplyKeyboardRemove(),
+            cancellationToken: cancellationToken);
+
+        IReadOnlyList<BotCommunity> communities;
+        try
+        {
+            if (startContext is not null)
+            {
+                var contextual = await communityContextResolver.ResolveAuthorizedAsync(
+                    startContext.CommunityKey,
+                    telegramUserId,
+                    cancellationToken);
+                communities = contextual is null ? [] : [contextual];
+            }
+            else
+            {
+                communities = await communityContextResolver.ResolveAuthorizedAsync(
+                    telegramUserId,
+                    cancellationToken);
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Could not verify OyinQ community access for {TelegramUserId}.", telegramUserId);
+            communities = [];
+        }
+
+        if (communities.Count == 0)
+        {
+            await botClient.SendMessage(
+                privateChatId,
+                "Не удалось подтвердить доступ ни к одному сообществу OyinQ. Откройте бота кнопкой из нужного группового чата или обратитесь к администратору.",
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (communities.Count == 1)
+        {
+            participant.ActiveCommunityKey = communities[0].Key;
+            participant.UpdatedAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (!Uri.TryCreate(botOptions.Value.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri)
+            || publicBaseUri.Scheme != Uri.UriSchemeHttps)
+        {
+            await botClient.SendMessage(
+                privateChatId,
+                "Mini App не настроено для этого окружения. Администратору нужно указать публичный HTTPS-адрес в PUBLIC_BASE_URL.",
+                cancellationToken: cancellationToken);
+            return;
+        }
+
+        var rows = communities
+            .Select(community => (IEnumerable<InlineKeyboardButton>)[
+                InlineKeyboardButton.WithWebApp(
+                    communities.Count == 1 ? "Открыть OyinQ" : community.Name,
+                    new WebAppInfo
+                    {
+                        Url = BuildMiniAppUrl(
+                            community,
+                            startContext?.GatheringPublicId)
+                    })
+            ])
+            .ToArray();
+
+        var title = communities.Count == 1
+            ? $"🎲 {communities[0].Name}\n\nОткройте OyinQ. Все основные действия теперь доступны в Mini App."
+            : "Выберите сообщество, которое хотите открыть в OyinQ:";
+        await botClient.SendMessage(
+            privateChatId,
+            title,
+            replyMarkup: new InlineKeyboardMarkup(rows),
+            cancellationToken: cancellationToken);
+    }
+
+    private string BuildMiniAppUrl(BotCommunity community, Guid? gatheringPublicId)
+    {
+        var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(community.Key)}";
+        return gatheringPublicId is null
+            ? url
+            : $"{url}&gathering={gatheringPublicId}";
     }
 
     private static string BuildDisplayName(User user)

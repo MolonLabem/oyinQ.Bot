@@ -6,7 +6,6 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Integrations;
 using oyinQ.Bot.Integrations.BoardGameGeek;
-using oyinQ.Bot.Integrations.Tesera;
 
 namespace oyinQ.Bot.Features.Games;
 
@@ -14,7 +13,6 @@ public sealed class GameSearchService(
     AppDbContext dbContext,
     GameNameNormalizer normalizer,
     IBoardGameGeekClient boardGameGeekClient,
-    ITeseraClient teseraClient,
     IOptions<BggOptions> bggOptions)
 {
     public bool IsBggAvailable => bggOptions.Value.IsAvailable;
@@ -35,10 +33,13 @@ public sealed class GameSearchService(
         return boardGameGeekClient.GetGameAsync(bggId, cancellationToken);
     }
 
-    public Task<ExternalGame?> GetTeseraGameAsync(
-        string alias,
-        CancellationToken cancellationToken) =>
-        teseraClient.GetGameByAliasAsync(alias, cancellationToken);
+    public Task<BggGameDetails?> GetBggGameDetailsAsync(
+        long bggId,
+        CancellationToken cancellationToken)
+    {
+        EnsureBggAvailable();
+        return boardGameGeekClient.GetGameDetailsAsync(bggId, cancellationToken);
+    }
 
     public async Task<IReadOnlyList<long>> SearchCatalogIdsAsync(
         string query,

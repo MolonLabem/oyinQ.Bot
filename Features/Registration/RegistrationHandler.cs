@@ -18,6 +18,7 @@ public sealed class RegistrationHandler(
 {
     private const string AwaitingAccommodationState = "registration:awaiting-accommodation";
     private const string AwaitingDisplayNameState = "registration:awaiting-display-name";
+    private const decimal AccommodationPricePerDay = 3000m;
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(30);
     private const string RegistrationIntro = """
         🍂 Осенний Астанинский Настолкомарафон-2026
@@ -172,11 +173,10 @@ public sealed class RegistrationHandler(
                 cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
 
-            var price = campOptions.Value.AccommodationPricePerDay;
             await botClient.EditMessageText(
                 chatId.Value,
                 callbackQuery.Message!.Id,
-                $"2/3. Нужно место в жилье?\n\nСтоимость — {price:0} ₸ за сутки с человека.",
+                $"2/3. Нужно место в жилье?\n\nСтоимость — {AccommodationPricePerDay:0} ₸ за сутки с человека.",
                 replyMarkup: Keyboards.Accommodation,
                 cancellationToken: cancellationToken);
             return true;

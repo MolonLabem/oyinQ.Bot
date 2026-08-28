@@ -29,13 +29,6 @@ public sealed class GameDedupService(
                 cancellationToken);
         }
 
-        if (game is null && !string.IsNullOrWhiteSpace(externalGame.TeseraAlias))
-        {
-            game = await dbContext.Games.SingleOrDefaultAsync(
-                value => value.TeseraAlias == externalGame.TeseraAlias,
-                cancellationToken);
-        }
-
         game ??= await dbContext.Games
             .OrderBy(value => value.Id)
             .FirstOrDefaultAsync(
@@ -48,13 +41,14 @@ public sealed class GameDedupService(
             game = new Game
             {
                 BggId = externalGame.BggId,
-                TeseraAlias = externalGame.TeseraAlias,
                 Name = externalGame.Name.Trim(),
                 NormalizedName = normalizedName,
                 MinPlayers = externalGame.MinPlayers,
                 MaxPlayers = externalGame.MaxPlayers,
                 BestPlayers = externalGame.BestPlayers,
                 ExternalUrl = externalGame.ExternalUrl,
+                ThumbnailImageUrl = externalGame.ThumbnailImageUrl,
+                ImageUrl = externalGame.ImageUrl,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -64,11 +58,12 @@ public sealed class GameDedupService(
         else
         {
             game.BggId ??= externalGame.BggId;
-            game.TeseraAlias ??= externalGame.TeseraAlias;
             game.MinPlayers ??= externalGame.MinPlayers;
             game.MaxPlayers ??= externalGame.MaxPlayers;
             game.BestPlayers ??= externalGame.BestPlayers;
             game.ExternalUrl ??= externalGame.ExternalUrl;
+            game.ThumbnailImageUrl ??= externalGame.ThumbnailImageUrl;
+            game.ImageUrl ??= externalGame.ImageUrl;
             game.UpdatedAt = now;
         }
 
