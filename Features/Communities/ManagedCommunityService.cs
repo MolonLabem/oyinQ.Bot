@@ -119,6 +119,27 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task CopyCampBaseCollectionAsync(long campId, long sourceClubId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var camp = await dbContext.Camps
+            .FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Кэмп не найден.");
+        var source = await dbContext.Clubs.AsNoTracking()
+            .Where(value => value.Id == sourceClubId)
+            .Select(value => new { value.Id, value.CollectionJson })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Исходный клуб не найден.");
+        _ = ClubCollectionSerializer.Deserialize(source.CollectionJson);
+        camp.SourceClubId = source.Id;
+        camp.BaseCollectionJson = source.CollectionJson;
+        camp.UpdatedAt = timeProvider.GetUtcNow();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private async Task<ManagedChatValidation> ValidateAvailableChatAsync(long chatId, long administratorId,
         CancellationToken cancellationToken)
     {

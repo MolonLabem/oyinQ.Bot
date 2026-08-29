@@ -79,6 +79,9 @@ internal static class GatheringEndpoints
             Status = gathering.Status.ToString(),
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanManage = manages,
+            CanEdit = manages && gathering.StartsAtUtc > now
+                && gathering.Status is not GatheringStatus.Completed and not GatheringStatus.Cancelled,
+            HasStarted = gathering.StartsAtUtc <= now,
             CanJoin = GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
             CanLeave = GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
             WaitlistPosition = waitPosition,

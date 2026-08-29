@@ -48,4 +48,30 @@ public sealed class GatheringRulesTests
         Assert.Throws<InvalidOperationException>(() =>
             GatheringRules.UpdatePresentation(gathering, "Описание", true, DateTimeOffset.UtcNow));
     }
+
+    [Fact]
+    public void Create_RejectsStartInPast()
+    {
+        var now = new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => GatheringRules.Create(
+            "club", new GatheringGameSnapshot(1, 10, "Игра", null, null, 2, 5, "4", []), 20,
+            now.AddMinutes(-1), 2, 4, 5, null, true, now));
+
+        Assert.Equal("Дата и время сбора должны быть в будущем.", exception.Message);
+    }
+
+    [Fact]
+    public void Update_RejectsNewStartInPast()
+    {
+        var now = new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero);
+        var gathering = GatheringRules.Create(
+            "club", new GatheringGameSnapshot(1, 10, "Игра", null, null, 2, 5, "4", []), 20,
+            now.AddHours(2), 2, 4, 5, null, true, now);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => GatheringRules.Update(
+            gathering, now.AddMinutes(-1), 2, 4, 5, null, true, [], now));
+
+        Assert.Equal("Дата и время сбора должны быть в будущем.", exception.Message);
+    }
 }

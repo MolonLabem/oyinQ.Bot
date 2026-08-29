@@ -85,6 +85,28 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
         await transaction.CommitAsync(cancellationToken);
     }
 
+    public async Task CopyFromClubAsync(
+        long clubId,
+        long sourceClubId,
+        long expectedRevision,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (clubId == sourceClubId)
+            throw new InvalidOperationException("Выберите другой клуб как источник коллекции.");
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var club = await LockClubAsync(clubId, cancellationToken);
+        EnsureRevision(club, expectedRevision);
+        var sourceJson = await dbContext.Clubs.AsNoTracking()
+            .Where(value => value.Id == sourceClubId)
+            .Select(value => value.CollectionJson)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Исходный клуб не найден.");
+        club.ReplaceCollection(ClubCollectionSerializer.Deserialize(sourceJson), now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private async Task<Club> LockClubAsync(long clubId, CancellationToken cancellationToken) =>
         await dbContext.Clubs
             .FromSqlInterpolated($"SELECT * FROM \"Clubs\" WHERE \"Id\" = {clubId} FOR UPDATE")

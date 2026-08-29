@@ -22,6 +22,8 @@ public sealed class GatheringManagementService(
     public async Task<GameGathering> CreateAsync(BotCommunity community, TelegramMiniAppIdentity identity,
         CreateGatheringCommand command, CancellationToken cancellationToken)
     {
+        var now = timeProvider.GetUtcNow();
+        GatheringRules.EnsureFutureStart(command.StartsAt, now);
         await EnsureCommunityMutationAllowedAsync(community, identity.TelegramUserId,
             command.StartsAt, cancellationToken);
         var participant = await GetOrCreateParticipantAsync(identity, community.Key, cancellationToken);
@@ -35,7 +37,7 @@ public sealed class GatheringManagementService(
         ValidateGamePlayerLimits(snapshot, command.MinimumPlayers, command.MaximumPlayers);
         var gathering = GatheringRules.Create(community.Key, snapshot, participant.Id,
             command.StartsAt, command.MinimumPlayers, command.DesiredPlayers, command.MaximumPlayers,
-            command.Description, command.CanTeachRules, timeProvider.GetUtcNow());
+            command.Description, command.CanTeachRules, now);
         dbContext.GameGatherings.Add(gathering);
         await dbContext.SaveChangesAsync(cancellationToken);
         return gathering;
@@ -44,6 +46,8 @@ public sealed class GatheringManagementService(
     public async Task<GameGathering> UpdateAsync(Guid publicId, string communityKey, long telegramUserId,
         UpdateGatheringCommand command, CancellationToken cancellationToken)
     {
+        var now = timeProvider.GetUtcNow();
+        GatheringRules.EnsureFutureStart(command.StartsAt, now);
         var gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
         var community = await dbContext.OyinQCommunities.AsNoTracking().SingleAsync(x => x.Key == communityKey,
             cancellationToken);
@@ -53,7 +57,7 @@ public sealed class GatheringManagementService(
             command.MinimumPlayers, command.MaximumPlayers);
         GatheringRules.Update(gathering, command.StartsAt, command.MinimumPlayers, command.DesiredPlayers,
             command.MaximumPlayers, command.Description, command.CanTeachRules,
-            command.SelectedExpansionIds, timeProvider.GetUtcNow());
+            command.SelectedExpansionIds, now);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         await dbContext.SaveChangesAsync(cancellationToken);
         return gathering;

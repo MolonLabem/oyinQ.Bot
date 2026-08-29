@@ -18,6 +18,8 @@ internal sealed record CreateCampRequest(Guid SelectionId, string? Name, DateOnl
 internal sealed record UpdateCommunityRequest(string Name, string TimeZoneId, bool IsActive);
 internal sealed record UpdateCampRequest(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
 internal sealed record ChangeCampStatusRequest(string Status);
+internal sealed record CopyClubCollectionRequest(long SourceClubId, long ExpectedRevision);
+internal sealed record CopyCampCollectionRequest(long SourceClubId);
 
 internal static class AdminEndpoints
 {
@@ -33,8 +35,10 @@ internal static class AdminEndpoints
         admin.MapDelete("/administrators/{telegramUserId:long}", RemoveAdministratorAsync);
         admin.MapPost("/clubs", CreateClubAsync);
         admin.MapPut("/clubs/{clubId:long}", UpdateClubAsync);
+        admin.MapPost("/clubs/{clubId:long}/collection/from-club", CopyClubCollectionAsync);
         admin.MapPost("/camps", CreateCampAsync);
         admin.MapPut("/camps/{campId:long}", UpdateCampAsync);
+        admin.MapPost("/camps/{campId:long}/base-collection/from-club", CopyCampCollectionAsync);
         admin.MapPost("/camps/{campId:long}/status", ChangeCampStatusAsync);
         admin.MapGet("/exports/statistics.zip", ExportAsync);
         return group;
@@ -58,7 +62,7 @@ internal static class AdminEndpoints
             {
                 x.Id, x.Name, TelegramTitle = x.BotChat.Name, x.BotChat.TimeZoneId,
                 Status = x.Status.ToString(), x.StartDate, x.EndDate,
-                SourceClubName = x.SourceClub == null ? null : x.SourceClub.Name,
+                x.SourceClubId, SourceClubName = x.SourceClub == null ? null : x.SourceClub.Name,
                 Registrations = x.Registrations.Count, Contributions = x.Contributions.Count,
                 Gatherings = x.BotChat.Gatherings.Count
             }).ToArrayAsync(cancellationToken);
@@ -204,6 +208,37 @@ internal static class AdminEndpoints
                 chat.TelegramChatId, timeZone, identity.TelegramUserId, body.SourceClubId,
                 body.StartDate, body.EndDate), cancellationToken);
             return Results.Created($"/api/miniapp/admin/camps/{camp.Id}", new { camp.Id, Status = camp.Status.ToString() });
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> CopyClubCollectionAsync(HttpRequest request, long clubId,
+        CopyClubCollectionRequest body, TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administrators, ClubCollectionService collections, TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        if (await AdminIdentityAsync(request, authenticator, administrators, cancellationToken) is null)
+            return Results.Forbid();
+        try
+        {
+            await collections.CopyFromClubAsync(clubId, body.SourceClubId, body.ExpectedRevision,
+                timeProvider.GetUtcNow(), cancellationToken);
+            return Results.NoContent();
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> CopyCampCollectionAsync(HttpRequest request, long campId,
+        CopyCampCollectionRequest body, TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administrators, ManagedCommunityService communities,
+        CancellationToken cancellationToken)
+    {
+        if (await AdminIdentityAsync(request, authenticator, administrators, cancellationToken) is null)
+            return Results.Forbid();
+        try
+        {
+            await communities.CopyCampBaseCollectionAsync(campId, body.SourceClubId, cancellationToken);
+            return Results.NoContent();
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }

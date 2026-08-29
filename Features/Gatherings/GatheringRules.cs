@@ -23,6 +23,7 @@ public static class GatheringRules
         ArgumentNullException.ThrowIfNull(gameSnapshot);
         GatheringGameSnapshotSerializer.Validate(gameSnapshot);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(organizerParticipantId);
+        EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
 
         return new GameGathering
@@ -89,6 +90,7 @@ public static class GatheringRules
         EnsureEditable(gathering);
         if (gathering.StartsAtUtc <= now.ToUniversalTime())
             throw new InvalidOperationException("Прошедший сбор нельзя редактировать.");
+        EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
         var confirmed = 1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed);
         if (maximumPlayers < confirmed)
@@ -120,6 +122,12 @@ public static class GatheringRules
         EnsureEditable(gathering);
         gathering.Status = GatheringStatus.Closed;
         gathering.UpdatedAt = now.ToUniversalTime();
+    }
+
+    public static void EnsureFutureStart(DateTimeOffset startsAt, DateTimeOffset now)
+    {
+        if (startsAt.ToUniversalTime() <= now.ToUniversalTime())
+            throw new InvalidOperationException("Дата и время сбора должны быть в будущем.");
     }
 
     public static void Reopen(GameGathering gathering, DateTimeOffset now)

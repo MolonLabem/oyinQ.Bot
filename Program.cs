@@ -68,6 +68,7 @@ builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
 builder.Services.AddHostedService<CampBggImportWorker>();
+builder.Services.AddHostedService<GatheringAutoCloseWorker>();
 
 if (botOptions.UseLongPolling)
 {
