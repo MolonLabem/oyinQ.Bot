@@ -6,14 +6,16 @@ namespace oyinQ.Bot.Features.Collections;
 
 public sealed record CampImportSelectionItem(long BggId, CampContributionItemType ItemType, long? ParentBggId,
     string Name, bool Selected, string? ThumbnailImageUrl = null, string? ImageUrl = null,
-    int? MinPlayers = null, int? MaxPlayers = null, string? BestPlayers = null);
+    int? MinPlayers = null, int? MaxPlayers = null, string? BestPlayers = null,
+    IReadOnlyList<string>? Types = null, IReadOnlyList<string>? Categories = null);
 
 public sealed record CampImportSelectionGroup(CampImportSelectionItem BaseGame,
     IReadOnlyList<CampImportSelectionItem> Expansions, bool ShowMissingBaseWarning);
 
 public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemType ItemType, long? ParentBggId,
-    string Name, int CopyCount, IReadOnlyList<CampCatalogProvider> Providers)
+    CampContributionSnapshot Snapshot, int CopyCount, IReadOnlyList<CampCatalogProvider> Providers)
 {
+    public string Name => Snapshot.Name;
     public IReadOnlyList<long> ContributorParticipantIds => Providers
         .Where(x => x.ParticipantId.HasValue).Select(x => x.ParticipantId!.Value).Distinct().Order().ToArray();
 }
@@ -26,7 +28,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext)
         IEnumerable<CampGameContribution> contributions) => contributions
         .GroupBy(x => new { x.BggId, x.ItemType, x.ParentBggId })
         .Select(group => new EffectiveCampCatalogItem(group.Key.BggId, group.Key.ItemType,
-            group.Key.ParentBggId, group.First().ReadSnapshot().Name,
+            group.Key.ParentBggId, RichestSnapshot(group.Select(value => value.ReadSnapshot())),
             group.Select(x => x.ParticipantId).Distinct().Count(),
             group.Select(x => new CampCatalogProvider(x.ParticipantId,
                 $"Participant {x.ParticipantId}", x.Source)).ToArray()))
@@ -130,12 +132,21 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext)
             .ToArrayAsync(cancellationToken);
         return values.GroupBy(x => new { x.Contribution.BggId, x.Contribution.ItemType, x.Contribution.ParentBggId })
             .Select(group => new EffectiveCampCatalogItem(group.Key.BggId, group.Key.ItemType,
-                group.Key.ParentBggId, group.First().Contribution.ReadSnapshot().Name,
+                group.Key.ParentBggId, RichestSnapshot(group.Select(value => value.Contribution.ReadSnapshot())),
                 group.Select(x => x.Contribution.ParticipantId).Distinct().Count(),
                 group.Select(x => new CampCatalogProvider(x.Contribution.ParticipantId,
                     x.PreferredDisplayName ?? x.DisplayName, x.Contribution.Source)).ToArray()))
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
+
+    private static CampContributionSnapshot RichestSnapshot(IEnumerable<CampContributionSnapshot> snapshots) =>
+        snapshots.OrderByDescending(snapshot =>
+            (snapshot.ThumbnailImageUrl is null ? 0 : 1)
+            + (snapshot.ImageUrl is null ? 0 : 1)
+            + (snapshot.MinPlayers.HasValue ? 1 : 0)
+            + (snapshot.MaxPlayers.HasValue ? 1 : 0)
+            + (snapshot.Types?.Count ?? 0)
+            + (snapshot.Categories?.Count ?? 0)).First();
 
     private async Task RequireActiveRegistrationAsync(long campId, long participantId,
         CancellationToken cancellationToken)

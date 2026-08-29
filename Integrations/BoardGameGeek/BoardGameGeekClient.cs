@@ -355,8 +355,25 @@ public sealed class BoardGameGeekClient(
             BggBestPlayerCalculator.Calculate(item),
             $"https://boardgamegeek.com/boardgame/{bggId.Value}",
             ReadImageUrl(item.Element("thumbnail")),
-            ReadImageUrl(item.Element("image")));
+            ReadImageUrl(item.Element("image")),
+            ReadTags(item, "boardgamesubdomain", NormalizeSubdomain),
+            ReadTags(item, "boardgamecategory"));
     }
+
+    private static IReadOnlyList<string> ReadTags(XElement item, string linkType,
+        Func<string, string>? normalize = null) => item.Elements("link")
+        .Where(link => string.Equals((string?)link.Attribute("type"), linkType,
+            StringComparison.OrdinalIgnoreCase))
+        .Select(link => ((string?)link.Attribute("value"))?.Trim())
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => normalize is null ? value! : normalize(value!))
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static string NormalizeSubdomain(string value) => value.EndsWith(" Games",
+        StringComparison.OrdinalIgnoreCase) ? value[..^6].TrimEnd() : value;
 
     private static ExternalGame Merge(CollectionItem collectionItem, ExternalGame enriched) =>
         enriched with

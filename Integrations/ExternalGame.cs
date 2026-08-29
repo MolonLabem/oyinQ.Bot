@@ -8,7 +8,9 @@ public sealed record ExternalGame(
     string? BestPlayers,
     string? ExternalUrl,
     string? ThumbnailImageUrl = null,
-    string? ImageUrl = null);
+    string? ImageUrl = null,
+    IReadOnlyList<string>? Types = null,
+    IReadOnlyList<string>? Categories = null);
 
 public sealed record ExternalCollectionStep(
     IReadOnlyList<ExternalGame> Games,

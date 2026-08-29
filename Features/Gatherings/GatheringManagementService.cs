@@ -32,6 +32,7 @@ public sealed class GatheringManagementService(
                     command.SelectedExpansionIds, cancellationToken)
                 : await gameSelection.FromCampCatalogAsync(community.Key, command.BggId,
                     command.SelectedExpansionIds, cancellationToken);
+        ValidateGamePlayerLimits(snapshot, command.MinimumPlayers, command.MaximumPlayers);
         var gathering = GatheringRules.Create(community.Key, snapshot, participant.Id,
             command.StartsAt, command.MinimumPlayers, command.DesiredPlayers, command.MaximumPlayers,
             command.Description, command.CanTeachRules, timeProvider.GetUtcNow());
@@ -48,12 +49,22 @@ public sealed class GatheringManagementService(
             cancellationToken);
         await EnsureCommunityMutationAllowedAsync(community.ToBotCommunity(), telegramUserId,
             command.StartsAt, cancellationToken);
+        ValidateGamePlayerLimits(GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson),
+            command.MinimumPlayers, command.MaximumPlayers);
         GatheringRules.Update(gathering, command.StartsAt, command.MinimumPlayers, command.DesiredPlayers,
             command.MaximumPlayers, command.Description, command.CanTeachRules,
             command.SelectedExpansionIds, timeProvider.GetUtcNow());
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         await dbContext.SaveChangesAsync(cancellationToken);
         return gathering;
+    }
+
+    private static void ValidateGamePlayerLimits(GatheringGameSnapshot snapshot, int minimum, int maximum)
+    {
+        if (snapshot.MinPlayers is { } gameMinimum && minimum < gameMinimum)
+            throw new InvalidOperationException($"Для «{snapshot.Name}» минимум игроков — {gameMinimum}.");
+        if (snapshot.MaxPlayers is { } gameMaximum && maximum > gameMaximum)
+            throw new InvalidOperationException($"Для «{snapshot.Name}» максимум игроков — {gameMaximum}.");
     }
 
     public async Task<GameGathering> ChangeLifecycleAsync(Guid publicId, string communityKey,

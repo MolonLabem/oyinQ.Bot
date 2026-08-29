@@ -18,7 +18,8 @@ internal sealed record CampMutationRequest(string CommunityKey);
 internal sealed record AddManualContributionRequest(string CommunityKey, string BggInput,
     IReadOnlyCollection<long>? ExpansionBggIds);
 internal sealed record CampCatalogResponse(long BggId, string ItemType, long? ParentBggId,
-    string Name, string? ThumbnailImageUrl, int CopyCount,
+    string Name, string? ThumbnailImageUrl, string? ImageUrl, int? MinPlayers, int? MaxPlayers,
+    string? BestPlayers, IReadOnlyList<string> Types, IReadOnlyList<string> Categories, int CopyCount,
     IReadOnlyList<CampCatalogProvider> Providers, IReadOnlyList<ClubCollectionExpansion> Expansions);
 
 internal static class CampEndpoints
@@ -196,12 +197,14 @@ internal static class CampEndpoints
             var game = details.Game;
             await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, bggId.Value,
                 CampContributionItemType.BaseGame, null, Snapshot(game.Name, game.ThumbnailImageUrl,
-                    game.ImageUrl, game.MinPlayers, game.MaxPlayers, game.BestPlayers),
+                    game.ImageUrl, game.MinPlayers, game.MaxPlayers, game.BestPlayers,
+                    game.Types, game.Categories),
                 DateTimeOffset.UtcNow, cancellationToken);
             foreach (var expansion in details.Expansions.Where(x => selected.Contains(x.BggId)))
                 await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, expansion.BggId,
                     CampContributionItemType.Expansion, bggId.Value,
-                    Snapshot(expansion.Name, null, null, null, null, null), DateTimeOffset.UtcNow, cancellationToken);
+                    Snapshot(expansion.Name, null, null, null, null, null, null, null),
+                    DateTimeOffset.UtcNow, cancellationToken);
             return Results.NoContent();
         }
         catch (Exception exception) when (exception is not HttpRequestException)
@@ -238,23 +241,36 @@ internal static class CampEndpoints
                 .Where(x => x.ItemType == CampContributionItemType.Expansion && x.ParentBggId == baseId)
                 .Select(x => new ClubCollectionExpansion(x.BggId, x.Name)))
             .DistinctBy(x => x.BggId).OrderBy(x => x.Name).ToArray();
-        var baseGames = collection.Games.Select(game => new CampCatalogResponse(
-            game.BggId, CampContributionItemType.BaseGame.ToString(), null, game.Name,
-            game.ThumbnailImageUrl,
-            1 + contributed.Where(x => x.BggId == game.BggId && x.ItemType == CampContributionItemType.BaseGame).Sum(x => x.CopyCount),
-            [new CampCatalogProvider(null, "Клуб", null), .. contributed.Where(x => x.BggId == game.BggId
-                && x.ItemType == CampContributionItemType.BaseGame).SelectMany(x => x.Providers)],
-            ExpansionsFor(game.BggId, game.Expansions)));
+        var baseGames = collection.Games.Select(game =>
+        {
+            var contribution = contributed.SingleOrDefault(x => x.BggId == game.BggId
+                && x.ItemType == CampContributionItemType.BaseGame);
+            return new CampCatalogResponse(
+                game.BggId, CampContributionItemType.BaseGame.ToString(), null, game.Name,
+                game.ThumbnailImageUrl ?? contribution?.Snapshot.ThumbnailImageUrl,
+                game.ImageUrl ?? contribution?.Snapshot.ImageUrl,
+                game.MinPlayers ?? contribution?.Snapshot.MinPlayers,
+                game.MaxPlayers ?? contribution?.Snapshot.MaxPlayers,
+                game.BestPlayers ?? contribution?.Snapshot.BestPlayers,
+                game.Types is { Count: > 0 } ? game.Types : contribution?.Snapshot.Types ?? [],
+                game.Categories is { Count: > 0 } ? game.Categories : contribution?.Snapshot.Categories ?? [],
+                1 + (contribution?.CopyCount ?? 0),
+                [new CampCatalogProvider(null, "Клуб", null), .. (contribution?.Providers ?? [])],
+                ExpansionsFor(game.BggId, game.Expansions));
+        });
         var extra = contributed.Where(x => x.ItemType == CampContributionItemType.BaseGame
             && collection.Games.All(game => game.BggId != x.BggId))
             .Select(x => new CampCatalogResponse(x.BggId, x.ItemType.ToString(), x.ParentBggId,
-                x.Name, null, x.CopyCount, x.Providers, ExpansionsFor(x.BggId, [])));
+                x.Name, x.Snapshot.ThumbnailImageUrl, x.Snapshot.ImageUrl, x.Snapshot.MinPlayers,
+                x.Snapshot.MaxPlayers, x.Snapshot.BestPlayers, x.Snapshot.Types ?? [],
+                x.Snapshot.Categories ?? [], x.CopyCount, x.Providers, ExpansionsFor(x.BggId, [])));
         return Results.Ok(baseGames.Concat(extra).OrderBy(x => x.Name));
     }
 
     private static CampContributionSnapshot Snapshot(string name, string? thumbnail, string? image,
-        int? min, int? max, string? best) => new(CampContributionSnapshot.CurrentVersion,
-        name, thumbnail, image, min, max, best);
+        int? min, int? max, string? best, IReadOnlyList<string>? types,
+        IReadOnlyList<string>? categories) => new(CampContributionSnapshot.CurrentVersion,
+        name, thumbnail, image, min, max, best, types, categories);
 
     private static async Task<(long CampId, long ParticipantId, IResult? Error)> OwnedCampAsync(
         HttpRequest request, string community, AppDbContext dbContext,

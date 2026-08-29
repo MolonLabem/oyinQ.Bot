@@ -70,7 +70,8 @@ internal static class CommunityEndpoints
             {
                 var snapshot = group.First().ReadSnapshot();
                 return new ClubCollectionGame(group.Key, snapshot.Name, snapshot.ThumbnailImageUrl,
-                    snapshot.ImageUrl, snapshot.MinPlayers, snapshot.MaxPlayers, snapshot.BestPlayers, []);
+                    snapshot.ImageUrl, snapshot.MinPlayers, snapshot.MaxPlayers, snapshot.BestPlayers, [],
+                    snapshot.Types, snapshot.Categories);
             })).OrderBy(x => x.Name));
     }
 }

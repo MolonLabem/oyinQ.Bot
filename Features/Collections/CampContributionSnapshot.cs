@@ -9,7 +9,9 @@ public sealed record CampContributionSnapshot(
     string? ImageUrl,
     int? MinPlayers,
     int? MaxPlayers,
-    string? BestPlayers)
+    string? BestPlayers,
+    IReadOnlyList<string>? Types = null,
+    IReadOnlyList<string>? Categories = null)
 {
     public const int CurrentVersion = 1;
 }
@@ -52,5 +54,8 @@ public static class CampContributionSnapshotSerializer
             throw new InvalidOperationException("Количество игроков во вкладе некорректно.");
         if (snapshot.BestPlayers?.Length > 64)
             throw new InvalidOperationException("Описание лучшего количества игроков слишком длинное.");
+        if ((snapshot.Types?.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ?? false)
+            || (snapshot.Categories?.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ?? false))
+            throw new InvalidOperationException("Теги игры во вкладе некорректны.");
     }
 }

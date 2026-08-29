@@ -16,7 +16,9 @@ public sealed record ClubCollectionGame(
     int? MinPlayers,
     int? MaxPlayers,
     string? BestPlayers,
-    IReadOnlyList<ClubCollectionExpansion> Expansions);
+    IReadOnlyList<ClubCollectionExpansion> Expansions,
+    IReadOnlyList<string>? Types = null,
+    IReadOnlyList<string>? Categories = null);
 
 public sealed record ClubCollectionExpansion(long BggId, string Name);
 
@@ -87,6 +89,9 @@ public static class ClubCollectionSerializer
             {
                 throw new InvalidOperationException($"Club collection game '{game.Name}' has invalid expansions.");
             }
+            if ((game.Types?.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ?? false)
+                || (game.Categories?.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ?? false))
+                throw new InvalidOperationException($"Club collection game '{game.Name}' has invalid tags.");
         }
     }
 }

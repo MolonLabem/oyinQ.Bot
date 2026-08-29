@@ -142,6 +142,8 @@ public sealed class BoardGameGeekClientTests
                 <name type="primary" value="Terraforming Mars" />
                 <minplayers value="1" />
                 <maxplayers value="5" />
+                <link type="boardgamesubdomain" id="5497" value="Strategy Games" />
+                <link type="boardgamecategory" id="1021" value="Economic" />
                 <link type="boardgameexpansion" id="247030" value="Terraforming Mars: Prelude" inbound="true" />
                 <link type="boardgameexpansion" id="231965" value="Terraforming Mars: Hellas &amp; Elysium" inbound="true" />
                 <link type="boardgameexpansion" id="999" value="Unrelated outbound link" />
@@ -155,6 +157,8 @@ public sealed class BoardGameGeekClientTests
 
         Assert.NotNull(details);
         Assert.Equal("Terraforming Mars", details.Game.Name);
+        Assert.Equal(["Strategy"], details.Game.Types);
+        Assert.Equal(["Economic", "Science Fiction"], details.Game.Categories);
         Assert.Collection(
             details.Expansions,
             expansion => Assert.Equal(231965, expansion.BggId),

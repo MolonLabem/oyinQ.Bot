@@ -35,6 +35,20 @@ public sealed class StabilizationDomainTests
     }
 
     [Fact]
+    public void CollectionAndContributionSnapshots_AcceptLegacyJsonWithoutTags()
+    {
+        var collection = ClubCollectionSerializer.Deserialize("""
+            {"version":1,"games":[{"bggId":10,"name":"Base","minPlayers":2,"maxPlayers":4,"expansions":[]}]}
+            """);
+        var contribution = CampContributionSnapshotSerializer.Deserialize("""
+            {"version":1,"name":"Base","minPlayers":2,"maxPlayers":4}
+            """);
+
+        Assert.Null(Assert.Single(collection.Games).Types);
+        Assert.Null(contribution.Categories);
+    }
+
+    [Fact]
     public void ImportDraft_DefaultsAllItemsAndRoundTripsAuthoritatively()
     {
         var draft = new CampBggImportDraft(1, "owner", [

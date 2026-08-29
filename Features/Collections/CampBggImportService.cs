@@ -23,7 +23,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                     value.ImageUrl,
                     value.MinPlayers,
                     value.MaxPlayers,
-                    value.BestPlayers))).ToArray());
+                    value.BestPlayers,
+                    value.Types,
+                    value.Categories))).ToArray());
     }
 
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
@@ -56,7 +58,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.ImageUrl,
                 value.MinPlayers,
                 value.MaxPlayers,
-                value.BestPlayers)));
+                value.BestPlayers,
+                value.Types,
+                value.Categories)));
         items.AddRange(expansions.Where(value => value.Expansion.BggId is > 0).Select(value =>
         {
             var parentId = value.ParentBggIds.FirstOrDefault(ownedBaseIds.Contains);
@@ -71,7 +75,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.Expansion.ImageUrl,
                 value.Expansion.MinPlayers,
                 value.Expansion.MaxPlayers,
-                value.Expansion.BestPlayers);
+                value.Expansion.BestPlayers,
+                value.Expansion.Types,
+                value.Expansion.Categories);
         }));
 
         return items
