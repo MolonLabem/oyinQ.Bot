@@ -7,6 +7,7 @@ export type Expansion = { bggId: number; name: string };
 export type ClubGame = { bggId: number; name: string; thumbnailImageUrl?: string; imageUrl?: string; minPlayers?: number; maxPlayers?: number; bestPlayers?: string; expansions: Expansion[] };
 export type ClubCollectionState = { collection: { version: number; games: ClubGame[] }; revision: number; updatedAt: string };
 export type BggDetails = { game: ClubGame; expansions: Expansion[] };
+export type BggSearchResult = { bggId: number; name: string; yearPublished?: number };
 export type GatheringCard = { publicId: string; gameName: string; imageUrl?: string; description?: string; rulesText: string; localDateTime: string; confirmedPlayers: number; desiredPlayers: number; maximumPlayers: number; statusText: string };
 export type GatheringListItem = { card: GatheringCard; status: string; publicationStatus: string; isOrganizer: boolean };
 export type GatheringDetail = { gathering: GatheringCard & { organizerName: string; minimumPlayers: number; expansions: string[] }; status: string; currentUserStatus: string; canManage: boolean; canJoin: boolean; canLeave: boolean; waitlistPosition?: number; confirmedParticipants: { name: string; isOrganizer: boolean }[]; waitlistedParticipants: { name: string; position: number }[]; publicationStatus: string; publicationError?: string; canRetryPublication: boolean; startsAtLocal: string; minimumPlayers: number; desiredPlayers: number; maximumPlayers: number; description?: string; canTeachRules: boolean; knownExpansions: Expansion[]; selectedExpansionIds: number[] };

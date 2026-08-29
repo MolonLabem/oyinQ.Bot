@@ -10,6 +10,34 @@ namespace oyinQ.Bot.Tests;
 public sealed class BoardGameGeekClientTests
 {
     [Fact]
+    public async Task SearchAsync_EncodesQuery_AndReturnsAtMostFivePrimaryNames()
+    {
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal("/xmlapi2/search", request.RequestUri!.AbsolutePath);
+            Assert.Contains("query=Terraforming%20Mars", request.RequestUri.Query, StringComparison.Ordinal);
+            Assert.Contains("type=boardgame", request.RequestUri.Query, StringComparison.Ordinal);
+            return XmlResponse(HttpStatusCode.OK, """
+                <items>
+                  <item id="1"><name type="alternate" value="Ignore me" /><name type="primary" value="Game 1" /><yearpublished value="2020" /></item>
+                  <item id="2"><name type="primary" value="Game 2" /></item>
+                  <item id="3"><name type="primary" value="Game 3" /></item>
+                  <item id="4"><name type="primary" value="Game 4" /></item>
+                  <item id="5"><name type="primary" value="Game 5" /></item>
+                  <item id="6"><name type="primary" value="Game 6" /></item>
+                </items>
+                """);
+        });
+
+        var games = await CreateClient(handler).SearchAsync("  Terraforming Mars  ", default);
+
+        Assert.Equal(5, games.Count);
+        Assert.Equal(new[] { "Game 1", "Game 2", "Game 3", "Game 4", "Game 5" },
+            games.Select(game => game.Name));
+        Assert.Equal(2020, games[0].YearPublished);
+    }
+
+    [Fact]
     public async Task GetOwnedCollectionAsync_RequestsBaseGames_AndRejectsExpansionThing()
     {
         var requests = new List<Uri>();

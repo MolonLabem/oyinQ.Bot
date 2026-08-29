@@ -5,6 +5,7 @@
 OyinQ is one ASP.NET Core .NET 10 application, one React Telegram Mini App, and one Telegram bot serving multiple PostgreSQL-backed communities. `BotMode` has exactly `Club` and `Camp`. Never branch on hard-coded chat IDs or duplicate identity, integrations, collections, or gathering stacks per mode.
 
 The Mini App is the primary application UI. It owns Camp registration, Club collections, Camp contributions, catalog/search, gathering creation and participation, and all administration. Telegram is a thin adapter limited to `/start`, contextual deep links, `/admin` entry, prepared native peer selection and its DM fallback, group gathering announcements, and notifications. Do not add reply-keyboard application menus or `game:`, `interest:`, `copy:`, `collection:`, `session:`, or `reg:` callback applications.
+The bot registers a default Mini App menu button plus `/start`, `/menu`, and `/admin` private-chat commands at webhook startup. `/menu` uses the same community-aware Mini App entry point as `/start`; `/admin` remains authorization-checked.
 
 Runtime community resolution uses PostgreSQL through `ICommunityStore` and `CommunityContextResolver`. `CommunityBootstrap:CommunitiesJson` is optional one-time bootstrap input that only inserts missing rows. A fresh installation may use it; an existing installation must start without it. Never restore a single-chat fallback. Community modes in new configuration are only `Club` and `Camp`.
 
@@ -29,6 +30,7 @@ Attendance is explicit: `Attended`, `NoShow`, `CancelledInAdvance`, or `Unknown`
 ## Integrations and background work
 
 BGG is the only external board-game provider. `BoardGameGeek:ApiToken` is server-only and optional; missing credentials must degrade gracefully. Tests use fake HTTP and never call live BGG. Expansion relationships come only from inbound BGG `boardgameexpansion` links.
+BGG name search is explicitly user-triggered, returns at most five lightweight results, and fetches full game details only after selection. Do not add background search polling or recurring catalog synchronization.
 
 Business code requests typed gathering notifications; Telegram is the delivery adapter. Persist time-based work in PostgreSQL using hosted services. Never schedule important work only with `Task.Delay`. Prefer editing one group announcement plus relevant DMs.
 
@@ -39,6 +41,7 @@ Mini App peer selection uses `PendingTelegramPeerSelections`, `savePreparedKeybo
 ## Configuration
 
 Use hierarchical .NET Options/configuration. Environment variables use `__`: `Database__ConnectionString`, `Telegram__Token`, `Telegram__WebhookSecret`, `Telegram__PublicBaseUrl`, and `BoardGameGeek__ApiToken`. `Administration__BootstrapTelegramUserIds` is an optional comma-separated, one-time bootstrap value; startup inserts missing IDs, while `OyinQAdministrators` is the runtime authorization source and the Mini App manages membership. Remove bootstrap configuration after setup so deleted administrators are not restored on restart. Stable defaults live in appsettings files. Development enables `Telegram:UseLongPolling`; production must use webhooks and must not set a long-polling deployment variable. Never commit secrets.
+Community timezones use validated IANA identifiers. Mini App admin forms use a native selectable timezone list; do not return to unrestricted timezone text inputs or assume Telegram provides a native timezone picker.
 
 Camp rows created from `CommunityBootstrap:CommunitiesJson` have no event dates, so they start as inactive drafts. Set their name, dates, and time zone in Mini App administration before activation.
 

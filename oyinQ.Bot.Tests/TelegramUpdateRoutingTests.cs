@@ -13,6 +13,8 @@ public sealed class TelegramUpdateRoutingTests
 
     [Theory]
     [InlineData("/start", true)]
+    [InlineData("/menu", true)]
+    [InlineData("/admin", true)]
     [InlineData("/games", false)]
     [InlineData("/addgame", false)]
     [InlineData("/wanted", false)]

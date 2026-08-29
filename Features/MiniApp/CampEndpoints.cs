@@ -67,7 +67,8 @@ internal static class CampEndpoints
         var camp = await dbContext.Camps.SingleAsync(x => x.BotChatKey == body.CommunityKey, cancellationToken);
         if (camp.Status != CampStatus.Active) return MiniAppEndpointSupport.Problem("camp_closed", "Кэмп не принимает регистрации.");
         if (camp.StartDate is not { } start || camp.EndDate is not { } end)
-            return MiniAppEndpointSupport.Problem("camp_dates_missing", "Для кэмпа не настроены даты.");
+            return MiniAppEndpointSupport.Problem("camp_dates_missing",
+                "Организатор ещё не указал даты кэмпа. Откройте настройки кэмпа в админ-панели.");
         try { CampRules.ValidateRegistrationDays(body.DaysStaying, start, end); }
         catch (ArgumentOutOfRangeException exception)
         { return MiniAppEndpointSupport.Problem("validation", exception.Message); }

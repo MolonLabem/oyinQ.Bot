@@ -71,7 +71,7 @@ public sealed class TelegramUpdateHandler(
             value => value.TelegramUserId == user.Id,
             cancellationToken);
         var isAdministrator = await administratorStore.IsAdministratorAsync(user.Id, cancellationToken);
-        if (participant is null && (command == "/start" || command == "/admin" && isAdministrator))
+        if (participant is null && (command is "/start" or "/menu" || command == "/admin" && isAdministrator))
         {
             var now = DateTimeOffset.UtcNow;
             participant = new Participant
@@ -104,7 +104,8 @@ public sealed class TelegramUpdateHandler(
         }
 
         var startContext = command == "/start" ? MiniAppStartParameter.Parse(message?.Text) : null;
-        await SendMiniAppEntryAsync(participant, user.Id, user.Id, startContext, cancellationToken);
+        await SendMiniAppEntryAsync(participant, user.Id, user.Id, startContext, isAdministrator,
+            cancellationToken);
     }
 
     private async Task SendPrivateEntryPointAsync(long groupChatId, CancellationToken cancellationToken)
@@ -137,6 +138,7 @@ public sealed class TelegramUpdateHandler(
         long privateChatId,
         long telegramUserId,
         MiniAppStartContext? startContext,
+        bool isAdministrator,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<BotCommunity> communities;
@@ -152,7 +154,7 @@ public sealed class TelegramUpdateHandler(
             communities = [];
         }
 
-        if (communities.Count == 0)
+        if (communities.Count == 0 && !isAdministrator)
         {
             await botClient.SendMessage(privateChatId, "Не удалось подтвердить доступ к сообществу OyinQ. Откройте бота кнопкой из нужного группового чата.", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
             return;
@@ -169,8 +171,17 @@ public sealed class TelegramUpdateHandler(
             InlineKeyboardButton.WithWebApp(
                 communities.Count == 1 ? "Открыть OyinQ" : community.Name,
                 new WebAppInfo { Url = BuildMiniAppUrl(community, startContext?.GatheringPublicId) })
-        ]).ToArray();
-        var text = communities.Count == 1
+        ]).ToList();
+        if (isAdministrator)
+        {
+            rows.Add([
+                InlineKeyboardButton.WithWebApp("Админ-панель",
+                    new WebAppInfo { Url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?admin=1" })
+            ]);
+        }
+        var text = communities.Count == 0
+            ? "Управление OyinQ доступно в админ-панели."
+            : communities.Count == 1
             ? $"🎲 {communities[0].Name}\n\nВсе основные действия доступны в Mini App."
             : "Выберите сообщество:";
         await botClient.SendMessage(privateChatId, text, replyMarkup: new InlineKeyboardMarkup(rows), cancellationToken: cancellationToken);

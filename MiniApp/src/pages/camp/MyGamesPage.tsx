@@ -12,11 +12,12 @@ export function MyGamesPage({ community, bggAvailable }: { community: Community;
   return <Contributions community={community} bggAvailable={bggAvailable} />;
 }
 
-export function CampRegistrationGate({ community, children }: { community: Community; children: ReactNode }) {
+export function CampRegistrationGate({ community, isAdministrator, children }: { community: Community; isAdministrator: boolean; children: ReactNode }) {
   const registration = useAsync(() => api<RegistrationState>(`/camp/registration?community=${encodeURIComponent(community.key)}`), [community.key]);
   if (registration.loading) return <Page title="Кэмп"><Loading /></Page>;
   if (registration.error) return <Page title="Кэмп"><ErrorState message={registration.error} retry={registration.reload} /></Page>;
-  if (!registration.data?.registration) return <Registration community={community} state={registration.data!} done={registration.reload} />;
+  if (!registration.data?.startDate || !registration.data.endDate) return <Page title="Кэмп ещё настраивается" subtitle={community.name}><Notice kind="warning">Организатор ещё не указал даты кэмпа. Регистрация и создание сборов станут доступны после настройки.</Notice>{isAdministrator && <a className="button primary-link" href="?admin=1">Указать даты в админ-панели</a>}</Page>;
+  if (!registration.data.registration) return <Registration community={community} state={registration.data} done={registration.reload} />;
   return <>{children}</>;
 }
 

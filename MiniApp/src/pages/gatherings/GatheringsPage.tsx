@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, json } from "../../api/client";
-import type { ClubGame, Community, GatheringDetail, GatheringListItem } from "../../api/types";
+import type { BggDetails, BggSearchResult, ClubGame, Community, GatheringDetail, GatheringListItem } from "../../api/types";
 import { Badge, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
@@ -26,13 +26,16 @@ function GatheringList({ community, open, create }: { community: Community; open
 }
 
 function CreateGathering({ community, bggAvailable, onDone }: { community: Community; bggAvailable: boolean; onDone: () => void }) {
-  const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key]);
+  const games = useAsync(() => api<ClubGame[]>(`${community.mode === "Camp" ? "/camp/catalog" : "/games"}?community=${encodeURIComponent(community.key)}`), [community.key, community.mode]);
   const [source, setSource] = useState<"catalog" | "bgg">("catalog"); const [query, setQuery] = useState(""); const [chosen, setChosen] = useState<ClubGame>();
-  const [bggInput, setBggInput] = useState(""); const [expansions, setExpansions] = useState<number[]>([]); const [starts, setStarts] = useState("");
+  const [bggInput, setBggInput] = useState(""); const [bggResults, setBggResults] = useState<BggSearchResult[]>([]); const [expansions, setExpansions] = useState<number[]>([]); const [starts, setStarts] = useState("");
   const [minimum, setMinimum] = useState(2); const [desired, setDesired] = useState(4); const [maximum, setMaximum] = useState(4);
   const [description, setDescription] = useState(""); const [teach, setTeach] = useState(true); const [reviewing, setReviewing] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>();
-  const filtered = useMemo(() => games.data?.filter(g => g.name.toLowerCase().includes(query.toLowerCase())) ?? [], [games.data, query]);
-  async function previewBgg() { setError(undefined); try { const value = await api<{ game: ClubGame; expansions: { bggId: number; name: string }[] }>(`/bgg/game?input=${encodeURIComponent(bggInput)}`); setChosen({ ...value.game, expansions: value.expansions }); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
+  const normalizedQuery = normalizeSearch(query);
+  const filtered = useMemo(() => games.data?.filter(game => normalizeSearch(game.name).includes(normalizedQuery)) ?? [], [games.data, normalizedQuery]);
+  function chooseSource(next: "catalog" | "bgg") { setSource(next); setChosen(undefined); setExpansions([]); setError(undefined); }
+  async function loadBgg(idOrUrl = bggInput) { setBusy(true); setError(undefined); try { const value = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(idOrUrl)}`); setChosen({ ...value.game, expansions: value.expansions }); setExpansions([]); setBggResults([]); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  async function searchBgg() { const value = bggInput.trim(); if (value.length < 2) return; setBusy(true); setError(undefined); setChosen(undefined); setExpansions([]); try { const results = await api<BggSearchResult[]>(`/bgg/search?query=${encodeURIComponent(value)}`); setBggResults(results); if (!results.length) setError("BGG не нашёл игр по этому названию."); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
   async function submit() {
     if (!chosen || !starts) { setError("Выберите игру, дату и время."); return; }
     setBusy(true); setError(undefined);
@@ -45,14 +48,22 @@ function CreateGathering({ community, bggAvailable, onDone }: { community: Commu
     return <Page title="Проверьте сбор" actions={<button onClick={() => setReviewing(false)}>Изменить</button>}><Card><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><p>{new Date(starts).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" })}</p></div></div><dl className="review-list"><dt>Игроки</dt><dd>{minimum} / {desired} / {maximum}</dd><dt>Дополнения</dt><dd>{selectedNames.length ? selectedNames.join(", ") : "Без дополнений"}</dd><dt>Правила</dt><dd>{teach ? "Объясню" : "Нужен опыт"}</dd><dt>Описание</dt><dd>{description.trim() || "Без описания"}</dd></dl></Card>{error && <Notice kind="danger">{error}</Notice>}<button className="primary sticky-action" disabled={busy} onClick={submit}>{busy ? "Создаём…" : "Подтвердить и создать"}</button></Page>;
   }
   return <Page title="Новый сбор" actions={<button onClick={onDone}>Назад</button>}>
-    <div className="segmented"><button className={source === "catalog" ? "active" : ""} onClick={() => { setSource("catalog"); setChosen(undefined); }}>Из каталога</button><button disabled={!bggAvailable} className={source === "bgg" ? "active" : ""} onClick={() => { setSource("bgg"); setChosen(undefined); }}>По ссылке BGG</button></div>
+    <div className="segmented"><button className={source === "catalog" ? "active" : ""} onClick={() => chooseSource("catalog")}>Каталог</button><button disabled={!bggAvailable} className={source === "bgg" ? "active" : ""} onClick={() => chooseSource("bgg")}>Поиск BGG</button></div>
     {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Создать сбор по игре из каталога по-прежнему можно.</Notice>}
-    {source === "catalog" ? <><Field label="Найти игру"><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Название игры" /></Field>{games.loading ? <Loading /> : <div className="game-grid">{filtered.map(game => <button className={`game-option ${chosen?.bggId === game.bggId ? "selected" : ""}`} onClick={() => { setChosen(game); setExpansions([]); }} key={game.bggId}><Cover src={game.thumbnailImageUrl} name={game.name} /><span>{game.name}</span></button>)}</div>}</> :
-      <Card><Field label="Ссылка на BoardGameGeek"><input value={bggInput} onChange={e => setBggInput(e.target.value)} placeholder="https://boardgamegeek.com/boardgame/…" /></Field><button onClick={previewBgg}>Показать игру</button></Card>}
+    {source === "catalog" ? <><Field label="Найти в каталоге" hint={games.data ? `Доступно игр: ${games.data.length}` : undefined}><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Введите часть названия" /></Field>{games.loading ? <Loading /> : games.error ? <ErrorState message={games.error} retry={games.reload} /> : !filtered.length ? <Empty>{query ? "По вашему запросу ничего не найдено." : "Каталог пока пуст."}</Empty> : <div className="game-grid">{filtered.map(game => <button className={`game-option ${chosen?.bggId === game.bggId ? "selected" : ""}`} onClick={() => { setChosen(game); setExpansions([]); }} key={game.bggId}><Cover src={game.thumbnailImageUrl} name={game.name} /><span>{game.name}</span></button>)}</div>}</> :
+      <Card className="form-grid"><Field label="Название или ссылка BoardGameGeek" hint="Поиск делает один лёгкий запрос и показывает до пяти результатов"><input type="search" value={bggInput} onChange={e => { setBggInput(e.target.value); setBggResults([]); }} onKeyDown={event => { if (event.key === "Enter") void searchBgg(); }} placeholder="Например, Terraforming Mars" /></Field><div className="row"><button className="primary" disabled={busy || bggInput.trim().length < 2} onClick={searchBgg}>{busy ? "Ищем…" : "Найти по названию"}</button><button disabled={busy || !looksLikeBggReference(bggInput)} onClick={() => loadBgg()}>Открыть ссылку</button></div>{bggResults.length > 0 && <div className="search-results" role="list" aria-label="Результаты поиска BGG">{bggResults.map(game => <button className="search-result" key={game.bggId} onClick={() => loadBgg(String(game.bggId))}><span><strong>{game.name}</strong><small>{game.yearPublished ? `${game.yearPublished} год` : "Год не указан"}</small></span><span aria-hidden>›</span></button>)}</div>}</Card>}
     {chosen && <Card><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><p>{chosen.minPlayers ?? "?"}–{chosen.maxPlayers ?? "?"} игроков</p></div></div>{chosen.expansions.length > 0 && <fieldset><legend>Дополнения</legend>{chosen.expansions.map(exp => <label className="check" key={exp.bggId}><input type="checkbox" checked={expansions.includes(exp.bggId)} onChange={() => setExpansions(current => current.includes(exp.bggId) ? current.filter(id => id !== exp.bggId) : [...current, exp.bggId])} />{exp.name}</label>)}</fieldset>}</Card>}
     <Card className="form-grid"><Field label="Дата и время"><input type="datetime-local" value={starts} onChange={e => setStarts(e.target.value)} /></Field><div className="limits"><Field label="Минимум"><input type="number" min="1" value={minimum} onChange={e => setMinimum(+e.target.value)} /></Field><Field label="Желаемо"><input type="number" min="1" value={desired} onChange={e => setDesired(+e.target.value)} /></Field><Field label="Максимум"><input type="number" min="1" value={maximum} onChange={e => setMaximum(+e.target.value)} /></Field></div><Field label="Описание"><textarea value={description} maxLength={300} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></Card>
     {error && <Notice kind="danger">{error}</Notice>}<button className="primary sticky-action" disabled={busy || !chosen} onClick={review}>Проверить сбор</button>
   </Page>;
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLocaleLowerCase("ru-RU").normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function looksLikeBggReference(value: string) {
+  return /^\d+$/.test(value.trim()) || /boardgamegeek\.com\/boardgame\//i.test(value);
 }
 
 function GatheringDetails({ community, id, onBack }: { community: Community; id: string; onBack: () => void }) {
