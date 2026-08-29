@@ -37,6 +37,7 @@ public static class GatheringRules
             MaximumPlayers = maximumPlayers,
             Description = NormalizeDescription(description),
             CanTeachRules = canTeachRules,
+            PublicationStatus = GatheringPublicationStatus.Pending,
             Status = minimumPlayers <= 1 ? GatheringStatus.Ready : GatheringStatus.Recruiting,
             CreatedAt = now.ToUniversalTime(),
             UpdatedAt = now.ToUniversalTime(),
@@ -74,6 +75,76 @@ public static class GatheringRules
         }
     }
 
+    public static void Update(
+        GameGathering gathering,
+        DateTimeOffset startsAt,
+        int minimumPlayers,
+        int desiredPlayers,
+        int maximumPlayers,
+        string? description,
+        bool canTeachRules,
+        IReadOnlyCollection<long> selectedExpansionIds,
+        DateTimeOffset now)
+    {
+        EnsureEditable(gathering);
+        if (gathering.StartsAtUtc <= now.ToUniversalTime())
+            throw new InvalidOperationException("Прошедший сбор нельзя редактировать.");
+        ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
+        var confirmed = 1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed);
+        if (maximumPlayers < confirmed)
+            throw new InvalidOperationException("Максимум игроков не может быть меньше числа подтверждённых участников.");
+
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        var known = snapshot.KnownExpansions ?? snapshot.SelectedExpansions;
+        if (selectedExpansionIds.Any(id => known.All(x => x.BggId != id)))
+            throw new InvalidOperationException("Выбрано неизвестное дополнение.");
+        var selected = known.Where(x => selectedExpansionIds.Contains(x.BggId)).ToArray();
+        snapshot = snapshot with { Version = GatheringGameSnapshot.CurrentVersion,
+            SelectedExpansions = selected, KnownExpansions = known };
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot);
+        gathering.Expansions.Clear();
+        foreach (var expansion in selected)
+            gathering.Expansions.Add(new GameGatheringExpansion { BggId = expansion.BggId, Name = expansion.Name });
+        gathering.StartsAtUtc = startsAt.ToUniversalTime();
+        gathering.MinimumPlayers = minimumPlayers;
+        gathering.DesiredPlayers = desiredPlayers;
+        gathering.MaximumPlayers = maximumPlayers;
+        gathering.Description = NormalizeDescription(description);
+        gathering.CanTeachRules = canTeachRules;
+        RecalculateStatus(gathering);
+        gathering.UpdatedAt = now.ToUniversalTime();
+    }
+
+    public static void Close(GameGathering gathering, DateTimeOffset now)
+    {
+        EnsureEditable(gathering);
+        gathering.Status = GatheringStatus.Closed;
+        gathering.UpdatedAt = now.ToUniversalTime();
+    }
+
+    public static void Reopen(GameGathering gathering, DateTimeOffset now)
+    {
+        if (gathering.Status != GatheringStatus.Closed)
+            throw new InvalidOperationException("Возобновить можно только закрытую запись.");
+        if (gathering.StartsAtUtc <= now.ToUniversalTime())
+            throw new InvalidOperationException("Нельзя возобновить запись на прошедший сбор.");
+        RecalculateStatus(gathering);
+        gathering.UpdatedAt = now.ToUniversalTime();
+    }
+
+    public static void Cancel(GameGathering gathering, string? reason, DateTimeOffset now)
+    {
+        if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
+            throw new InvalidOperationException("Сбор уже завершён или отменён.");
+        var normalized = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (normalized?.Length > CancellationReasonMaxLength)
+            throw new ArgumentException($"Причина отмены не может быть длиннее {CancellationReasonMaxLength} символов.");
+        gathering.Status = GatheringStatus.Cancelled;
+        gathering.CancellationReason = normalized;
+        gathering.CancelledAt = now.ToUniversalTime();
+        gathering.UpdatedAt = now.ToUniversalTime();
+    }
+
     public static string? NormalizeDescription(string? description)
     {
         var normalized = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
@@ -93,5 +164,12 @@ public static class GatheringRules
         {
             throw new InvalidOperationException("Completed or cancelled gatherings cannot be edited.");
         }
+    }
+
+    private static void RecalculateStatus(GameGathering gathering)
+    {
+        var confirmed = 1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed);
+        gathering.Status = confirmed >= gathering.MaximumPlayers ? GatheringStatus.Full
+            : confirmed >= gathering.MinimumPlayers ? GatheringStatus.Ready : GatheringStatus.Recruiting;
     }
 }

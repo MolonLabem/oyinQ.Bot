@@ -18,6 +18,7 @@ public sealed class TelegramUpdateHandler(
     AdminHandler adminHandler,
     CommunityContextResolver communityContextResolver,
     IAdministratorStore administratorStore,
+    TelegramPeerSelectionService peerSelectionService,
     IOptions<BotOptions> botOptions,
     ILogger<TelegramUpdateHandler> logger)
 {
@@ -47,6 +48,28 @@ public sealed class TelegramUpdateHandler(
         if (callback?.Message is { Chat.Type: not ChatType.Private })
         {
             await botClient.AnswerCallbackQuery(callback.Id, "Откройте OyinQ через кнопку объявления.", showAlert: true, cancellationToken: cancellationToken);
+            return;
+        }
+
+        if (message is { Chat.Type: ChatType.Private, UsersShared: { } usersShared })
+        {
+            if (await peerSelectionService.CompleteUsersAsync(
+                    usersShared.RequestId, user.Id, usersShared.Users, cancellationToken))
+            {
+                await botClient.SendMessage(user.Id, "Выбор получен. Вернитесь в Mini App.",
+                    replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
+            }
+            return;
+        }
+
+        if (message is { Chat.Type: ChatType.Private, ChatShared: { } chatShared })
+        {
+            if (await peerSelectionService.CompleteChatAsync(
+                    chatShared.RequestId, user.Id, chatShared, cancellationToken))
+            {
+                await botClient.SendMessage(user.Id, "Группа выбрана. Вернитесь в Mini App.",
+                    replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
+            }
             return;
         }
 

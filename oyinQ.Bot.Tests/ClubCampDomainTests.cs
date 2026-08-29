@@ -111,8 +111,10 @@ public sealed class ClubCampDomainTests
     {
         CampGameContribution[] values =
         [
-            new() { BggId = 10, ItemType = CampContributionItemType.BaseGame, ParticipantId = 1, SnapshotJson = "{\"name\":\"Brass\"}" },
-            new() { BggId = 10, ItemType = CampContributionItemType.BaseGame, ParticipantId = 2, SnapshotJson = "{\"name\":\"Brass\"}" }
+            new() { BggId = 10, ItemType = CampContributionItemType.BaseGame, ParticipantId = 1,
+                SnapshotJson = CampContributionSnapshotSerializer.Serialize(new(1, "Brass", null, null, 2, 4, null)) },
+            new() { BggId = 10, ItemType = CampContributionItemType.BaseGame, ParticipantId = 2,
+                SnapshotJson = CampContributionSnapshotSerializer.Serialize(new(1, "Brass", null, null, 2, 4, null)) }
         ];
 
         var item = Assert.Single(CampContributionSelectionService.MergeContributions(values));

@@ -17,6 +17,10 @@ public sealed class GameGathering
     public GatheringStatus Status { get; set; }
     public long? TelegramChatId { get; set; }
     public int? TelegramMessageId { get; set; }
+    public GatheringPublicationStatus PublicationStatus { get; set; }
+    public string? PublicationError { get; set; }
+    public int PublicationAttempts { get; set; }
+    public DateTimeOffset? LastPublicationAttemptAt { get; set; }
     public string? CancellationReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

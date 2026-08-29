@@ -12,6 +12,8 @@ public sealed class Camp
     public long? SourceClubId { get; set; }
     public string BaseCollectionJson { get; set; } = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty);
     public CampStatus Status { get; set; }
+    public DateOnly? StartDate { get; set; }
+    public DateOnly? EndDate { get; set; }
     public long CreatedByTelegramUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
@@ -20,6 +22,7 @@ public sealed class Camp
     public Club? SourceClub { get; set; }
     public ICollection<CampRegistration> Registrations { get; set; } = [];
     public ICollection<CampGameContribution> Contributions { get; set; } = [];
+    public ICollection<CampBggImport> BggImports { get; set; } = [];
 
     public ClubCollectionDocument ReadBaseCollection() => ClubCollectionSerializer.Deserialize(BaseCollectionJson);
 }

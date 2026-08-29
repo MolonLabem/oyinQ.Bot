@@ -47,7 +47,9 @@ public sealed class GatheringGameSelectionService(
             game.MinPlayers,
             game.MaxPlayers,
             game.BestPlayers,
-            expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray());
+            expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
+            "bgg",
+            expansions);
     }
 
     public async Task<GatheringGameSnapshot> FromCampCatalogAsync(
@@ -76,31 +78,22 @@ public sealed class GatheringGameSelectionService(
         var contribution = camp.Contributions.FirstOrDefault(value =>
             value.BggId == bggId && value.ItemType == Data.Entities.CampContributionItemType.BaseGame)
             ?? throw new KeyNotFoundException("Игра не найдена в каталоге этого кэмпа.");
-        using var contributionJson = System.Text.Json.JsonDocument.Parse(contribution.SnapshotJson);
-        var name = contributionJson.RootElement.GetProperty("name").GetString() ?? "Без названия";
+        var contributionSnapshot = contribution.ReadSnapshot();
         var expansions = ReadContributionExpansions(camp, bggId);
         EnsureKnownExpansions(expansions, selectedExpansionIds);
         return new GatheringGameSnapshot(
             GatheringGameSnapshot.CurrentVersion,
             bggId,
-            name,
-            ReadString(contributionJson.RootElement, "thumbnailImageUrl"),
-            ReadString(contributionJson.RootElement, "imageUrl"),
-            ReadInt(contributionJson.RootElement, "minPlayers"),
-            ReadInt(contributionJson.RootElement, "maxPlayers"),
-            ReadString(contributionJson.RootElement, "bestPlayers"),
-            expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray());
+            contributionSnapshot.Name,
+            contributionSnapshot.ThumbnailImageUrl,
+            contributionSnapshot.ImageUrl,
+            contributionSnapshot.MinPlayers,
+            contributionSnapshot.MaxPlayers,
+            contributionSnapshot.BestPlayers,
+            expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
+            "catalog",
+            expansions);
     }
-
-    private static string? ReadString(System.Text.Json.JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
-            ? value.GetString()
-            : null;
-
-    private static int? ReadInt(System.Text.Json.JsonElement element, string propertyName) =>
-        element.TryGetProperty(propertyName, out var value) && value.TryGetInt32(out var parsed)
-            ? parsed
-            : null;
 
     private static ClubCollectionExpansion[] ReadContributionExpansions(Data.Entities.Camp camp, long parentBggId) =>
         camp.Contributions
@@ -108,10 +101,7 @@ public sealed class GatheringGameSelectionService(
                 && value.ParentBggId == parentBggId)
             .Select(value =>
             {
-                using var json = System.Text.Json.JsonDocument.Parse(value.SnapshotJson);
-                return new ClubCollectionExpansion(
-                    value.BggId,
-                    json.RootElement.GetProperty("name").GetString() ?? "Без названия");
+                return new ClubCollectionExpansion(value.BggId, value.ReadSnapshot().Name);
             })
             .DistinctBy(value => value.BggId)
             .ToArray();

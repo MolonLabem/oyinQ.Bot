@@ -99,6 +99,19 @@ public sealed class AppDbContextMigrationTests
             dbContext.Database.GetMigrations());
     }
 
+    [Fact]
+    public void StabilizationMigration_IsAdditiveAndMapsDurableWork()
+    {
+        using var dbContext = CreateDbContext();
+        Assert.Contains("20260829000852_StabilizeClubCampMiniApp", dbContext.Database.GetMigrations());
+        Assert.NotNull(dbContext.Model.FindEntityType(typeof(CampBggImport)));
+        Assert.NotNull(dbContext.Model.FindEntityType(typeof(PendingTelegramPeerSelection)));
+        Assert.Equal("jsonb", dbContext.Model.FindEntityType(typeof(CampBggImport))?
+            .FindProperty(nameof(CampBggImport.DraftJson))?.GetColumnType());
+        Assert.Equal(1L, dbContext.Model.FindEntityType(typeof(Club))?
+            .FindProperty(nameof(Club.CollectionRevision))?.GetDefaultValue());
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

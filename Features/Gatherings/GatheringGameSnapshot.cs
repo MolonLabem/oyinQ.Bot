@@ -12,9 +12,11 @@ public sealed record GatheringGameSnapshot(
     int? MinPlayers,
     int? MaxPlayers,
     string? BestPlayers,
-    IReadOnlyList<ClubCollectionExpansion> SelectedExpansions)
+    IReadOnlyList<ClubCollectionExpansion> SelectedExpansions,
+    string Source = "legacy",
+    IReadOnlyList<ClubCollectionExpansion>? KnownExpansions = null)
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     public static GatheringGameSnapshot FromClubGame(
         ClubCollectionGame game,
@@ -28,7 +30,9 @@ public sealed record GatheringGameSnapshot(
             game.MinPlayers,
             game.MaxPlayers,
             game.BestPlayers,
-            game.Expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray());
+            game.Expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
+            "catalog",
+            game.Expansions.ToArray());
 }
 
 public static class GatheringGameSnapshotSerializer
@@ -59,7 +63,7 @@ public static class GatheringGameSnapshotSerializer
     public static void Validate(GatheringGameSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (snapshot.Version != GatheringGameSnapshot.CurrentVersion)
+        if (snapshot.Version is not 1 and not GatheringGameSnapshot.CurrentVersion)
         {
             throw new InvalidOperationException($"Unsupported gathering game snapshot version {snapshot.Version}.");
         }
@@ -79,5 +83,8 @@ public static class GatheringGameSnapshotSerializer
         {
             throw new InvalidOperationException("Gathering game snapshot has invalid selected expansions.");
         }
+        if (snapshot.Version >= 2 && (snapshot.KnownExpansions is null
+            || snapshot.KnownExpansions.Any(value => value.BggId <= 0 || string.IsNullOrWhiteSpace(value.Name))))
+            throw new InvalidOperationException("Gathering game snapshot has invalid known expansions.");
     }
 }

@@ -5,6 +5,26 @@ namespace oyinQ.Bot.Features.Collections;
 
 public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 {
+    public async Task<CampBggImportDraft> LoadDraftAsync(string username, CancellationToken cancellationToken)
+    {
+        var selection = await LoadSelectionAsync(username, cancellationToken);
+        return new CampBggImportDraft(
+            CampBggImportDraft.CurrentVersion,
+            username.Trim(),
+            selection.Select(value => new CampBggImportDraftItem(
+                value.BggId,
+                value.ItemType,
+                value.ParentBggId,
+                new CampContributionSnapshot(
+                    CampContributionSnapshot.CurrentVersion,
+                    value.Name,
+                    value.ThumbnailImageUrl,
+                    value.ImageUrl,
+                    value.MinPlayers,
+                    value.MaxPlayers,
+                    value.BestPlayers))).ToArray());
+    }
+
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
         string username,
         CancellationToken cancellationToken)

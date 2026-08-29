@@ -1,3 +1,5 @@
+using oyinQ.Bot.Features.Collections;
+
 namespace oyinQ.Bot.Data.Entities;
 
 public sealed class CampGameContribution
@@ -7,6 +9,7 @@ public sealed class CampGameContribution
     public long ParticipantId { get; set; }
     public long BggId { get; set; }
     public CampContributionItemType ItemType { get; set; }
+    public CampContributionSource Source { get; set; }
     public long? ParentBggId { get; set; }
     public string SnapshotJson { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
@@ -14,4 +17,6 @@ public sealed class CampGameContribution
 
     public Camp Camp { get; set; } = null!;
     public Participant Participant { get; set; } = null!;
+
+    public CampContributionSnapshot ReadSnapshot() => CampContributionSnapshotSerializer.Deserialize(SnapshotJson);
 }

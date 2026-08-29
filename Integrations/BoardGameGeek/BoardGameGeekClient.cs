@@ -269,6 +269,11 @@ public sealed class BoardGameGeekClient(
         int acceptedAttempts = TransientAttempts,
         int transientAttempts = TransientAttempts)
     {
+        if (!options.Value.IsAvailable)
+        {
+            throw new BggUnavailableException("BGG временно отключён: API token не настроен.");
+        }
+
         using var response = await HttpRetryHelper.SendAsync(
             async retryCancellationToken =>
             {
@@ -393,3 +398,5 @@ public sealed class BoardGameGeekClient(
         int? MinPlayers,
         int? MaxPlayers);
 }
+
+public sealed class BggUnavailableException(string message) : HttpRequestException(message);

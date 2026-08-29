@@ -21,6 +21,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GameGathering> GameGatherings => Set<GameGathering>();
     public DbSet<GameGatheringExpansion> GameGatheringExpansions => Set<GameGatheringExpansion>();
     public DbSet<GameGatheringParticipant> GameGatheringParticipants => Set<GameGatheringParticipant>();
+    public DbSet<CampBggImport> CampBggImports => Set<CampBggImport>();
+    public DbSet<PendingTelegramPeerSelection> PendingTelegramPeerSelections => Set<PendingTelegramPeerSelection>();
     public DbSet<CollectionImport> CollectionImports => Set<CollectionImport>();
     public DbSet<ParticipantConversationState> ParticipantConversationStates => Set<ParticipantConversationState>();
 
@@ -42,6 +44,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("OyinQAdministrators");
             entity.HasKey(x => x.TelegramUserId);
             entity.Property(x => x.TelegramUserId).ValueGeneratedNever();
+            entity.Property(x => x.DisplayName).HasMaxLength(256);
+            entity.Property(x => x.TelegramUsername).HasMaxLength(64);
         });
 
         modelBuilder.Entity<Club>(entity =>
@@ -54,6 +58,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.BggUsername).HasMaxLength(100);
             entity.Property(x => x.CollectionJson).HasColumnType("jsonb");
+            entity.Property(x => x.CollectionRevision).HasDefaultValue(1L);
 
             entity.HasOne(x => x.BotChat)
                 .WithOne(x => x.Club)
@@ -65,7 +70,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<Camp>(entity =>
         {
             entity.ToTable("Camps", table =>
-                table.HasCheckConstraint("CK_Camps_BotChatMode", "\"BotChatMode\" = 1"));
+            {
+                table.HasCheckConstraint("CK_Camps_BotChatMode", "\"BotChatMode\" = 1");
+                table.HasCheckConstraint(
+                    "CK_Camps_DateRange",
+                    "(\"StartDate\" IS NULL AND \"EndDate\" IS NULL) OR (\"StartDate\" IS NOT NULL AND \"EndDate\" IS NOT NULL AND \"StartDate\" <= \"EndDate\")");
+            });
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.BotChatKey).IsUnique();
             entity.Property(x => x.BotChatKey).HasMaxLength(32);
@@ -114,6 +124,37 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(x => x.CampGameContributions)
                 .HasForeignKey(x => x.ParticipantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CampBggImport>(entity =>
+        {
+            entity.ToTable("CampBggImports");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.PublicId).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.LeaseExpiresAt, x.CreatedAt });
+            entity.HasIndex(x => new { x.CampId, x.ParticipantId, x.UpdatedAt });
+            entity.Property(x => x.BggUsername).HasMaxLength(100);
+            entity.Property(x => x.DraftJson).HasColumnType("jsonb");
+            entity.Property(x => x.Error).HasMaxLength(2000);
+            entity.HasOne(x => x.Camp)
+                .WithMany(x => x.BggImports)
+                .HasForeignKey(x => x.CampId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Participant)
+                .WithMany()
+                .HasForeignKey(x => x.ParticipantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PendingTelegramPeerSelection>(entity =>
+        {
+            entity.ToTable("PendingTelegramPeerSelections");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.PublicId).IsUnique();
+            entity.HasIndex(x => x.RequestId).IsUnique();
+            entity.HasIndex(x => new { x.RequestedByTelegramUserId, x.Status, x.ExpiresAt });
+            entity.Property(x => x.PreparedButtonId).HasMaxLength(256);
+            entity.Property(x => x.ResultJson).HasColumnType("jsonb");
         });
 
         modelBuilder.Entity<Participant>(entity =>
@@ -229,6 +270,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.GameSnapshotJson).HasColumnType("jsonb");
             entity.Property(x => x.Description).HasMaxLength(GatheringRules.DescriptionMaxLength);
             entity.Property(x => x.CancellationReason).HasMaxLength(GatheringRules.CancellationReasonMaxLength);
+            entity.Property(x => x.PublicationError).HasMaxLength(2000);
 
             entity.HasOne(x => x.Game)
                 .WithMany(x => x.Gatherings)

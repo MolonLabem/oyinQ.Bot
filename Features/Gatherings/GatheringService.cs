@@ -5,9 +5,12 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
+public sealed record GatheringPromotion(long TelegramUserId, string DisplayName);
+public sealed record GatheringMutationResult(GameGathering Gathering, GatheringPromotion? Promotion = null);
+
 public sealed class GatheringService(AppDbContext dbContext)
 {
-    public async Task<GameGathering> JoinAsync(
+    public async Task<GatheringMutationResult> JoinAsync(
         Guid publicId,
         string communityKey,
         long telegramUserId,
@@ -23,14 +26,14 @@ public sealed class GatheringService(AppDbContext dbContext)
         if (gathering.OrganizerParticipantId == participant.Id)
         {
             await transaction.CommitAsync(cancellationToken);
-            return gathering;
+            return new(gathering);
         }
 
         var existing = gathering.Participants.SingleOrDefault(value => value.ParticipantId == participant.Id);
         if (existing is not null && existing.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted)
         {
             await transaction.CommitAsync(cancellationToken);
-            return gathering;
+            return new(gathering);
         }
 
         var confirmed = 1 + gathering.Participants.Count(value => value.Status == GatheringParticipationStatus.Confirmed);
@@ -59,10 +62,10 @@ public sealed class GatheringService(AppDbContext dbContext)
         UpdateStatus(gathering, now);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return gathering;
+        return new(gathering);
     }
 
-    public async Task<GameGathering> LeaveAsync(
+    public async Task<GatheringMutationResult> LeaveAsync(
         Guid publicId,
         string communityKey,
         long telegramUserId,
@@ -83,16 +86,17 @@ public sealed class GatheringService(AppDbContext dbContext)
         if (membership is null || membership.Status == GatheringParticipationStatus.Withdrawn)
         {
             await transaction.CommitAsync(cancellationToken);
-            return gathering;
+            return new(gathering);
         }
 
         var shouldPromote = membership.Status == GatheringParticipationStatus.Confirmed;
         membership.Status = GatheringParticipationStatus.Withdrawn;
         membership.WithdrawnAt = now.ToUniversalTime();
         membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
+        GameGatheringParticipant? promoted = null;
         if (shouldPromote)
         {
-            var promoted = gathering.Participants
+            promoted = gathering.Participants
                 .Where(value => value.Status == GatheringParticipationStatus.Waitlisted)
                 .OrderBy(value => value.JoinedAt)
                 .ThenBy(value => value.Id)
@@ -106,7 +110,9 @@ public sealed class GatheringService(AppDbContext dbContext)
         UpdateStatus(gathering, now);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return gathering;
+        return new(gathering, promoted is null ? null : new GatheringPromotion(
+            promoted.Participant.TelegramUserId,
+            promoted.Participant.PreferredDisplayName ?? promoted.Participant.DisplayName));
     }
 
     private async Task<GameGathering> LockGatheringAsync(
@@ -116,7 +122,7 @@ public sealed class GatheringService(AppDbContext dbContext)
         await dbContext.GameGatherings
             .FromSqlInterpolated($"SELECT * FROM \"GameGatherings\" WHERE \"PublicId\" = {publicId} AND \"CommunityKey\" = {communityKey} FOR UPDATE")
             .Include(value => value.OrganizerParticipant)
-            .Include(value => value.Participants)
+            .Include(value => value.Participants).ThenInclude(value => value.Participant)
             .SingleOrDefaultAsync(cancellationToken)
         ?? throw new KeyNotFoundException("Сбор не найден в выбранном контексте.");
 
@@ -134,9 +140,12 @@ public sealed class GatheringService(AppDbContext dbContext)
             .Select(value => value.Mode)
             .SingleAsync(cancellationToken);
         if (GatheringAccessPolicy.RequiresRegistration(mode)
-            && !await dbContext.CampRegistrations.AnyAsync(
+            && (!await dbContext.Camps.AnyAsync(
+                    value => value.BotChatKey == gathering.CommunityKey && value.Status == CampStatus.Active,
+                    cancellationToken)
+                || !await dbContext.CampRegistrations.AnyAsync(
                 value => value.Camp.BotChatKey == gathering.CommunityKey && value.ParticipantId == participant.Id,
-                cancellationToken))
+                cancellationToken)))
         {
             throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
         }

@@ -4,90 +4,98 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Collections;
 
-public sealed record ClubCollectionSettings(
+public sealed record ClubCollectionState(
     ClubCollectionDocument Collection,
-    string? BggUsername);
+    long Revision,
+    DateTimeOffset UpdatedAt);
+
+public sealed class ClubCollectionConflictException(long currentRevision)
+    : InvalidOperationException("Коллекция была изменена другим администратором.")
+{
+    public long CurrentRevision { get; } = currentRevision;
+}
 
 public sealed class ClubCollectionService(AppDbContext dbContext)
 {
-    public async Task<ClubCollectionDocument> GetAsync(long clubId, CancellationToken cancellationToken)
-    {
-        var json = await dbContext.Clubs.AsNoTracking()
-            .Where(value => value.Id == clubId)
-            .Select(value => value.CollectionJson)
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Club was not found.");
-        return ClubCollectionSerializer.Deserialize(json);
-    }
-
-    public async Task<ClubCollectionSettings> GetSettingsAsync(
-        long clubId,
-        CancellationToken cancellationToken)
+    public async Task<ClubCollectionState> GetAsync(long clubId, CancellationToken cancellationToken)
     {
         var value = await dbContext.Clubs.AsNoTracking()
-            .Where(club => club.Id == clubId)
-            .Select(club => new { club.CollectionJson, club.BggUsername })
+            .Where(value => value.Id == clubId)
+            .Select(value => new { value.CollectionJson, value.CollectionRevision, value.UpdatedAt })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Club was not found.");
-        return new ClubCollectionSettings(
+        return new ClubCollectionState(
             ClubCollectionSerializer.Deserialize(value.CollectionJson),
-            value.BggUsername);
-    }
-
-    public async Task UpdateBggUsernameAsync(
-        long clubId,
-        string? bggUsername,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var club = await FindClubAsync(clubId, cancellationToken);
-        club.BggUsername = bggUsername;
-        club.UpdatedAt = now.ToUniversalTime();
-        await dbContext.SaveChangesAsync(cancellationToken);
+            value.CollectionRevision,
+            value.UpdatedAt);
     }
 
     public async Task AddOrReplaceGameAsync(
         long clubId,
         ClubCollectionGame game,
+        long expectedRevision,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var club = await FindClubAsync(clubId, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var club = await LockClubAsync(clubId, cancellationToken);
+        EnsureRevision(club, expectedRevision);
         var current = club.ReadCollection();
         club.ReplaceCollection(ClubCollectionEditor.AddOrReplace(current, game), now);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<bool> RemoveGameAsync(
         long clubId,
         long bggId,
+        long expectedRevision,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var club = await FindClubAsync(clubId, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var club = await LockClubAsync(clubId, cancellationToken);
+        EnsureRevision(club, expectedRevision);
         var current = club.ReadCollection();
         var updated = ClubCollectionEditor.Remove(current, bggId);
-        if (updated.Games.Count == current.Games.Count) return false;
+        if (updated.Games.Count == current.Games.Count)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
         club.ReplaceCollection(updated, now);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
     public async Task ReplaceAsync(
         long clubId,
         ClubCollectionDocument document,
+        long expectedRevision,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         ClubCollectionSerializer.Validate(document);
-        var club = await FindClubAsync(clubId, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var club = await LockClubAsync(clubId, cancellationToken);
+        EnsureRevision(club, expectedRevision);
         club.ReplaceCollection(document, now);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
-    private async Task<Club> FindClubAsync(long clubId, CancellationToken cancellationToken) =>
-        await dbContext.Clubs.SingleOrDefaultAsync(value => value.Id == clubId, cancellationToken)
+    private async Task<Club> LockClubAsync(long clubId, CancellationToken cancellationToken) =>
+        await dbContext.Clubs
+            .FromSqlInterpolated($"SELECT * FROM \"Clubs\" WHERE \"Id\" = {clubId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken)
         ?? throw new KeyNotFoundException("Club was not found.");
+
+    private static void EnsureRevision(Club club, long expectedRevision)
+    {
+        if (club.CollectionRevision != expectedRevision)
+            throw new ClubCollectionConflictException(club.CollectionRevision);
+    }
 }
 
 public static class ClubCollectionEditor

@@ -7,6 +7,8 @@ namespace oyinQ.Bot.Features.Admin;
 
 public sealed record AdministratorRecord(
     long TelegramUserId,
+    string? DisplayName,
+    string? TelegramUsername,
     long? AddedByTelegramUserId,
     DateTimeOffset CreatedAt);
 
@@ -14,7 +16,8 @@ public interface IAdministratorStore
 {
     Task<bool> IsAdministratorAsync(long telegramUserId, CancellationToken cancellationToken);
     Task<IReadOnlyList<AdministratorRecord>> ListAsync(CancellationToken cancellationToken);
-    Task AddAsync(long telegramUserId, long addedByTelegramUserId, CancellationToken cancellationToken);
+    Task AddAsync(long telegramUserId, string? displayName, string? telegramUsername,
+        long addedByTelegramUserId, CancellationToken cancellationToken);
     Task RemoveAsync(long telegramUserId, CancellationToken cancellationToken);
 }
 
@@ -31,12 +34,16 @@ public sealed class AdministratorStore(AppDbContext dbContext) : IAdministratorS
             .ThenBy(value => value.TelegramUserId)
             .Select(value => new AdministratorRecord(
                 value.TelegramUserId,
+                value.DisplayName,
+                value.TelegramUsername,
                 value.AddedByTelegramUserId,
                 value.CreatedAt))
             .ToArrayAsync(cancellationToken);
 
     public async Task AddAsync(
         long telegramUserId,
+        string? displayName,
+        string? telegramUsername,
         long addedByTelegramUserId,
         CancellationToken cancellationToken)
     {
@@ -50,6 +57,8 @@ public sealed class AdministratorStore(AppDbContext dbContext) : IAdministratorS
         dbContext.OyinQAdministrators.Add(new OyinQAdministrator
         {
             TelegramUserId = telegramUserId,
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim(),
+            TelegramUsername = string.IsNullOrWhiteSpace(telegramUsername) ? null : telegramUsername.Trim(),
             AddedByTelegramUserId = addedByTelegramUserId,
             CreatedAt = DateTimeOffset.UtcNow
         });

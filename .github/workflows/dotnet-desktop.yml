@@ -1,4 +1,4 @@
-name: .NET CI
+name: OyinQ CI
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: [build-and-test, miniapp]
 
     steps:
       - name: Checkout
@@ -39,26 +39,23 @@ jobs:
       - name: Build Docker image
         run: docker build --file Dockerfile --tag oyinq-bot:ci .
 
-  tesera-proxy:
+  miniapp:
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: cloudflare/tesera-proxy
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: cloudflare/tesera-proxy/package-lock.json
-
-      - name: Install dependencies
+          cache-dependency-path: MiniApp/package-lock.json
+      - name: Install Mini App dependencies
+        working-directory: MiniApp
         run: npm ci
-
-      - name: Typecheck, test, and validate Worker bundle
+      - name: Typecheck Mini App
+        working-directory: MiniApp
         run: npm run check
+      - name: Build Mini App
+        working-directory: MiniApp
+        run: npm run build

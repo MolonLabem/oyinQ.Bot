@@ -11,6 +11,7 @@ public sealed class Club
     public string Name { get; set; } = string.Empty;
     public string? BggUsername { get; set; }
     public string CollectionJson { get; set; } = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty);
+    public long CollectionRevision { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
@@ -22,6 +23,7 @@ public sealed class Club
     public void ReplaceCollection(ClubCollectionDocument document, DateTimeOffset now)
     {
         CollectionJson = ClubCollectionSerializer.Serialize(document);
+        CollectionRevision++;
         UpdatedAt = now.ToUniversalTime();
     }
 }

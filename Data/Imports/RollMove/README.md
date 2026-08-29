@@ -2,7 +2,7 @@
 
 This directory contains the reviewed inputs for the one-time migration from the Tesera collection of user `John90` to the dedicated BoardGameGeek account `RollMoveClub`.
 
-Tesera is not a runtime OyinQ integration. The application synchronizes only from the BGG account after the initial migration.
+Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is a reviewed disaster-recovery/bootstrap snapshot, not a synchronization source. Restore it only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
 
 ## Audit status
 

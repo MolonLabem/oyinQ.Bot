@@ -76,3 +76,42 @@ public enum CampContributionItemType
     BaseGame = 0,
     Expansion = 1
 }
+
+public enum CampContributionSource
+{
+    Legacy = 0,
+    BggImport = 1,
+    Manual = 2
+}
+
+public enum CampBggImportStatus
+{
+    Queued = 0,
+    Running = 1,
+    Completed = 2,
+    Confirmed = 3,
+    Failed = 4,
+    Cancelled = 5
+}
+
+public enum TelegramPeerSelectionPurpose
+{
+    AddAdministrator = 0,
+    CreateClubChat = 1,
+    CreateCampChat = 2
+}
+
+public enum TelegramPeerSelectionStatus
+{
+    Pending = 0,
+    Completed = 1,
+    Consumed = 2,
+    Expired = 3
+}
+
+public enum GatheringPublicationStatus
+{
+    Pending = 0,
+    Published = 1,
+    Failed = 2
+}

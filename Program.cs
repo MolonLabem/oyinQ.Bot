@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Text.Json.Serialization;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
@@ -30,6 +31,8 @@ builder.Services.AddSingleton(Options.Create(botOptions));
 builder.Services.AddSingleton(Options.Create(administrationOptions));
 builder.Services.AddSingleton(Options.Create(bggOptions));
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddDbContext<AppDbContext>(
     options => options.UseNpgsql(connectionString));
@@ -45,22 +48,26 @@ builder.Services.AddSingleton<ITelegramBotClient>(
 
 builder.Services.AddSingleton<GatheringPresentationService>();
 builder.Services.AddSingleton<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
-builder.Services.AddSingleton<ICampChatValidator, TelegramCampChatValidator>();
+builder.Services.AddSingleton<IManagedChatValidator, TelegramManagedChatValidator>();
 builder.Services.AddScoped<ICommunityStore, CommunityStore>();
 builder.Services.AddScoped<IAdministratorStore, AdministratorStore>();
 builder.Services.AddScoped<CommunityContextResolver>();
-builder.Services.AddScoped<CampCreationService>();
+builder.Services.AddScoped<ManagedCommunityService>();
 builder.Services.AddScoped<ClubCollectionService>();
-builder.Services.AddScoped<ClubBggSyncService>();
 builder.Services.AddScoped<CampContributionSelectionService>();
 builder.Services.AddScoped<CampBggImportService>();
+builder.Services.AddScoped<CampBggImportCoordinator>();
+builder.Services.AddScoped<TelegramPeerSelectionService>();
 builder.Services.AddScoped<GatheringGameSelectionService>();
 builder.Services.AddScoped<GatheringService>();
+builder.Services.AddScoped<GatheringManagementService>();
+builder.Services.AddScoped<GatheringPublicationService>();
 builder.Services.AddSingleton<TelegramMiniAppAuthenticator>();
 builder.Services.AddSingleton<GatheringTelegramPublisher>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddHostedService<CampBggImportWorker>();
 
 if (botOptions.UseLongPolling)
 {

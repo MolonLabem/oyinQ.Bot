@@ -2,14 +2,16 @@
 
 OyinQ is a .NET 10 ASP.NET Core backend, React Telegram Mini App, and one Telegram bot serving multiple board-game communities. PostgreSQL is the source of truth. A community is either a `Club` or a `Camp`.
 
-The Mini App owns registration, collections, contributions, game discovery, gathering creation, joining/leaving, and Club administration. Telegram is deliberately thin: `/start`, contextual deep links, native `/admin` Camp creation with `request_chat`, group announcements, and notifications.
+The Mini App owns registration, collections, contributions, game discovery, gathering lifecycle, and all administration. Telegram is deliberately thin: `/start`, `/admin` entry, contextual deep links, native prepared user/chat selection, group announcements, and notifications.
 
 ## Current model
 
-- Clubs have no registration gate and store their collection as versioned OyinQ JSON in `Club.CollectionJson`.
-- Camps have scoped `CampRegistration`, a base collection snapshot in `Camp.BaseCollectionJson`, and participant availability in `CampGameContributions`.
+- Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`.
+- Camps have inclusive local dates, lifecycle status, scoped `CampRegistration`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`.
 - Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL.
-- BGG is the only external board-game provider. Missing BGG credentials disable BGG-backed actions without disabling the rest of the application.
+- Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.
+- BGG is the only external board-game provider. Missing BGG credentials visibly disable search/add/import without disabling stored collections, contributions, or gatherings.
+- Telegram user/chat assignment uses prepared native peer selectors. Raw Telegram IDs are not accepted by normal administration APIs.
 - Runtime community resolution uses `OyinQCommunities` through `ICommunityStore`. Optional bootstrap JSON only inserts missing rows.
 
 ## Configuration
@@ -37,7 +39,21 @@ Bootstrap JSON example:
 [{"key":"club","name":"Board game club","telegramChatId":-1001111111111,"mode":"Club","timeZone":"Asia/Qyzylorda"}]
 ```
 
-Only `Club` and `Camp` are valid modes. Bootstrap is optional when communities already exist in PostgreSQL. Clubs can be added in the Mini App; Camps are created through private `/admin` because Telegram's native group picker is required.
+Only `Club` and `Camp` are valid modes. Bootstrap is optional when communities already exist in PostgreSQL. Clubs and Camps are created in the admin Mini App with Telegram's native group picker. `/admin` opens that global area even when the administrator belongs to no managed community.
+
+## Collection recovery
+
+Normal deployments must reuse the persistent PostgreSQL database. EF migrations define schema; they are not a source-control backup for mutable Club collections.
+
+For deliberate fresh-database recovery:
+
+1. Bootstrap the first administrator.
+2. Create the Club with the native Telegram group picker.
+3. Open **Manage collection → Import JSON**.
+4. Select `Data/Imports/RollMove/club-collection.v1.json` or a newer exported Club JSON file.
+5. Verify the displayed revision and game count before enabling normal use.
+
+Import requires the current collection revision and returns HTTP 409 if another administrator changed the document. It never silently overwrites a newer revision.
 
 ## Local development
 
@@ -112,3 +128,9 @@ Do not set `Telegram__UseLongPolling` in production. Do not manually set `PORT` 
 Migration `20260828183821_ClubCampContextsAndGatheringSnapshots` is additive and must be reviewed with a production backup. The EF model intentionally retains legacy `Games`, `GameCopies`, `GameInterests`, `CollectionImports`, `GameSessions`, `GameSessionParticipants`, the old participant registration columns, and nullable `GameGathering.GameId`. Runtime code no longer reads or writes those paths. They remain mapped so production data is not silently dropped; retirement needs a separately reviewed data audit/migration.
 
 Migration `20260828230514_PersistAdministrators` is also additive. It creates only `OyinQAdministrators`; startup then inserts missing comma-separated bootstrap IDs with `ON CONFLICT DO NOTHING`. It does not delete or rewrite application data.
+
+Migration `20260829000852_StabilizeClubCampMiniApp` is additive. It adds Club revisions, Camp dates, typed contribution source, Camp import jobs, pending Telegram peer selections, administrator presentation fields, and gathering publication state. Existing contribution JSON receives only the required version marker; existing published gatherings are marked published. Existing legacy tables and `Club.BggUsername` remain mapped and deprecated.
+
+## Manual verification
+
+Use [docs/manual-verification.md](docs/manual-verification.md) after deployment. Live Telegram and BGG behavior must not be inferred from mocked tests.
