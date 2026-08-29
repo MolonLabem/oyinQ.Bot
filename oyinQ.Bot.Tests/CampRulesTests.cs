@@ -1,0 +1,35 @@
+using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Communities;
+
+namespace oyinQ.Bot.Tests;
+
+public sealed class CampRulesTests
+{
+    [Fact]
+    public void InclusiveDuration_UsesBothBoundaryDates()
+    {
+        Assert.Equal(1, CampRules.InclusiveDuration(new(2026, 8, 29), new(2026, 8, 29)));
+        Assert.Equal(4, CampRules.InclusiveDuration(new(2026, 8, 29), new(2026, 9, 1)));
+    }
+
+    [Fact]
+    public void RegistrationDays_CannotExceedInclusiveDuration() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => CampRules.ValidateRegistrationDays(
+            4, new(2026, 8, 29), new(2026, 8, 31)));
+
+    [Theory]
+    [InlineData(CampStatus.Draft, CampStatus.Active)]
+    [InlineData(CampStatus.Draft, CampStatus.Cancelled)]
+    [InlineData(CampStatus.Active, CampStatus.Closed)]
+    [InlineData(CampStatus.Active, CampStatus.Cancelled)]
+    [InlineData(CampStatus.Closed, CampStatus.Cancelled)]
+    public void Lifecycle_AllowsOnlyForwardTransitions(CampStatus current, CampStatus next) =>
+        CampRules.ValidateTransition(current, next);
+
+    [Theory]
+    [InlineData(CampStatus.Active, CampStatus.Draft)]
+    [InlineData(CampStatus.Closed, CampStatus.Active)]
+    [InlineData(CampStatus.Cancelled, CampStatus.Active)]
+    public void Lifecycle_RejectsBackwardTransitions(CampStatus current, CampStatus next) =>
+        Assert.Throws<InvalidOperationException>(() => CampRules.ValidateTransition(current, next));
+}

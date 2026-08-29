@@ -23,7 +23,7 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
             .Where(value => value.Id == clubId)
             .Select(value => new { value.CollectionJson, value.CollectionRevision, value.UpdatedAt })
             .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Club was not found.");
+            ?? throw new KeyNotFoundException("Клуб не найден.");
         return new ClubCollectionState(
             ClubCollectionSerializer.Deserialize(value.CollectionJson),
             value.CollectionRevision,
@@ -89,7 +89,7 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
         await dbContext.Clubs
             .FromSqlInterpolated($"SELECT * FROM \"Clubs\" WHERE \"Id\" = {clubId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken)
-        ?? throw new KeyNotFoundException("Club was not found.");
+        ?? throw new KeyNotFoundException("Клуб не найден.");
 
     private static void EnsureRevision(Club club, long expectedRevision)
     {

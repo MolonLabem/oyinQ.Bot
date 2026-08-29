@@ -66,12 +66,12 @@ public static class GatheringRules
     {
         if (minimumPlayers < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(minimumPlayers), "Minimum players must include at least the organizer.");
+            throw new ArgumentOutOfRangeException(nameof(minimumPlayers), "Минимум игроков должен учитывать организатора.");
         }
 
         if (minimumPlayers > desiredPlayers || desiredPlayers > maximumPlayers)
         {
-            throw new ArgumentException("Player limits must satisfy minimum <= desired <= maximum.");
+            throw new ArgumentException("Лимиты должны соответствовать правилу: минимум ≤ желаемое число ≤ максимум.");
         }
     }
 
@@ -151,7 +151,7 @@ public static class GatheringRules
         if (normalized?.Length > DescriptionMaxLength)
         {
             throw new ArgumentException(
-                $"Gathering description cannot exceed {DescriptionMaxLength} characters.",
+                $"Описание сбора не может быть длиннее {DescriptionMaxLength} символов.",
                 nameof(description));
         }
 
@@ -162,7 +162,7 @@ public static class GatheringRules
     {
         if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
         {
-            throw new InvalidOperationException("Completed or cancelled gatherings cannot be edited.");
+            throw new InvalidOperationException("Завершённый или отменённый сбор нельзя изменить.");
         }
     }
 

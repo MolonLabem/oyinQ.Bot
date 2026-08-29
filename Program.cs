@@ -120,6 +120,7 @@ await using (var scope = app.Services.CreateAsyncScope())
             TelegramChatId = community.TelegramChatId,
             Mode = community.Mode,
             TimeZoneId = community.TimeZoneId,
+            IsActive = community.Mode == BotMode.Club,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -144,7 +145,7 @@ await using (var scope = app.Services.CreateAsyncScope())
                 BotChatKey = community.Key,
                 Name = community.Name,
                 BaseCollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
-                Status = CampStatus.Active,
+                Status = CampStatus.Draft,
                 CreatedByTelegramUserId = 0,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -168,12 +169,13 @@ await using (var scope = app.Services.CreateAsyncScope())
     var missingCamps = await dbContext.OyinQCommunities
         .Where(value => value.Mode == BotMode.Camp && value.Camp == null)
         .ToArrayAsync();
+    foreach (var community in missingCamps) community.IsActive = false;
     dbContext.Camps.AddRange(missingCamps.Select(value => new Camp
     {
         BotChatKey = value.Key,
         Name = value.Name,
         BaseCollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
-        Status = CampStatus.Active,
+        Status = CampStatus.Draft,
         CreatedByTelegramUserId = 0,
         CreatedAt = now,
         UpdatedAt = now

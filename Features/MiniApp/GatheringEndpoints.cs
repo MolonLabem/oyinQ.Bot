@@ -65,6 +65,7 @@ internal static class GatheringEndpoints
         var me = gathering.Participants.SingleOrDefault(x => x.Participant.TelegramUserId == access.Identity.TelegramUserId);
         var manages = gathering.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId;
         var active = me?.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted;
+        var now = DateTimeOffset.UtcNow;
         var waitlisted = gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
             .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).ToArray();
         var waitPosition = me?.Status == GatheringParticipationStatus.Waitlisted
@@ -78,9 +79,8 @@ internal static class GatheringEndpoints
             Status = gathering.Status.ToString(),
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanManage = manages,
-            CanJoin = !manages && !active && gathering.Status is not GatheringStatus.Closed
-                and not GatheringStatus.Completed and not GatheringStatus.Cancelled,
-            CanLeave = !manages && active,
+            CanJoin = GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
+            CanLeave = GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
             WaitlistPosition = waitPosition,
             ConfirmedParticipants = new[] { new { Name = gathering.OrganizerParticipant.PreferredDisplayName
                     ?? gathering.OrganizerParticipant.DisplayName, IsOrganizer = true } }

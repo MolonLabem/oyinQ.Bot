@@ -5,9 +5,10 @@ namespace oyinQ.Bot.Features.Collections;
 
 public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 {
-    public async Task<CampBggImportDraft> LoadDraftAsync(string username, CancellationToken cancellationToken)
+    public async Task<CampBggImportDraft> LoadDraftAsync(string username, CancellationToken cancellationToken,
+        Func<int, int, Task>? reportProgress = null)
     {
-        var selection = await LoadSelectionAsync(username, cancellationToken);
+        var selection = await LoadSelectionAsync(username, cancellationToken, reportProgress);
         return new CampBggImportDraft(
             CampBggImportDraft.CurrentVersion,
             username.Trim(),
@@ -27,7 +28,8 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
         string username,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<int, int, Task>? reportProgress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
@@ -35,7 +37,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
         // collection response mixes item types and cannot preserve ownership of
         // expansions reliably.
         var baseGames = await bggClient.GetOwnedBaseGamesAsync(username.Trim(), cancellationToken);
+        if (reportProgress is not null) await reportProgress(1, 2);
         var expansions = await bggClient.GetOwnedExpansionsAsync(username.Trim(), cancellationToken);
+        if (reportProgress is not null) await reportProgress(2, 2);
         var ownedBaseIds = baseGames.Where(value => value.BggId is > 0)
             .Select(value => value.BggId!.Value)
             .ToHashSet();

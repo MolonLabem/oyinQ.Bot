@@ -40,6 +40,8 @@ Mini App peer selection uses `PendingTelegramPeerSelections`, `savePreparedKeybo
 
 Use hierarchical .NET Options/configuration. Environment variables use `__`: `Database__ConnectionString`, `Telegram__Token`, `Telegram__WebhookSecret`, `Telegram__PublicBaseUrl`, and `BoardGameGeek__ApiToken`. `Administration__BootstrapTelegramUserIds` is an optional comma-separated, one-time bootstrap value; startup inserts missing IDs, while `OyinQAdministrators` is the runtime authorization source and the Mini App manages membership. Remove bootstrap configuration after setup so deleted administrators are not restored on restart. Stable defaults live in appsettings files. Development enables `Telegram:UseLongPolling`; production must use webhooks and must not set a long-polling deployment variable. Never commit secrets.
 
+Camp rows created from `CommunityBootstrap:CommunitiesJson` have no event dates, so they start as inactive drafts. Set their name, dates, and time zone in Mini App administration before activation.
+
 Northflank provides `PORT`; do not require it as application configuration. Keep Docker's local `8080` fallback.
 
 ## Retained legacy schema

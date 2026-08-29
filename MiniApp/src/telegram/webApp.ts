@@ -1,5 +1,11 @@
 const app = window.Telegram?.WebApp;
-function applyTheme() { document.documentElement.dataset.theme = app?.colorScheme ?? "light"; }
+export const successEventName = "oyinq:success";
+function applyTheme() {
+  const scheme = app?.colorScheme ?? "light";
+  document.documentElement.dataset.theme = scheme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content",
+    app?.themeParams?.bg_color ?? (scheme === "dark" ? "#111318" : "#f4f6f8"));
+}
 export const telegram = {
   get initData() { return app?.initData ?? ""; },
   get startParam() { return app?.initDataUnsafe.start_param; },
@@ -13,7 +19,7 @@ export const telegram = {
     if (show) { app.BackButton.show(); app.BackButton.onClick(handler); } else app.BackButton.hide();
     return () => app.BackButton.offClick(handler);
   },
-  success() { app?.HapticFeedback?.notificationOccurred("success"); },
+  success(message = "Готово") { app?.HapticFeedback?.notificationOccurred("success"); window.dispatchEvent(new CustomEvent(successEventName, { detail: message })); },
   warning() { app?.HapticFeedback?.notificationOccurred("warning"); },
   confirm(message: string): Promise<boolean> {
     if (app?.showConfirm) return new Promise(resolve => app.showConfirm!(message, resolve));

@@ -131,11 +131,12 @@ public sealed class TelegramPeerSelectionService(
         var pending = await dbContext.PendingTelegramPeerSelections.SingleOrDefaultAsync(x => x.RequestId == requestId,
             cancellationToken);
         if (pending is null) return false;
-        if (pending.RequestedByTelegramUserId != senderId) return true;
-        if (exactPurpose is not null && pending.Purpose != exactPurpose) return true;
         if (exactPurpose is null && pending.Purpose == TelegramPeerSelectionPurpose.AddAdministrator) return true;
-        if (pending.Status is TelegramPeerSelectionStatus.Completed or TelegramPeerSelectionStatus.Consumed) return true;
-        if (pending.Status != TelegramPeerSelectionStatus.Pending || pending.ExpiresAt <= timeProvider.GetUtcNow())
+        var decision = TelegramPeerSelectionRules.Evaluate(pending, senderId,
+            exactPurpose ?? pending.Purpose, timeProvider.GetUtcNow());
+        if (decision is PeerSelectionDecision.WrongOwner or PeerSelectionDecision.WrongPurpose
+            or PeerSelectionDecision.Replay or PeerSelectionDecision.Inactive) return true;
+        if (decision == PeerSelectionDecision.Expired)
         {
             pending.Status = TelegramPeerSelectionStatus.Expired;
             await dbContext.SaveChangesAsync(cancellationToken);

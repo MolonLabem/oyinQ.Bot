@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
-using oyinQ.Bot.Data.Entities;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -28,10 +27,4 @@ public sealed class AdminHandler(
                 InlineKeyboardButton.WithWebApp("Открыть администрирование", new WebAppInfo { Url = url })
             ]]), cancellationToken: cancellationToken);
     }
-
-    public Task<bool> TryHandleCallbackAsync(CallbackQuery callbackQuery, long telegramUserId,
-        CancellationToken cancellationToken) => Task.FromResult(false);
-
-    public Task<bool> TryHandleMessageAsync(Participant participant, Message message,
-        CancellationToken cancellationToken) => Task.FromResult(false);
 }

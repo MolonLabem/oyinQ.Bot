@@ -49,7 +49,7 @@ public sealed class AdministratorStore(AppDbContext dbContext) : IAdministratorS
     {
         if (telegramUserId <= 0)
         {
-            throw new InvalidOperationException("Telegram user ID must be positive.");
+            throw new InvalidOperationException("Telegram ID должен быть положительным числом.");
         }
 
         if (await IsAdministratorAsync(telegramUserId, cancellationToken)) return;

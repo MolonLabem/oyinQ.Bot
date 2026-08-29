@@ -25,12 +25,6 @@ public sealed class TelegramUpdateHandler(
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
         var callback = update.CallbackQuery;
-        if (callback is not null && !CallbackDataValidator.IsValid(callback.Data))
-        {
-            await botClient.AnswerCallbackQuery(callback.Id, "Эта кнопка устарела или повреждена.", showAlert: true, cancellationToken: cancellationToken);
-            return;
-        }
-
         var user = callback?.From ?? update.Message?.From;
         if (user is null) return;
 
@@ -92,26 +86,9 @@ public sealed class TelegramUpdateHandler(
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        if (callback is { Data: { } data } && TelegramUpdateRouting.IsAdminCallback(data))
-        {
-            if (isAdministrator)
-            {
-                await botClient.AnswerCallbackQuery(callback.Id, cancellationToken: cancellationToken);
-            }
-            await adminHandler.TryHandleCallbackAsync(callback, user.Id, cancellationToken);
-            return;
-        }
-
         if (message is { Chat.Type: ChatType.Private } privateMessage && command == "/admin")
         {
             await adminHandler.HandleCommandAsync(privateMessage, user.Id, cancellationToken);
-            return;
-        }
-
-        if (participant is not null
-            && message is { Chat.Type: ChatType.Private } adminFlowMessage
-            && await adminHandler.TryHandleMessageAsync(participant, adminFlowMessage, cancellationToken))
-        {
             return;
         }
 

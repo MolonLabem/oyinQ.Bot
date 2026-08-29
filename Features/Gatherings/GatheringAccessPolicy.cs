@@ -7,6 +7,17 @@ public static class GatheringAccessPolicy
 {
     public static bool RequiresRegistration(BotMode mode) => mode == BotMode.Camp;
 
+    public static bool CanJoin(GameGathering gathering, bool isOrganizer, bool hasActiveParticipation,
+        DateTimeOffset now) => !isOrganizer && !hasActiveParticipation
+        && gathering.StartsAtUtc > now.ToUniversalTime()
+        && gathering.Status is not GatheringStatus.Closed
+            and not GatheringStatus.Completed and not GatheringStatus.Cancelled;
+
+    public static bool CanLeave(GameGathering gathering, bool isOrganizer, bool hasActiveParticipation,
+        DateTimeOffset now) => !isOrganizer && hasActiveParticipation
+        && gathering.StartsAtUtc > now.ToUniversalTime()
+        && gathering.Status is not GatheringStatus.Completed and not GatheringStatus.Cancelled;
+
     public static bool CanManage(
         GameGathering gathering,
         string communityKey,

@@ -2,9 +2,6 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public static class TelegramUpdateRouting
 {
-    public static bool IsAdminCallback(string? data) =>
-        data?.StartsWith("admin:", StringComparison.Ordinal) == true;
-
     public static bool IsGroupEntryRequest(string? text, string? command) =>
         command is "/start" or "/menu" or "/admin"
         || text is "Открыть OyinQ" or "🛠 Админ" or "🛠 Админ-панель";

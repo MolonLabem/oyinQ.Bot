@@ -75,42 +75,47 @@ public sealed class CommunityOptions
             || key.Length > 32
             || key.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-'))
         {
-            throw new InvalidOperationException("Every community key must be 1-32 ASCII letters, digits, '_' or '-'.");
+            throw new InvalidOperationException("Ключ сообщества должен содержать 1–32 латинские буквы, цифры, _ или -.");
         }
 
         var normalizedName = name?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedName) || normalizedName.Length > 160)
         {
-            throw new InvalidOperationException($"Community '{key}' must have a name of at most 160 characters.");
+            throw new InvalidOperationException("Название сообщества обязательно и не может быть длиннее 160 символов.");
         }
 
         if (telegramChatId >= 0)
         {
             throw new InvalidOperationException(
-                $"Community '{key}' must have a negative Telegram group or supergroup chat ID.");
+                "Telegram ID группы или супергруппы должен быть отрицательным числом.");
         }
 
         if (!Enum.TryParse<BotMode>(modeValue, ignoreCase: true, out var mode))
         {
-            throw new InvalidOperationException($"Community '{key}' has unsupported mode '{modeValue}'.");
+            throw new InvalidOperationException($"Режим сообщества «{modeValue}» не поддерживается.");
         }
 
         var timeZoneId = timeZoneValue?.Trim();
         if (string.IsNullOrWhiteSpace(timeZoneId) || timeZoneId.Length > 100)
         {
-            throw new InvalidOperationException($"Community '{key}' must have an explicit time zone of at most 100 characters.");
+            throw new InvalidOperationException("Укажите часовой пояс длиной не более 100 символов.");
         }
 
-        try
-        {
-            _ = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        }
-        catch (TimeZoneNotFoundException exception)
-        {
-            throw new InvalidOperationException($"Community '{key}' has unknown time zone '{timeZoneId}'.", exception);
-        }
+        _ = RequireTimeZone(timeZoneId);
 
         return new BotCommunity(key, normalizedName, telegramChatId, mode, timeZoneId);
+    }
+
+    public static TimeZoneInfo RequireTimeZone(string? value)
+    {
+        var timeZoneId = value?.Trim();
+        if (string.IsNullOrWhiteSpace(timeZoneId) || timeZoneId.Length > 100)
+            throw new InvalidOperationException("Укажите корректный часовой пояс.");
+        try { return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId); }
+        catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            throw new InvalidOperationException($"Часовой пояс «{timeZoneId}» не найден.", exception);
+        }
     }
 
     private static BotCommunity ToCommunity(CommunityConfiguration value) =>

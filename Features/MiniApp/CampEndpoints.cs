@@ -68,9 +68,9 @@ internal static class CampEndpoints
         if (camp.Status != CampStatus.Active) return MiniAppEndpointSupport.Problem("camp_closed", "Кэмп не принимает регистрации.");
         if (camp.StartDate is not { } start || camp.EndDate is not { } end)
             return MiniAppEndpointSupport.Problem("camp_dates_missing", "Для кэмпа не настроены даты.");
-        var duration = end.DayNumber - start.DayNumber + 1;
-        if (body.DaysStaying < 1 || body.DaysStaying > duration)
-            return MiniAppEndpointSupport.Problem("validation", $"Количество дней должно быть от 1 до {duration}.");
+        try { CampRules.ValidateRegistrationDays(body.DaysStaying, start, end); }
+        catch (ArgumentOutOfRangeException exception)
+        { return MiniAppEndpointSupport.Problem("validation", exception.Message); }
         var participant = await MiniAppEndpointSupport.GetOrCreateParticipantAsync(dbContext, access.Identity,
             body.CommunityKey, cancellationToken);
         var registration = await dbContext.CampRegistrations.SingleOrDefaultAsync(
@@ -241,7 +241,7 @@ internal static class CampEndpoints
             game.BggId, CampContributionItemType.BaseGame.ToString(), null, game.Name,
             game.ThumbnailImageUrl,
             1 + contributed.Where(x => x.BggId == game.BggId && x.ItemType == CampContributionItemType.BaseGame).Sum(x => x.CopyCount),
-            [new CampCatalogProvider(null, "Club", null), .. contributed.Where(x => x.BggId == game.BggId
+            [new CampCatalogProvider(null, "Клуб", null), .. contributed.Where(x => x.BggId == game.BggId
                 && x.ItemType == CampContributionItemType.BaseGame).SelectMany(x => x.Providers)],
             ExpansionsFor(game.BggId, game.Expansions)));
         var extra = contributed.Where(x => x.ItemType == CampContributionItemType.BaseGame

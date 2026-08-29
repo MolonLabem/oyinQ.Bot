@@ -77,7 +77,7 @@ public sealed class CommunityOptionsTests
         var exception = Assert.Throws<InvalidOperationException>(() =>
             CommunityOptions.FromConfiguration(configuration));
 
-        Assert.Contains("negative Telegram", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Telegram ID группы", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

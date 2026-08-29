@@ -5,6 +5,7 @@ declare global {
   interface TelegramHaptic { notificationOccurred(type: "error" | "success" | "warning"): void; impactOccurred(style: "light" | "medium" | "heavy"): void }
   interface TelegramWebApp {
     initData: string; initDataUnsafe: { start_param?: string }; colorScheme: "light" | "dark";
+    themeParams?: { bg_color?: string };
     ready(): void; expand(): void; onEvent(event: string, callback: () => void): void; offEvent(event: string, callback: () => void): void;
     requestChat(preparedButtonId: string, callback?: (sent: boolean) => void): void;
     BackButton: TelegramBackButton; MainButton: TelegramMainButton; HapticFeedback?: TelegramHaptic;

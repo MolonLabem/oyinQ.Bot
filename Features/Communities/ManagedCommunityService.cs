@@ -20,6 +20,8 @@ public sealed record CreateClubCommand(string Name, long TelegramChatId, string 
 public sealed record CreateCampCommand(string Name, long TelegramChatId, string TimeZoneId,
     long CreatedByTelegramUserId, long? SourceClubId, DateOnly StartDate, DateOnly EndDate);
 
+public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
+
 public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChatValidator chatValidator,
     TimeProvider timeProvider)
 {
@@ -45,7 +47,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
 
     public async Task<Camp> CreateCampAsync(CreateCampCommand command, CancellationToken cancellationToken)
     {
-        if (command.StartDate > command.EndDate) throw new InvalidOperationException("Дата начала позже даты окончания.");
+        _ = CampRules.InclusiveDuration(command.StartDate, command.EndDate);
         var key = CreateKey("camp");
         var definition = CommunityOptions.CreateValidated(key, command.Name, command.TelegramChatId,
             nameof(BotMode.Camp), command.TimeZoneId);
@@ -81,10 +83,38 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             ?? throw new KeyNotFoundException("Кэмп не найден.");
         if (status == CampStatus.Active && (camp.StartDate is null || camp.EndDate is null))
             throw new InvalidOperationException("Перед активацией задайте даты кэмпа.");
-        if (camp.Status == CampStatus.Cancelled && status != CampStatus.Cancelled)
-            throw new InvalidOperationException("Отменённый кэмп нельзя возобновить.");
+        CampRules.ValidateTransition(camp.Status, status);
         camp.Status = status;
         camp.BotChat.IsActive = status == CampStatus.Active;
+        camp.UpdatedAt = camp.BotChat.UpdatedAt = timeProvider.GetUtcNow();
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateCampAsync(long campId, UpdateCampCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(command.Name) || command.Name.Trim().Length > 160)
+            throw new InvalidOperationException("Название кэмпа некорректно.");
+        var timeZone = CommunityOptions.RequireTimeZone(command.TimeZoneId);
+        var duration = CampRules.InclusiveDuration(command.StartDate, command.EndDate);
+        var camp = await dbContext.Camps.Include(x => x.BotChat).Include(x => x.Registrations)
+            .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
+            ?? throw new KeyNotFoundException("Кэмп не найден.");
+        if (camp.Registrations.Any(x => x.DaysStaying > duration))
+            throw new InvalidOperationException("Новый диапазон короче уже подтверждённого срока проживания участника.");
+        var gatheringStarts = await dbContext.GameGatherings.AsNoTracking()
+            .Where(x => x.CommunityKey == camp.BotChatKey && x.Status != GatheringStatus.Cancelled)
+            .Select(x => x.StartsAtUtc).ToArrayAsync(cancellationToken);
+        if (gatheringStarts.Any(startsAt =>
+            {
+                var localDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(startsAt, timeZone).DateTime);
+                return localDate < command.StartDate || localDate > command.EndDate;
+            }))
+            throw new InvalidOperationException("Новый диапазон не включает один или несколько сборов кэмпа.");
+        camp.Name = camp.BotChat.Name = command.Name.Trim();
+        camp.BotChat.TimeZoneId = command.TimeZoneId;
+        camp.StartDate = command.StartDate;
+        camp.EndDate = command.EndDate;
         camp.UpdatedAt = camp.BotChat.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
     }

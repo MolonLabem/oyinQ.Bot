@@ -50,13 +50,13 @@ public static class GatheringGameSnapshotSerializer
         try
         {
             var snapshot = JsonSerializer.Deserialize<GatheringGameSnapshot>(json ?? string.Empty, Options)
-                ?? throw new InvalidOperationException("Gathering game snapshot is empty.");
+                ?? throw new InvalidOperationException("Снимок игры сбора пуст.");
             Validate(snapshot);
             return snapshot;
         }
         catch (JsonException exception)
         {
-            throw new InvalidOperationException("Gathering game snapshot is malformed JSON.", exception);
+            throw new InvalidOperationException("Снимок игры сбора содержит некорректный JSON.", exception);
         }
     }
 
@@ -70,21 +70,21 @@ public static class GatheringGameSnapshotSerializer
 
         if (string.IsNullOrWhiteSpace(snapshot.Name))
         {
-            throw new InvalidOperationException("Gathering game snapshot requires a game name.");
+            throw new InvalidOperationException("В снимке игры сбора отсутствует название.");
         }
 
         if (snapshot.BggId is <= 0)
         {
-            throw new InvalidOperationException("Gathering game snapshot BGG ID must be positive when provided.");
+            throw new InvalidOperationException("BGG ID в снимке игры сбора должен быть положительным.");
         }
 
         if (snapshot.SelectedExpansions is null
             || snapshot.SelectedExpansions.Any(value => value.BggId <= 0 || string.IsNullOrWhiteSpace(value.Name)))
         {
-            throw new InvalidOperationException("Gathering game snapshot has invalid selected expansions.");
+            throw new InvalidOperationException("Снимок игры сбора содержит некорректные выбранные дополнения.");
         }
         if (snapshot.Version >= 2 && (snapshot.KnownExpansions is null
             || snapshot.KnownExpansions.Any(value => value.BggId <= 0 || string.IsNullOrWhiteSpace(value.Name))))
-            throw new InvalidOperationException("Gathering game snapshot has invalid known expansions.");
+            throw new InvalidOperationException("Снимок игры сбора содержит некорректный список дополнений.");
     }
 }

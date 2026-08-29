@@ -12,17 +12,19 @@ export function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
   const [communityKey, setCommunityKey] = useState(() => initialCommunity()); const [tab, setTab] = useState("gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
-  const initialGatheringId = new URLSearchParams(location.search).get("gathering") ?? undefined;
+  const [initialGatheringId, setInitialGatheringId] = useState(() => new URLSearchParams(location.search).get("gathering") ?? undefined);
   useEffect(() => { Promise.all([api<Bootstrap>("/communities"), api<Capabilities>("/capabilities")]).then(([b, c]) => { setBootstrap(b); setCapabilities(c); if (!communityKey && b.communities.length === 1) setCommunityKey(b.communities[0].key); }).catch(e => setError(e instanceof Error ? e.message : String(e))); }, []);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
+  useEffect(() => { setTab("gatherings"); }, [communityKey]);
   const community = useMemo(() => bootstrap?.communities.find(x => x.key === communityKey), [bootstrap, communityKey]);
   if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
-  if (adminMode) return bootstrap.isAdministrator ? <AdminPage /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна только администраторам OyinQ.</Notice></Page>;
+  if (adminMode) return bootstrap.isAdministrator ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна только администраторам OyinQ.</Notice></Page>;
   if (!community) return <CommunityPicker communities={bootstrap.communities} choose={setCommunityKey} admin={bootstrap.isAdministrator} />;
   const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }];
-  const content = tab === "gatherings" ? <GatheringsPage community={community} initialGatheringId={initialGatheringId} /> : tab === "games" ? <GamesPage community={community} /> : <MyGamesPage community={community} />;
-  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button>{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</header><div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community}>{content}</CampRegistrationGate> : content}</div><Navigation tabs={tabs} active={tab} onChange={setTab} /></div>;
+  const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";
+  const content = activeTab === "gatherings" ? <GatheringsPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} /> : activeTab === "games" ? <GamesPage community={community} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} />;
+  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button>{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</header><div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community}>{content}</CampRegistrationGate> : content}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
 }
 
 function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {

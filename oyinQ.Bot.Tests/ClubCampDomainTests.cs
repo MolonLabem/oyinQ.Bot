@@ -136,6 +136,26 @@ public sealed class ClubCampDomainTests
         Assert.False(GatheringAccessPolicy.CanManage(gathering, "club-a", 8));
     }
 
+    [Fact]
+    public void AccessPolicy_HidesContradictoryOrPastParticipationActions()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var gathering = new GameGathering
+        {
+            StartsAtUtc = now.AddHours(2),
+            Status = GatheringStatus.Recruiting
+        };
+
+        Assert.True(GatheringAccessPolicy.CanJoin(gathering, false, false, now));
+        Assert.False(GatheringAccessPolicy.CanJoin(gathering, false, true, now));
+        Assert.True(GatheringAccessPolicy.CanLeave(gathering, false, true, now));
+        Assert.False(GatheringAccessPolicy.CanLeave(gathering, true, true, now));
+
+        gathering.StartsAtUtc = now.AddMinutes(-1);
+        Assert.False(GatheringAccessPolicy.CanJoin(gathering, false, false, now));
+        Assert.False(GatheringAccessPolicy.CanLeave(gathering, false, true, now));
+    }
+
     private static ClubCollectionGame Game(long bggId, string name) =>
         new(bggId, name, null, null, 2, 4, "3-4", []);
 

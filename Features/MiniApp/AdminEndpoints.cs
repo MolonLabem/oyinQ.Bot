@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
+using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
@@ -15,6 +16,7 @@ internal sealed record CreateClubRequest(Guid SelectionId, string? Name, string 
 internal sealed record CreateCampRequest(Guid SelectionId, string? Name, DateOnly StartDate, DateOnly EndDate,
     long? SourceClubId, string? TimeZoneId);
 internal sealed record UpdateCommunityRequest(string Name, string TimeZoneId, bool IsActive);
+internal sealed record UpdateCampRequest(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
 internal sealed record ChangeCampStatusRequest(string Status);
 
 internal static class AdminEndpoints
@@ -32,6 +34,7 @@ internal static class AdminEndpoints
         admin.MapPost("/clubs", CreateClubAsync);
         admin.MapPut("/clubs/{clubId:long}", UpdateClubAsync);
         admin.MapPost("/camps", CreateCampAsync);
+        admin.MapPut("/camps/{campId:long}", UpdateCampAsync);
         admin.MapPost("/camps/{campId:long}/status", ChangeCampStatusAsync);
         admin.MapGet("/exports/statistics.zip", ExportAsync);
         return group;
@@ -164,7 +167,7 @@ internal static class AdminEndpoints
             return Results.Forbid();
         try
         {
-            _ = TimeZoneInfo.FindSystemTimeZoneById(body.TimeZoneId);
+            _ = CommunityOptions.RequireTimeZone(body.TimeZoneId);
             var club = await dbContext.Clubs.Include(x => x.BotChat).SingleOrDefaultAsync(x => x.Id == clubId,
                 cancellationToken) ?? throw new KeyNotFoundException("Клуб не найден.");
             if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Trim().Length > 160)
@@ -215,6 +218,22 @@ internal static class AdminEndpoints
         if (!Enum.TryParse<CampStatus>(body.Status, true, out var status))
             return MiniAppEndpointSupport.Problem("validation", "Неизвестный статус кэмпа.");
         try { await communities.SetCampStatusAsync(campId, status, cancellationToken); return Results.NoContent(); }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> UpdateCampAsync(HttpRequest request, long campId,
+        UpdateCampRequest body, TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administrators, ManagedCommunityService communities,
+        CancellationToken cancellationToken)
+    {
+        if (await AdminIdentityAsync(request, authenticator, administrators, cancellationToken) is null)
+            return Results.Forbid();
+        try
+        {
+            await communities.UpdateCampAsync(campId,
+                new(body.Name, body.TimeZoneId, body.StartDate, body.EndDate), cancellationToken);
+            return Results.NoContent();
+        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 

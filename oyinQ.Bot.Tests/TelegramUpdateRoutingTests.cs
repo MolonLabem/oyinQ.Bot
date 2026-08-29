@@ -19,12 +19,4 @@ public sealed class TelegramUpdateRoutingTests
     [InlineData("/mygames", false)]
     public void GroupEntry_OnlyKeepsCurrentNativeCommands(string text, bool expected) =>
         Assert.Equal(expected, TelegramUpdateRouting.IsGroupEntryRequest(text, TelegramUpdateRouting.GetCommand(text)));
-
-    [Fact]
-    public void AdminCallbacks_AreTheOnlyNativeCallbackNamespace()
-    {
-        Assert.True(TelegramUpdateRouting.IsAdminCallback("admin:camp:create"));
-        Assert.False(TelegramUpdateRouting.IsAdminCallback("session:join:1"));
-        Assert.False(TelegramUpdateRouting.IsAdminCallback("game:menu"));
-    }
 }

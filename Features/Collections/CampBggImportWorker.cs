@@ -53,6 +53,8 @@ public sealed class CampBggImportWorker(
             import.LeaseExpiresAt = now.AddMinutes(30);
             import.AttemptCount++;
             import.Error = null;
+            import.ProgressCurrent = 0;
+            import.ProgressTotal = 2;
             import.UpdatedAt = now;
             await dbContext.SaveChangesAsync(stoppingToken);
             await transaction.CommitAsync(stoppingToken);
@@ -61,7 +63,20 @@ public sealed class CampBggImportWorker(
         try
         {
             var loader = scope.ServiceProvider.GetRequiredService<CampBggImportService>();
-            var draft = await loader.LoadDraftAsync(import.BggUsername, stoppingToken);
+            var draft = await loader.LoadDraftAsync(import.BggUsername, stoppingToken,
+                async (current, total) =>
+                {
+                    await dbContext.Entry(import).ReloadAsync(stoppingToken);
+                    if (import.LeaseId != leaseId)
+                        throw new InvalidOperationException("Задача импорта передана другому обработчику.");
+                    if (import.CancellationRequestedAt is not null)
+                        throw new OperationCanceledException("Импорт отменён пользователем.");
+                    import.ProgressCurrent = current;
+                    import.ProgressTotal = total;
+                    import.LeaseExpiresAt = timeProvider.GetUtcNow().AddMinutes(30);
+                    import.UpdatedAt = timeProvider.GetUtcNow();
+                    await dbContext.SaveChangesAsync(stoppingToken);
+                });
             await dbContext.Entry(import).ReloadAsync(stoppingToken);
             if (import.LeaseId != leaseId) return true;
             if (import.CancellationRequestedAt is not null)
@@ -71,8 +86,8 @@ public sealed class CampBggImportWorker(
             else
             {
                 import.DraftJson = CampBggImportDraftSerializer.Serialize(draft);
-                import.ProgressCurrent = draft.Items.Count;
-                import.ProgressTotal = draft.Items.Count;
+                import.ProgressCurrent = 2;
+                import.ProgressTotal = 2;
                 import.Status = CampBggImportStatus.Completed;
             }
         }

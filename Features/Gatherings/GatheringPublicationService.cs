@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -13,6 +16,7 @@ public sealed class GatheringPublicationService(
     ICommunityStore communityStore,
     GatheringTelegramPublisher publisher,
     ITelegramBotClient botClient,
+    IOptions<BotOptions> botOptions,
     TimeProvider timeProvider,
     ILogger<GatheringPublicationService> logger)
 {
@@ -63,8 +67,16 @@ public sealed class GatheringPublicationService(
     {
         try
         {
+            var communityKey = await dbContext.GameGatherings.AsNoTracking()
+                .Where(x => x.PublicId == gatheringPublicId)
+                .Select(x => x.CommunityKey)
+                .SingleAsync(cancellationToken);
+            var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(communityKey)}&gathering={gatheringPublicId}";
             await botClient.SendMessage(promotion.TelegramUserId,
-                $"Для вас освободилось место в сборе. Откройте OyinQ, чтобы посмотреть детали: {gatheringPublicId}",
+                $"{promotion.DisplayName}, для вас освободилось место в сборе.",
+                replyMarkup: new InlineKeyboardMarkup([[
+                    InlineKeyboardButton.WithWebApp("Открыть сбор", new WebAppInfo { Url = url })
+                ]]),
                 cancellationToken: cancellationToken);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)

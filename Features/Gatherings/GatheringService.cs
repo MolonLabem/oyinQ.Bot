@@ -21,7 +21,7 @@ public sealed class GatheringService(AppDbContext dbContext)
             IsolationLevel.Serializable,
             cancellationToken);
         var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
-        EnsureJoinable(gathering);
+        EnsureJoinable(gathering, now);
         var participant = await RequireContextParticipantAsync(gathering, telegramUserId, cancellationToken);
         if (gathering.OrganizerParticipantId == participant.Id)
         {
@@ -76,6 +76,9 @@ public sealed class GatheringService(AppDbContext dbContext)
             IsolationLevel.Serializable,
             cancellationToken);
         var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
+        if (gathering.StartsAtUtc <= now.ToUniversalTime()
+            || gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
+            throw new InvalidOperationException("Нельзя покинуть завершённый или отменённый сбор.");
         var participant = await RequireContextParticipantAsync(gathering, telegramUserId, cancellationToken);
         if (gathering.OrganizerParticipantId == participant.Id)
         {
@@ -153,9 +156,10 @@ public sealed class GatheringService(AppDbContext dbContext)
         return participant;
     }
 
-    private static void EnsureJoinable(GameGathering gathering)
+    private static void EnsureJoinable(GameGathering gathering, DateTimeOffset now)
     {
-        if (gathering.Status is GatheringStatus.Closed or GatheringStatus.Completed or GatheringStatus.Cancelled)
+        if (gathering.StartsAtUtc <= now.ToUniversalTime()
+            || gathering.Status is GatheringStatus.Closed or GatheringStatus.Completed or GatheringStatus.Cancelled)
         {
             throw new InvalidOperationException("Запись в этот сбор закрыта.");
         }

@@ -34,7 +34,7 @@ public static class ClubCollectionSerializer
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            throw new InvalidOperationException("Club collection document is empty.");
+            throw new InvalidOperationException("Документ коллекции клуба пуст.");
         }
 
         ClubCollectionDocument? document;
@@ -44,12 +44,12 @@ public static class ClubCollectionSerializer
         }
         catch (JsonException exception)
         {
-            throw new InvalidOperationException("Club collection document is malformed JSON.", exception);
+            throw new InvalidOperationException("Документ коллекции клуба содержит некорректный JSON.", exception);
         }
 
         if (document is null)
         {
-            throw new InvalidOperationException("Club collection document is empty.");
+            throw new InvalidOperationException("Документ коллекции клуба пуст.");
         }
 
         Validate(document);
@@ -66,17 +66,17 @@ public static class ClubCollectionSerializer
 
         if (document.Games is null)
         {
-            throw new InvalidOperationException("Club collection games are required.");
+            throw new InvalidOperationException("В документе коллекции отсутствует список игр.");
         }
 
         if (document.Games.Any(game => game.BggId <= 0 || string.IsNullOrWhiteSpace(game.Name)))
         {
-            throw new InvalidOperationException("Every club collection game requires a positive BGG ID and a name.");
+            throw new InvalidOperationException("У каждой игры коллекции должны быть название и положительный BGG ID.");
         }
 
         if (document.Games.GroupBy(game => game.BggId).Any(group => group.Count() > 1))
         {
-            throw new InvalidOperationException("Club collection contains duplicate BGG games.");
+            throw new InvalidOperationException("Коллекция содержит повторяющиеся игры BGG.");
         }
 
         foreach (var game in document.Games)
