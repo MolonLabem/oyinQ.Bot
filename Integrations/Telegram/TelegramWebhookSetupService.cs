@@ -33,6 +33,14 @@ public sealed class TelegramWebhookSetupService(
                 WebApp = new WebAppInfo { Url = miniAppUrl }
             },
             cancellationToken: cancellationToken);
+        await botClient.SetMyShortDescription(
+            "Настольные игры, сборы и коллекции клубов и кэмпов.",
+            cancellationToken: cancellationToken);
+        await botClient.SetMyDescription(
+            "OyinQ помогает находить настольные игры, создавать сборы и присоединяться к ним. " +
+            "Клубы ведут общую коллекцию, а участники кэмпов отмечают игры, которые привезут. " +
+            "Все основные действия доступны в удобном Mini App.",
+            cancellationToken: cancellationToken);
         await botClient.SetMyCommands(
             [
                 new BotCommand { Command = "start", Description = "Открыть OyinQ" },

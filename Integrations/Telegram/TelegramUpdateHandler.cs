@@ -105,6 +105,7 @@ public sealed class TelegramUpdateHandler(
 
         var startContext = command == "/start" ? MiniAppStartParameter.Parse(message?.Text) : null;
         await SendMiniAppEntryAsync(participant, user.Id, user.Id, startContext, isAdministrator,
+            command == "/start",
             cancellationToken);
     }
 
@@ -120,7 +121,7 @@ public sealed class TelegramUpdateHandler(
                 await botClient.SendMessage(
                     groupChatId,
                     "OyinQ работает в Mini App. В группе остаются объявления, уведомления и точки входа.",
-                    replyMarkup: new InlineKeyboardMarkup([[InlineKeyboardButton.WithUrl("Открыть OyinQ", $"https://t.me/{me.Username}?start={parameter}")]]),
+                    replyMarkup: new InlineKeyboardMarkup([[InlineKeyboardButton.WithUrl("Открыть OyinQ в личном чате", $"https://t.me/{me.Username}?start={parameter}")]]),
                     cancellationToken: cancellationToken);
                 return;
             }
@@ -139,8 +140,10 @@ public sealed class TelegramUpdateHandler(
         long telegramUserId,
         MiniAppStartContext? startContext,
         bool isAdministrator,
+        bool includeWelcome,
         CancellationToken cancellationToken)
     {
+        await EnsurePrivateMenuButtonAsync(privateChatId, cancellationToken);
         IReadOnlyList<BotCommunity> communities;
         try
         {
@@ -179,12 +182,55 @@ public sealed class TelegramUpdateHandler(
                     new WebAppInfo { Url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?admin=1" })
             ]);
         }
-        var text = communities.Count == 0
-            ? "Управление OyinQ доступно в админ-панели."
-            : communities.Count == 1
-            ? $"🎲 {communities[0].Name}\n\nВсе основные действия доступны в Mini App."
-            : "Выберите сообщество:";
+        var text = includeWelcome
+            ? BuildWelcomeText(communities, isAdministrator)
+            : communities.Count == 0
+                ? "Управление OyinQ доступно в админ-панели."
+                : communities.Count == 1
+                    ? $"🎲 {communities[0].Name}\n\nОткройте OyinQ кнопкой ниже."
+                    : "Выберите сообщество:";
         await botClient.SendMessage(privateChatId, text, replyMarkup: new InlineKeyboardMarkup(rows), cancellationToken: cancellationToken);
+    }
+
+    private async Task EnsurePrivateMenuButtonAsync(long privateChatId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await botClient.SetChatMenuButton(
+                privateChatId,
+                new MenuButtonWebApp
+                {
+                    Text = "Открыть OyinQ",
+                    WebApp = new WebAppInfo { Url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/" }
+                },
+                cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Could not configure Mini App menu button for {TelegramUserId}.",
+                privateChatId);
+        }
+    }
+
+    private static string BuildWelcomeText(IReadOnlyList<BotCommunity> communities, bool isAdministrator)
+    {
+        var destination = communities.Count switch
+        {
+            0 when isAdministrator => "Откройте админ-панель, чтобы настроить клубы и кэмпы.",
+            1 => $"Сейчас доступно сообщество: {communities[0].Name}.",
+            _ => "Выберите нужное сообщество кнопкой ниже."
+        };
+        return $"""
+            👋 Добро пожаловать в OyinQ!
+
+            Здесь можно:
+            • смотреть коллекцию и находить игры;
+            • создавать сборы и присоединяться к ним;
+            • отмечать игры, которые вы привезёте в кэмп.
+
+            {destination}
+            Кнопка «Открыть OyinQ» также останется рядом с полем ввода в этом чате.
+            """;
     }
 
     private string BuildMiniAppUrl(BotCommunity community, Guid? gatheringPublicId)
