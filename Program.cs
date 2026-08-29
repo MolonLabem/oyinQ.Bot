@@ -12,7 +12,6 @@ using oyinQ.Bot.Features.MiniApp;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
-using Telegram.Bot.Types;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +32,7 @@ builder.Services.AddSingleton(Options.Create(bggOptions));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddSingleton<TelegramWebhookUpdateParser>();
 
 builder.Services.AddDbContext<AppDbContext>(
     options => options.UseNpgsql(connectionString));
@@ -189,8 +189,9 @@ app.MapPost(
     "/telegram/webhook/{secret}",
     async Task<IResult> (
         string secret,
-        Update update,
+        HttpRequest request,
         IOptions<BotOptions> options,
+        TelegramWebhookUpdateParser parser,
         TelegramUpdateHandler handler,
         CancellationToken cancellationToken) =>
     {
@@ -200,6 +201,18 @@ app.MapPost(
                 StringComparison.Ordinal))
         {
             return Results.NotFound();
+        }
+
+        if (!request.Headers.TryGetValue("X-Telegram-Bot-Api-Secret-Token", out var secretToken) ||
+            !string.Equals(secretToken.ToString(), options.Value.WebhookSecret, StringComparison.Ordinal))
+        {
+            return Results.NotFound();
+        }
+
+        var update = await parser.ParseAsync(request.Body, cancellationToken);
+        if (update is null)
+        {
+            return Results.BadRequest();
         }
 
         await handler.HandleAsync(update, cancellationToken);
