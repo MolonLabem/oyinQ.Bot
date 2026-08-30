@@ -22,7 +22,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GameGatheringExpansion> GameGatheringExpansions => Set<GameGatheringExpansion>();
     public DbSet<GameGatheringParticipant> GameGatheringParticipants => Set<GameGatheringParticipant>();
     public DbSet<CampBggImport> CampBggImports => Set<CampBggImport>();
+    public DbSet<ClubMetadataRefresh> ClubMetadataRefreshes => Set<ClubMetadataRefresh>();
     public DbSet<PendingTelegramPeerSelection> PendingTelegramPeerSelections => Set<PendingTelegramPeerSelection>();
+    public DbSet<TelegramMessageCleanup> TelegramMessageCleanups => Set<TelegramMessageCleanup>();
     public DbSet<CollectionImport> CollectionImports => Set<CollectionImport>();
     public DbSet<ParticipantConversationState> ParticipantConversationStates => Set<ParticipantConversationState>();
 
@@ -99,6 +101,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("CampRegistrations");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.CampId, x.ParticipantId }).IsUnique();
+            entity.Property(x => x.City).HasMaxLength(100);
             entity.HasOne(x => x.Camp)
                 .WithMany(x => x.Registrations)
                 .HasForeignKey(x => x.CampId)
@@ -146,6 +149,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<ClubMetadataRefresh>(entity =>
+        {
+            entity.ToTable("ClubMetadataRefreshes");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.PublicId).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.CreatedAt });
+            entity.Property(x => x.BggIdsJson).HasColumnType("jsonb");
+            entity.Property(x => x.Error).HasMaxLength(2000);
+            entity.HasOne(x => x.Club).WithMany().HasForeignKey(x => x.ClubId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<PendingTelegramPeerSelection>(entity =>
         {
             entity.ToTable("PendingTelegramPeerSelections");
@@ -155,6 +169,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => new { x.RequestedByTelegramUserId, x.Status, x.ExpiresAt });
             entity.Property(x => x.PreparedButtonId).HasMaxLength(256);
             entity.Property(x => x.ResultJson).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<TelegramMessageCleanup>(entity =>
+        {
+            entity.ToTable("TelegramMessageCleanups");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TelegramChatId, x.TelegramMessageId }).IsUnique();
+            entity.HasIndex(x => new { x.LastAttemptAt, x.CreatedAt });
+            entity.Property(x => x.LastError).HasMaxLength(2000);
         });
 
         modelBuilder.Entity<Participant>(entity =>
@@ -264,6 +287,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.PublicId).IsUnique();
             entity.HasIndex(x => new { x.CommunityKey, x.StartsAtUtc });
+            entity.HasIndex(x => new { x.Status, x.StartsAtUtc, x.Id });
             entity.HasIndex(x => new { x.TelegramChatId, x.TelegramMessageId }).IsUnique();
 
             entity.Property(x => x.CommunityKey).HasMaxLength(32);

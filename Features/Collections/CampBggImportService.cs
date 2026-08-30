@@ -5,6 +5,18 @@ namespace oyinQ.Bot.Features.Collections;
 
 public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 {
+    public static CampBggImportDraft ClassifySkips(CampBggImportDraft draft,
+        IReadOnlySet<long> baseCollectionIds,
+        IReadOnlySet<(long BggId, CampContributionItemType ItemType)> currentParticipantManualItems) =>
+        draft with { Items = draft.Items.Select(item =>
+        {
+            if (currentParticipantManualItems.Contains((item.BggId, item.ItemType)))
+                return item with { SelectedByDefault = false, SkipReason = CampImportSkipReason.AlreadyAddedManually };
+            if (baseCollectionIds.Contains(item.BggId))
+                return item with { SelectedByDefault = false, SkipReason = CampImportSkipReason.AlreadyInBaseCollection, IsOverridable = true };
+            return item;
+        }).ToArray() };
+
     public async Task<CampBggImportDraft> LoadDraftAsync(string username, CancellationToken cancellationToken,
         Func<int, int, Task>? reportProgress = null)
     {
@@ -25,7 +37,16 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                     value.MaxPlayers,
                     value.BestPlayers,
                     value.Types,
-                    value.Categories))).ToArray());
+                    value.Categories,
+                    value.Description,
+                    value.YearPublished,
+                    value.MinPlayTimeMinutes,
+                    value.MaxPlayTimeMinutes,
+                    value.MinAge,
+                    value.Type,
+                    value.Subdomains,
+                    value.CategoryItems,
+                    value.Mechanics))).ToArray());
     }
 
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
@@ -60,7 +81,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.MaxPlayers,
                 value.BestPlayers,
                 value.Types,
-                value.Categories)));
+                value.Categories,
+                value.Description, value.YearPublished, value.MinPlayTimeMinutes, value.MaxPlayTimeMinutes,
+                value.MinAge, value.Type, value.Subdomains, value.CategoryItems, value.Mechanics)));
         items.AddRange(expansions.Where(value => value.Expansion.BggId is > 0).Select(value =>
         {
             var parentId = value.ParentBggIds.FirstOrDefault(ownedBaseIds.Contains);
@@ -77,7 +100,11 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.Expansion.MaxPlayers,
                 value.Expansion.BestPlayers,
                 value.Expansion.Types,
-                value.Expansion.Categories);
+                value.Expansion.Categories,
+                value.Expansion.Description, value.Expansion.YearPublished,
+                value.Expansion.MinPlayTimeMinutes, value.Expansion.MaxPlayTimeMinutes,
+                value.Expansion.MinAge, value.Expansion.Type, value.Expansion.Subdomains,
+                value.Expansion.CategoryItems, value.Expansion.Mechanics);
         }));
 
         return items

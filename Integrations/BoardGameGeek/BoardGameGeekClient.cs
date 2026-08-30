@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
+using oyinQ.Bot.Features.Collections;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Integrations;
@@ -347,6 +349,9 @@ public sealed class BoardGameGeekClient(
             return null;
         }
 
+        var subdomains = ReadTaxonomy(item, "boardgamesubdomain");
+        var categories = ReadTaxonomy(item, "boardgamecategory");
+        var mechanics = ReadTaxonomy(item, "boardgamemechanic");
         return new ExternalGame(
             bggId,
             name,
@@ -356,8 +361,17 @@ public sealed class BoardGameGeekClient(
             $"https://boardgamegeek.com/boardgame/{bggId.Value}",
             ReadImageUrl(item.Element("thumbnail")),
             ReadImageUrl(item.Element("image")),
-            ReadTags(item, "boardgamesubdomain", NormalizeSubdomain),
-            ReadTags(item, "boardgamecategory"));
+            subdomains.Select(value => NormalizeSubdomain(value.Name)).ToArray(),
+            categories.Select(value => value.Name).ToArray(),
+            NormalizeDescription(item.Element("description")?.Value),
+            ReadIntValue(item.Element("yearpublished")),
+            ReadIntValue(item.Element("minplaytime")),
+            ReadIntValue(item.Element("maxplaytime")),
+            ReadIntValue(item.Element("minage")),
+            subdomains,
+            categories,
+            mechanics,
+            BggTaxonomyCatalog.MapGameType(subdomains));
     }
 
     private static IReadOnlyList<string> ReadTags(XElement item, string linkType,
@@ -371,6 +385,29 @@ public sealed class BoardGameGeekClient(
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .Order(StringComparer.OrdinalIgnoreCase)
         .ToArray();
+
+    private static IReadOnlyList<GameTaxonomyItem> ReadTaxonomy(XElement item, string linkType) => item.Elements("link")
+        .Where(link => string.Equals((string?)link.Attribute("type"), linkType, StringComparison.OrdinalIgnoreCase))
+        .Select(link => new { Id = ReadLongAttribute(link, "id"), Name = ((string?)link.Attribute("value"))?.Trim() })
+        .Where(value => value.Id is > 0 && !string.IsNullOrWhiteSpace(value.Name))
+        .Select(value => new GameTaxonomyItem(value.Id!.Value, value.Name!))
+        .DistinctBy(value => value.BggId)
+        .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    internal static string? NormalizeDescription(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var decoded = WebUtility.HtmlDecode(value);
+        decoded = Regex.Replace(decoded, "(?i)<br\\s*/?>", "\n");
+        decoded = Regex.Replace(decoded, "(?i)</p\\s*>", "\n\n");
+        decoded = Regex.Replace(decoded, "<[^>]+>", string.Empty);
+        decoded = decoded.Replace("\r\n", "\n").Replace('\r', '\n');
+        decoded = Regex.Replace(decoded, "[\\t ]+", " ");
+        decoded = Regex.Replace(decoded, " *\n *", "\n");
+        decoded = Regex.Replace(decoded, "\n{3,}", "\n\n").Trim();
+        return decoded.Length == 0 ? null : decoded[..Math.Min(decoded.Length, 20_000)];
+    }
 
     private static string NormalizeSubdomain(string value) => value.EndsWith(" Games",
         StringComparison.OrdinalIgnoreCase) ? value[..^6].TrimEnd() : value;

@@ -7,15 +7,16 @@ import { AdminPage } from "../pages/admin/AdminPage";
 import { CampRegistrationGate, MyGamesPage } from "../pages/camp/MyGamesPage";
 import { GamesPage } from "../pages/games/GamesPage";
 import { GatheringsPage } from "../pages/gatherings/GatheringsPage";
+import { telegram } from "../telegram/webApp";
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
-  const [communityKey, setCommunityKey] = useState(() => initialCommunity()); const [tab, setTab] = useState("gatherings");
+  const [communityKey, setCommunityKey] = useState(() => initialCommunity()); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
   const [initialGatheringId, setInitialGatheringId] = useState(() => new URLSearchParams(location.search).get("gathering") ?? undefined);
   useEffect(() => { Promise.all([api<Bootstrap>("/communities"), api<Capabilities>("/capabilities")]).then(([b, c]) => { setBootstrap(b); setCapabilities(c); if (!communityKey && b.communities.length === 1) setCommunityKey(b.communities[0].key); }).catch(e => setError(e instanceof Error ? e.message : String(e))); }, []);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
-  useEffect(() => { setTab("gatherings"); }, [communityKey]);
+  useEffect(() => { if (!new URLSearchParams(location.search).get("tab")) setTab("gatherings"); }, [communityKey]);
   const community = useMemo(() => bootstrap?.communities.find(x => x.key === communityKey), [bootstrap, communityKey]);
   if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
@@ -24,7 +25,7 @@ export function App() {
   const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }];
   const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";
   const content = activeTab === "gatherings" ? <GatheringsPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} /> : activeTab === "games" ? <GamesPage community={community} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} />;
-  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button>{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</header><div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community} isAdministrator={bootstrap.isAdministrator}>{content}</CampRegistrationGate> : content}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
+  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}{telegram.canFullscreen && <button className="fullscreen-action" onClick={() => void telegram.requestFullscreen()}>Развернуть</button>}</div></header><div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community} isAdministrator={bootstrap.isAdministrator}>{content}</CampRegistrationGate> : content}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
 }
 
 function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {

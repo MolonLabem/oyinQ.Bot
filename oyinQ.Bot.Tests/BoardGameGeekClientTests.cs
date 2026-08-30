@@ -140,10 +140,14 @@ public sealed class BoardGameGeekClientTests
             <items>
               <item type="boardgame" id="167791">
                 <name type="primary" value="Terraforming Mars" />
+                <description>First paragraph.&amp;#10;&amp;#10;&lt;b&gt;Second paragraph&lt;/b&gt;</description>
+                <yearpublished value="2016" />
                 <minplayers value="1" />
                 <maxplayers value="5" />
+                <minplaytime value="90" /><maxplaytime value="120" /><minage value="12" />
                 <link type="boardgamesubdomain" id="5497" value="Strategy Games" />
                 <link type="boardgamecategory" id="1021" value="Economic" />
+                <link type="boardgamemechanic" id="2040" value="Hand Management" />
                 <link type="boardgameexpansion" id="247030" value="Terraforming Mars: Prelude" inbound="true" />
                 <link type="boardgameexpansion" id="231965" value="Terraforming Mars: Hellas &amp; Elysium" inbound="true" />
                 <link type="boardgameexpansion" id="999" value="Unrelated outbound link" />
@@ -159,6 +163,14 @@ public sealed class BoardGameGeekClientTests
         Assert.Equal("Terraforming Mars", details.Game.Name);
         Assert.Equal(["Strategy"], details.Game.Types);
         Assert.Equal(["Economic", "Science Fiction"], details.Game.Categories);
+        Assert.Equal("First paragraph.\n\nSecond paragraph", details.Game.Description);
+        Assert.Equal(2016, details.Game.YearPublished);
+        Assert.Equal(90, details.Game.MinPlayTimeMinutes);
+        Assert.Equal(120, details.Game.MaxPlayTimeMinutes);
+        Assert.Equal(12, details.Game.MinAge);
+        Assert.Equal(oyinQ.Bot.Features.Collections.GameType.Strategy, details.Game.Type);
+        Assert.Equal(1021, details.Game.CategoryItems!.First().BggId);
+        Assert.Equal(2040, Assert.Single(details.Game.Mechanics!).BggId);
         Assert.Collection(
             details.Expansions,
             expansion => Assert.Equal(231965, expansion.BggId),

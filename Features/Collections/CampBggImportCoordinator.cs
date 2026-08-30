@@ -13,7 +13,10 @@ public sealed record CampBggImportView(
     CampBggImportDraft? Draft,
     string? Error,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    CampImportOverrideResolution? OverrideResolution);
+public sealed record CampImportConfirmationResult(int Added, IReadOnlyDictionary<CampImportSkipReason, int> Skipped,
+    bool HasOverridableItems, bool WasAlreadyConfirmed = false);
 
 public sealed class CampBggImportCoordinator(
     AppDbContext dbContext,
@@ -50,10 +53,10 @@ public sealed class CampBggImportCoordinator(
             import.ProgressCurrent, import.ProgressTotal,
             import.Status is CampBggImportStatus.Completed or CampBggImportStatus.Confirmed
                 ? CampBggImportDraftSerializer.Deserialize(import.DraftJson) : null,
-            import.Error, import.UpdatedAt, import.ExpiresAt);
+            import.Error, import.UpdatedAt, import.ExpiresAt, import.OverrideResolution);
     }
 
-    public async Task ConfirmAsync(Guid publicId, long campId, long participantId,
+    public async Task<CampImportConfirmationResult> ConfirmAsync(Guid publicId, long campId, long participantId,
         IReadOnlyCollection<long> selectedBaseGameIds, IReadOnlyCollection<long> selectedExpansionIds,
         CancellationToken cancellationToken)
     {
@@ -66,8 +69,9 @@ public sealed class CampBggImportCoordinator(
         if (import.ExpiresAt <= timeProvider.GetUtcNow()) throw new InvalidOperationException("Черновик импорта истёк.");
         if (import.Status == CampBggImportStatus.Confirmed)
         {
+            var confirmedDraft = CampBggImportDraftSerializer.Deserialize(import.DraftJson);
             await transaction.CommitAsync(cancellationToken);
-            return;
+            return Result(confirmedDraft, selectedBaseGameIds, selectedExpansionIds) with { WasAlreadyConfirmed = true };
         }
         if (import.Status != CampBggImportStatus.Completed) throw new InvalidOperationException("Импорт ещё не готов.");
         var draft = CampBggImportDraftSerializer.Deserialize(import.DraftJson);
@@ -77,6 +81,42 @@ public sealed class CampBggImportCoordinator(
         import.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        return Result(draft, selectedBaseGameIds, selectedExpansionIds);
+    }
+
+    public async Task ResolveBaseDuplicatesAsync(Guid publicId, long campId, long participantId,
+        CampImportOverrideResolution resolution, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var import = await dbContext.CampBggImports
+            .FromSqlInterpolated($"SELECT * FROM \"CampBggImports\" WHERE \"PublicId\" = {publicId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken) ?? throw new KeyNotFoundException("Импорт не найден.");
+        EnsureOwner(import, campId, participantId);
+        if (import.Status != CampBggImportStatus.Confirmed) throw new InvalidOperationException("Сначала подтвердите импорт.");
+        if (import.OverrideResolution is not null) { await transaction.CommitAsync(cancellationToken); return; }
+        var draft = CampBggImportDraftSerializer.Deserialize(import.DraftJson);
+        if (!draft.Items.Any(x => x.SkipReason == CampImportSkipReason.AlreadyInBaseCollection && x.IsOverridable))
+            throw new InvalidOperationException("В импорте нет копий, которые можно добавить.");
+        if (resolution == CampImportOverrideResolution.AddPersonalCopies)
+            await contributionService.AddSoftSkippedCopiesAsync(campId, participantId, draft,
+                timeProvider.GetUtcNow(), cancellationToken);
+        import.OverrideResolution = resolution;
+        import.OverrideResolvedAt = timeProvider.GetUtcNow();
+        import.UpdatedAt = timeProvider.GetUtcNow();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static CampImportConfirmationResult Result(CampBggImportDraft draft,
+        IReadOnlyCollection<long> selectedBaseIds, IReadOnlyCollection<long> selectedExpansionIds)
+    {
+        var selectedBase = selectedBaseIds.ToHashSet(); var selectedExpansions = selectedExpansionIds.ToHashSet();
+        var added = draft.Items.Count(x => x.SkipReason is null && (x.ItemType == CampContributionItemType.BaseGame
+            ? selectedBase.Contains(x.BggId) : selectedExpansions.Contains(x.BggId)));
+        var skipped = draft.Items.Where(x => x.SkipReason.HasValue).GroupBy(x => x.SkipReason!.Value)
+            .ToDictionary(x => x.Key, x => x.Count());
+        return new CampImportConfirmationResult(added, skipped,
+            draft.Items.Any(x => x.SkipReason == CampImportSkipReason.AlreadyInBaseCollection && x.IsOverridable));
     }
 
     public async Task CancelAsync(Guid publicId, long campId, long participantId,

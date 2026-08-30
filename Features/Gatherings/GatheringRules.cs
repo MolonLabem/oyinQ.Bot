@@ -57,7 +57,7 @@ public static class GatheringRules
         DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(gathering);
-        EnsureEditable(gathering);
+        EnsureEditable(gathering, now);
         gathering.Description = NormalizeDescription(description);
         gathering.CanTeachRules = canTeachRules;
         gathering.UpdatedAt = now.ToUniversalTime();
@@ -87,9 +87,7 @@ public static class GatheringRules
         IReadOnlyCollection<long> selectedExpansionIds,
         DateTimeOffset now)
     {
-        EnsureEditable(gathering);
-        if (gathering.StartsAtUtc <= now.ToUniversalTime())
-            throw new InvalidOperationException("Прошедший сбор нельзя редактировать.");
+        EnsureEditable(gathering, now);
         EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
         var confirmed = 1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed);
@@ -119,7 +117,7 @@ public static class GatheringRules
 
     public static void Close(GameGathering gathering, DateTimeOffset now)
     {
-        EnsureEditable(gathering);
+        EnsureEditable(gathering, now);
         gathering.Status = GatheringStatus.Closed;
         gathering.UpdatedAt = now.ToUniversalTime();
     }
@@ -144,6 +142,8 @@ public static class GatheringRules
     {
         if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
             throw new InvalidOperationException("Сбор уже завершён или отменён.");
+        if (gathering.StartsAtUtc <= now.ToUniversalTime())
+            throw new InvalidOperationException("Наступивший сбор нельзя отменить вручную.");
         var normalized = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         if (normalized?.Length > CancellationReasonMaxLength)
             throw new ArgumentException($"Причина отмены не может быть длиннее {CancellationReasonMaxLength} символов.");
@@ -166,12 +166,14 @@ public static class GatheringRules
         return normalized;
     }
 
-    private static void EnsureEditable(GameGathering gathering)
+    private static void EnsureEditable(GameGathering gathering, DateTimeOffset now)
     {
         if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
         {
             throw new InvalidOperationException("Завершённый или отменённый сбор нельзя изменить.");
         }
+        if (gathering.StartsAtUtc <= now.ToUniversalTime())
+            throw new InvalidOperationException("Наступивший сбор нельзя изменить.");
     }
 
     private static void RecalculateStatus(GameGathering gathering)

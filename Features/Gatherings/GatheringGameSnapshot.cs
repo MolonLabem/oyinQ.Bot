@@ -14,9 +14,17 @@ public sealed record GatheringGameSnapshot(
     string? BestPlayers,
     IReadOnlyList<ClubCollectionExpansion> SelectedExpansions,
     string Source = "legacy",
-    IReadOnlyList<ClubCollectionExpansion>? KnownExpansions = null)
+    IReadOnlyList<ClubCollectionExpansion>? KnownExpansions = null,
+    string? Description = null,
+    int? YearPublished = null,
+    int? MinPlayTimeMinutes = null,
+    int? MaxPlayTimeMinutes = null,
+    int? MinAge = null,
+    GameType Type = GameType.Other,
+    IReadOnlyList<GameTaxonomyItem>? Categories = null,
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public static GatheringGameSnapshot FromClubGame(
         ClubCollectionGame game,
@@ -32,7 +40,15 @@ public sealed record GatheringGameSnapshot(
             game.BestPlayers,
             game.Expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
             "catalog",
-            game.Expansions.ToArray());
+            game.Expansions.ToArray(),
+            game.Description,
+            game.YearPublished,
+            game.MinPlayTimeMinutes,
+            game.MaxPlayTimeMinutes,
+            game.MinAge,
+            game.Type,
+            game.CategoryItems,
+            game.Mechanics);
 }
 
 public static class GatheringGameSnapshotSerializer
@@ -63,7 +79,7 @@ public static class GatheringGameSnapshotSerializer
     public static void Validate(GatheringGameSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (snapshot.Version is not 1 and not GatheringGameSnapshot.CurrentVersion)
+        if (snapshot.Version is not 1 and not 2 and not GatheringGameSnapshot.CurrentVersion)
         {
             throw new InvalidOperationException($"Unsupported gathering game snapshot version {snapshot.Version}.");
         }

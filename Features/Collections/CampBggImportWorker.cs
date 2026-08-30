@@ -77,6 +77,16 @@ public sealed class CampBggImportWorker(
                     import.UpdatedAt = timeProvider.GetUtcNow();
                     await dbContext.SaveChangesAsync(stoppingToken);
                 });
+            var baseCollection = (await dbContext.Camps.AsNoTracking().SingleAsync(x => x.Id == import.CampId, stoppingToken))
+                .ReadBaseCollection();
+            var baseIds = baseCollection.Games.Select(x => x.BggId)
+                .Concat(baseCollection.Games.SelectMany(x => x.Expansions).Select(x => x.BggId)).ToHashSet();
+            var manualIds = (await dbContext.CampGameContributions.AsNoTracking()
+                .Where(x => x.CampId == import.CampId && x.ParticipantId == import.ParticipantId
+                    && x.Source == CampContributionSource.Manual)
+                .Select(x => new { x.BggId, x.ItemType }).ToArrayAsync(stoppingToken))
+                .Select(x => (x.BggId, x.ItemType)).ToHashSet();
+            draft = CampBggImportService.ClassifySkips(draft, baseIds, manualIds);
             await dbContext.Entry(import).ReloadAsync(stoppingToken);
             if (import.LeaseId != leaseId) return true;
             if (import.CancellationRequestedAt is not null)

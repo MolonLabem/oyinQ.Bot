@@ -6,6 +6,7 @@ public static class MiniAppEndpoints
     {
         var group = endpoints.MapGroup("/api/miniapp");
         group.MapCommunityEndpoints();
+        group.MapCatalogEndpoints();
         group.MapAdminEndpoints();
         group.MapClubEndpoints();
         group.MapCampEndpoints();

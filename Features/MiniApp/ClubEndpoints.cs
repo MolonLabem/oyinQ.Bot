@@ -21,6 +21,8 @@ internal static class ClubEndpoints
         clubs.MapPut("/{clubId:long}/collection", ReplaceAsync);
         clubs.MapPost("/{clubId:long}/games", AddAsync);
         clubs.MapDelete("/{clubId:long}/games/{bggId:long}", RemoveAsync);
+        clubs.MapPost("/{clubId:long}/metadata-refresh", QueueMetadataRefreshAsync);
+        clubs.MapGet("/{clubId:long}/metadata-refresh/{publicId:guid}", GetMetadataRefreshAsync);
         return group;
     }
 
@@ -86,6 +88,11 @@ internal static class ClubEndpoints
         if (bggId is null) return MiniAppEndpointSupport.Problem("validation", "Вставьте ссылку BGG или выберите игру из поиска.");
         try
         {
+            var current = await service.GetAsync(clubId, cancellationToken);
+            var existing = current.Collection.Games.SingleOrDefault(value => value.BggId == bggId.Value);
+            if (existing is not null)
+                return Results.Json(new { code = "already_exists", message = "Эта игра уже есть в коллекции клуба.", game = existing,
+                    currentRevision = current.Revision }, statusCode: StatusCodes.Status409Conflict);
             var details = await bggClient.GetGameDetailsAsync(bggId.Value, cancellationToken)
                 ?? throw new KeyNotFoundException("Игра не найдена в BGG.");
             var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
@@ -97,7 +104,9 @@ internal static class ClubEndpoints
                     game.MinPlayers, game.MaxPlayers, game.BestPlayers,
                     details.Expansions.Where(x => selected.Contains(x.BggId))
                         .Select(x => new ClubCollectionExpansion(x.BggId, x.Name)).ToArray(),
-                    game.Types, game.Categories),
+                    game.Types, game.Categories, game.Description, game.YearPublished,
+                    game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
+                    game.Subdomains, game.CategoryItems, game.Mechanics),
                 body.ExpectedRevision, DateTimeOffset.UtcNow, cancellationToken);
             return Results.Ok(await service.GetAsync(clubId, cancellationToken));
         }
@@ -130,6 +139,25 @@ internal static class ClubEndpoints
             return Results.Json(new { code = "stale_revision", message = conflict.Message,
                 currentRevision = conflict.CurrentRevision }, statusCode: StatusCodes.Status409Conflict);
         }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> QueueMetadataRefreshAsync(HttpRequest request, long clubId,
+        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        ClubMetadataRefreshService service, IOptions<BggOptions> bggOptions, CancellationToken cancellationToken)
+    {
+        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (!bggOptions.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
+        try { return Results.Accepted(value: await service.QueueAsync(clubId, cancellationToken)); }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> GetMetadataRefreshAsync(HttpRequest request, long clubId, Guid publicId,
+        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        ClubMetadataRefreshService service, CancellationToken cancellationToken)
+    {
+        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        try { return Results.Ok(await service.GetAsync(publicId, clubId, cancellationToken)); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 }

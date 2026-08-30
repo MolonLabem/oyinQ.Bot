@@ -7,7 +7,12 @@ namespace oyinQ.Bot.Features.Collections;
 public sealed record CampImportSelectionItem(long BggId, CampContributionItemType ItemType, long? ParentBggId,
     string Name, bool Selected, string? ThumbnailImageUrl = null, string? ImageUrl = null,
     int? MinPlayers = null, int? MaxPlayers = null, string? BestPlayers = null,
-    IReadOnlyList<string>? Types = null, IReadOnlyList<string>? Categories = null);
+    IReadOnlyList<string>? Types = null, IReadOnlyList<string>? Categories = null,
+    string? Description = null, int? YearPublished = null, int? MinPlayTimeMinutes = null,
+    int? MaxPlayTimeMinutes = null, int? MinAge = null, GameType Type = GameType.Other,
+    IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
+    IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null);
 
 public sealed record CampImportSelectionGroup(CampImportSelectionItem BaseGame,
     IReadOnlyList<CampImportSelectionItem> Expansions, bool ShowMissingBaseWarning);
@@ -20,7 +25,9 @@ public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemTy
         .Where(x => x.ParticipantId.HasValue).Select(x => x.ParticipantId!.Value).Distinct().Order().ToArray();
 }
 
-public sealed record CampCatalogProvider(long? ParticipantId, string DisplayName, CampContributionSource? Source);
+public sealed record CampCatalogProvider(long? ParticipantId, string DisplayName, string? City,
+    CampContributionSource? Source, CampBringCommitment Commitment = CampBringCommitment.Available,
+    bool IsCurrentUser = false);
 
 public sealed class CampContributionSelectionService(AppDbContext dbContext)
 {
@@ -31,7 +38,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext)
             group.Key.ParentBggId, RichestSnapshot(group.Select(value => value.ReadSnapshot())),
             group.Select(x => x.ParticipantId).Distinct().Count(),
             group.Select(x => new CampCatalogProvider(x.ParticipantId,
-                $"Participant {x.ParticipantId}", x.Source)).ToArray()))
+                $"Participant {x.ParticipantId}", null, x.Source, x.Commitment)).ToArray()))
         .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
 
     public static IReadOnlyList<CampImportSelectionItem> SelectAll(IEnumerable<CampImportSelectionItem> items) =>
@@ -59,8 +66,9 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext)
         var existing = await dbContext.CampGameContributions
             .Where(x => x.CampId == campId && x.ParticipantId == participantId)
             .ToArrayAsync(cancellationToken);
-        var desired = draft.Items.Where(x => x.ItemType == CampContributionItemType.BaseGame
+        var desired = draft.Items.Where(x => x.SkipReason is null && (x.ItemType == CampContributionItemType.BaseGame
                 ? selectedBase.Contains(x.BggId) : selectedExpansions.Contains(x.BggId))
+            )
             .ToDictionary(x => (x.BggId, x.ItemType));
         dbContext.CampGameContributions.RemoveRange(existing.Where(x =>
             x.Source == CampContributionSource.BggImport && !desired.ContainsKey((x.BggId, x.ItemType))));
@@ -83,6 +91,29 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext)
             contribution.ParentBggId = item.ParentBggId;
             contribution.SnapshotJson = CampContributionSnapshotSerializer.Serialize(item.Snapshot);
             contribution.UpdatedAt = now.ToUniversalTime();
+        }
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task AddSoftSkippedCopiesAsync(long campId, long participantId, CampBggImportDraft draft,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await RequireActiveRegistrationAsync(campId, participantId, cancellationToken);
+        var items = draft.Items.Where(x => x.SkipReason == CampImportSkipReason.AlreadyInBaseCollection && x.IsOverridable);
+        foreach (var item in items)
+        {
+            var existing = await dbContext.CampGameContributions.SingleOrDefaultAsync(x => x.CampId == campId
+                && x.ParticipantId == participantId && x.BggId == item.BggId && x.ItemType == item.ItemType,
+                cancellationToken);
+            if (existing is not null) continue;
+            dbContext.CampGameContributions.Add(new CampGameContribution
+            {
+                CampId = campId, ParticipantId = participantId, BggId = item.BggId, ItemType = item.ItemType,
+                ParentBggId = item.ParentBggId, Source = CampContributionSource.BggImport,
+                Commitment = CampBringCommitment.Available,
+                SnapshotJson = CampContributionSnapshotSerializer.Serialize(item.Snapshot),
+                CreatedAt = now, UpdatedAt = now
+            });
         }
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -123,19 +154,33 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext)
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task SetCommitmentAsync(long campId, long participantId, long bggId,
+        CampContributionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken)
+    {
+        await RequireActiveRegistrationAsync(campId, participantId, cancellationToken);
+        var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
+            x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
+            cancellationToken) ?? throw new KeyNotFoundException("Игра отсутствует в вашем списке.");
+        contribution.Commitment = commitment;
+        contribution.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<EffectiveCampCatalogItem>> GetEffectiveContributionsAsync(
-        long campId, CancellationToken cancellationToken)
+        long campId, CancellationToken cancellationToken, long? currentParticipantId = null)
     {
         var values = await dbContext.CampGameContributions.AsNoTracking()
             .Where(x => x.CampId == campId)
-            .Select(x => new { Contribution = x, x.Participant.DisplayName, x.Participant.PreferredDisplayName })
+            .Select(x => new { Contribution = x, x.Participant.DisplayName, x.Participant.PreferredDisplayName,
+                City = x.Participant.CampRegistrations.Where(r => r.CampId == campId).Select(r => r.City).SingleOrDefault() })
             .ToArrayAsync(cancellationToken);
         return values.GroupBy(x => new { x.Contribution.BggId, x.Contribution.ItemType, x.Contribution.ParentBggId })
             .Select(group => new EffectiveCampCatalogItem(group.Key.BggId, group.Key.ItemType,
                 group.Key.ParentBggId, RichestSnapshot(group.Select(value => value.Contribution.ReadSnapshot())),
                 group.Select(x => x.Contribution.ParticipantId).Distinct().Count(),
                 group.Select(x => new CampCatalogProvider(x.Contribution.ParticipantId,
-                    x.PreferredDisplayName ?? x.DisplayName, x.Contribution.Source)).ToArray()))
+                    x.PreferredDisplayName ?? x.DisplayName, x.City, x.Contribution.Source,
+                    x.Contribution.Commitment, x.Contribution.ParticipantId == currentParticipantId)).ToArray()))
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using oyinQ.Bot.Data;
@@ -11,11 +12,11 @@ using oyinQ.Bot.Data;
 namespace oyinQ.Bot.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    public partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260830193242_GatheringHistoryAndCleanup")]
+    partial class GatheringHistoryAndCleanup
     {
-        protected override void BuildModel(ModelBuilder modelBuilder) => BuildModelStatic(modelBuilder);
-
-        internal static void BuildModelStatic(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -129,12 +130,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<Guid?>("LeaseId")
                         .HasColumnType("uuid");
 
-                    b.Property<int?>("OverrideResolution")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("OverrideResolvedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<long>("ParticipantId")
                         .HasColumnType("bigint");
 
@@ -181,9 +176,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<long>("CampId")
                         .HasColumnType("bigint");
 
-                    b.Property<int>("Commitment")
-                        .HasColumnType("integer");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -228,10 +220,6 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.Property<long>("CampId")
                         .HasColumnType("bigint");
-
-                    b.Property<string>("City")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -310,55 +298,6 @@ namespace oyinQ.Bot.Data.Migrations
                         {
                             t.HasCheckConstraint("CK_Clubs_BotChatMode", "\"BotChatMode\" = 0");
                         });
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ClubMetadataRefresh", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("BggIdsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<long>("ClubId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<int>("ProgressCurrent")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("ProgressTotal")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClubId");
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
-
-                    b.HasIndex("Status", "CreatedAt");
-
-                    b.ToTable("ClubMetadataRefreshes", (string)null);
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.CollectionImport", b =>
@@ -618,10 +557,10 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.HasIndex("CommunityKey", "StartsAtUtc");
 
+                    b.HasIndex("Status", "StartsAtUtc", "Id");
+
                     b.HasIndex("TelegramChatId", "TelegramMessageId")
                         .IsUnique();
-
-                    b.HasIndex("Status", "StartsAtUtc", "Id");
 
                     b.ToTable("GameGatherings", null, t =>
                         {
@@ -1119,17 +1058,6 @@ namespace oyinQ.Bot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("BotChat");
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ClubMetadataRefresh", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.Club", "Club")
-                        .WithMany()
-                        .HasForeignKey("ClubId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Club");
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.CollectionImport", b =>

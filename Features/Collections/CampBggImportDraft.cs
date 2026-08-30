@@ -5,7 +5,7 @@ namespace oyinQ.Bot.Features.Collections;
 
 public sealed record CampBggImportDraft(int Version, string BggUsername, IReadOnlyList<CampBggImportDraftItem> Items)
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 }
 
 public sealed record CampBggImportDraftItem(
@@ -13,7 +13,9 @@ public sealed record CampBggImportDraftItem(
     CampContributionItemType ItemType,
     long? ParentBggId,
     CampContributionSnapshot Snapshot,
-    bool SelectedByDefault = true);
+    bool SelectedByDefault = true,
+    CampImportSkipReason? SkipReason = null,
+    bool IsOverridable = false);
 
 public static class CampBggImportDraftSerializer
 {
@@ -42,7 +44,7 @@ public static class CampBggImportDraftSerializer
 
     private static void Validate(CampBggImportDraft draft)
     {
-        if (draft.Version != CampBggImportDraft.CurrentVersion)
+        if (draft.Version is not 1 and not CampBggImportDraft.CurrentVersion)
             throw new InvalidOperationException($"Версия черновика {draft.Version} не поддерживается.");
         if (string.IsNullOrWhiteSpace(draft.BggUsername) || draft.BggUsername.Length > 100)
             throw new InvalidOperationException("Имя пользователя BGG в черновике некорректно.");

@@ -11,9 +11,18 @@ public sealed record CampContributionSnapshot(
     int? MaxPlayers,
     string? BestPlayers,
     IReadOnlyList<string>? Types = null,
-    IReadOnlyList<string>? Categories = null)
+    IReadOnlyList<string>? Categories = null,
+    string? Description = null,
+    int? YearPublished = null,
+    int? MinPlayTimeMinutes = null,
+    int? MaxPlayTimeMinutes = null,
+    int? MinAge = null,
+    GameType Type = GameType.Other,
+    IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
+    IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null)
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 }
 
 public static class CampContributionSnapshotSerializer
@@ -43,7 +52,7 @@ public static class CampContributionSnapshotSerializer
 
     private static void Validate(CampContributionSnapshot snapshot)
     {
-        if (snapshot.Version != CampContributionSnapshot.CurrentVersion)
+        if (snapshot.Version is not 1 and not CampContributionSnapshot.CurrentVersion)
             throw new InvalidOperationException($"Версия снимка вклада {snapshot.Version} не поддерживается.");
         if (string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.Name.Length > 300)
             throw new InvalidOperationException("Название игры во вкладе некорректно.");
@@ -57,5 +66,9 @@ public static class CampContributionSnapshotSerializer
         if ((snapshot.Types?.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ?? false)
             || (snapshot.Categories?.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ?? false))
             throw new InvalidOperationException("Теги игры во вкладе некорректны.");
+        if (snapshot.Description?.Length > 20_000 || snapshot.MinPlayTimeMinutes is < 0
+            || snapshot.MaxPlayTimeMinutes is < 0 || snapshot.MinPlayTimeMinutes > snapshot.MaxPlayTimeMinutes
+            || snapshot.MinAge is < 0 or > 100)
+            throw new InvalidOperationException("Метаданные игры во вкладе некорректны.");
     }
 }

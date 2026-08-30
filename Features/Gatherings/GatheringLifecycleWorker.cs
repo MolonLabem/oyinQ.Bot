@@ -4,19 +4,21 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
-public sealed class GatheringAutoCloseWorker(
+public sealed class GatheringLifecycleWorker(
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
-    ILogger<GatheringAutoCloseWorker> logger) : BackgroundService
+    ILogger<GatheringLifecycleWorker> logger) : BackgroundService
 {
+    internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30), timeProvider);
+        using var timer = new PeriodicTimer(Interval, timeProvider);
         do
         {
             try
             {
-                while (await CloseOneAsync(stoppingToken)) { }
+                while (await ProcessOneAsync(stoppingToken)) { }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -24,12 +26,12 @@ public sealed class GatheringAutoCloseWorker(
             }
             catch (Exception exception)
             {
-                logger.LogError(exception, "Gathering auto-close worker iteration failed.");
+                logger.LogError(exception, "Gathering lifecycle worker iteration failed.");
             }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task<bool> CloseOneAsync(CancellationToken cancellationToken)
+    internal async Task<bool> ProcessOneAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -37,7 +39,8 @@ public sealed class GatheringAutoCloseWorker(
         var recruiting = GatheringStatus.Recruiting;
         var ready = GatheringStatus.Ready;
         var full = GatheringStatus.Full;
-        Guid publicId;
+        var closed = GatheringStatus.Closed;
+        Guid? completedPublicId = null;
 
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken))
         {
@@ -45,10 +48,11 @@ public sealed class GatheringAutoCloseWorker(
                 .FromSqlInterpolated($$"""
                     SELECT * FROM "GameGatherings"
                     WHERE "StartsAtUtc" <= {{now}}
-                      AND "Status" IN ({{recruiting}}, {{ready}}, {{full}})
+                      AND "Status" IN ({{recruiting}}, {{ready}}, {{full}}, {{closed}})
                     ORDER BY "StartsAtUtc", "Id"
                     FOR UPDATE SKIP LOCKED LIMIT 1
                     """)
+                .Include(x => x.Participants)
                 .SingleOrDefaultAsync(cancellationToken);
             if (gathering is null)
             {
@@ -56,15 +60,27 @@ public sealed class GatheringAutoCloseWorker(
                 return false;
             }
 
-            GatheringRules.Close(gathering, now);
-            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
-            publicId = gathering.PublicId;
+            var outcome = GatheringLifecycle.ApplyDue(gathering, now);
+            if (outcome == GatheringLifecycleOutcome.Completed)
+            {
+                completedPublicId = gathering.PublicId;
+            }
+            else if (outcome == GatheringLifecycleOutcome.Delete)
+            {
+                var cleanup = GatheringLifecycle.CreateCleanup(gathering, now);
+                if (cleanup is not null) dbContext.TelegramMessageCleanups.Add(cleanup);
+                dbContext.GameGatherings.Remove(gathering);
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
 
-        var publication = scope.ServiceProvider.GetRequiredService<GatheringPublicationService>();
-        await publication.PublishAsync(publicId, cancellationToken);
+        if (completedPublicId is { } publicId)
+        {
+            var publication = scope.ServiceProvider.GetRequiredService<GatheringPublicationService>();
+            await publication.PublishAsync(publicId, cancellationToken);
+        }
         return true;
     }
 }

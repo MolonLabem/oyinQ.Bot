@@ -14,6 +14,11 @@ internal sealed record UpdateGatheringRequest(string CommunityKey, string Starts
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description,
     bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds);
 internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null);
+internal sealed record GatheringListItemResponse(
+    GatheringCardPresentation Card,
+    string Status,
+    string PublicationStatus,
+    bool IsOrganizer);
 
 internal static class GatheringEndpoints
 {
@@ -31,28 +36,32 @@ internal static class GatheringEndpoints
         return group;
     }
 
-    private static async Task<IResult> ListAsync(HttpRequest request, string community,
+    private static async Task<IResult> ListAsync(HttpRequest request, string community, string? view, string? status,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
-        var values = await dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
-            .Include(x => x.Participants).Include(x => x.OrganizerParticipant)
-            .OrderBy(x => x.StartsAtUtc).ToArrayAsync(cancellationToken);
-        return Results.Ok(values.Select(x => new
-        {
-            Card = presentation.BuildCard(x, access.Community),
-            Status = x.Status.ToString(),
-            PublicationStatus = x.PublicationStatus.ToString(),
-            IsOrganizer = x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId
-        }));
+        if (!GatheringListQuery.TryParse(view, status, out var parsedView, out var parsedFilter))
+            return MiniAppEndpointSupport.Problem("invalid_gathering_view",
+                "Поддерживаются view=upcoming или view=history; фильтры истории: completed, cancelled.", 400);
+        var query = dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
+            .Include(x => x.Participants).Include(x => x.OrganizerParticipant);
+        var values = await GatheringListQuery.Apply(query, parsedView, parsedFilter, timeProvider.GetUtcNow())
+            .ToArrayAsync(cancellationToken);
+        return Results.Ok(values.Select(x => new GatheringListItemResponse(
+            presentation.BuildCard(x, access.Community),
+            x.Status.ToString(),
+            x.PublicationStatus.ToString(),
+            x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)));
     }
 
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
@@ -65,7 +74,7 @@ internal static class GatheringEndpoints
         var me = gathering.Participants.SingleOrDefault(x => x.Participant.TelegramUserId == access.Identity.TelegramUserId);
         var manages = gathering.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId;
         var active = me?.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted;
-        var now = DateTimeOffset.UtcNow;
+        var now = timeProvider.GetUtcNow();
         var waitlisted = gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
             .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).ToArray();
         var waitPosition = me?.Status == GatheringParticipationStatus.Waitlisted
@@ -155,19 +164,22 @@ internal static class GatheringEndpoints
     private static Task<IResult> JoinAsync(HttpRequest request, Guid publicId, GatheringActionRequest body,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         GatheringService service, GatheringPublicationService publication,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken) => MutateParticipationAsync(true, request, publicId, body,
-            authenticator, resolver, service, publication, cancellationToken);
+            authenticator, resolver, service, publication, timeProvider, cancellationToken);
 
     private static Task<IResult> LeaveAsync(HttpRequest request, Guid publicId, GatheringActionRequest body,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         GatheringService service, GatheringPublicationService publication,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken) => MutateParticipationAsync(false, request, publicId, body,
-            authenticator, resolver, service, publication, cancellationToken);
+            authenticator, resolver, service, publication, timeProvider, cancellationToken);
 
     private static async Task<IResult> MutateParticipationAsync(bool join, HttpRequest request, Guid publicId,
         GatheringActionRequest body, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringService service,
-        GatheringPublicationService publication, CancellationToken cancellationToken)
+        GatheringPublicationService publication, TimeProvider timeProvider,
+        CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
             authenticator, resolver, cancellationToken);
@@ -176,9 +188,9 @@ internal static class GatheringEndpoints
         {
             var result = join
                 ? await service.JoinAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
-                    DateTimeOffset.UtcNow, cancellationToken)
+                    timeProvider.GetUtcNow(), cancellationToken)
                 : await service.LeaveAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
-                    DateTimeOffset.UtcNow, cancellationToken);
+                    timeProvider.GetUtcNow(), cancellationToken);
             if (result.Promotion is not null)
                 await publication.NotifyPromotionAsync(result.Promotion, publicId, cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);

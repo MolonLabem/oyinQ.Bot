@@ -19,6 +19,8 @@ public sealed class CampBggImport
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
+    public CampImportOverrideResolution? OverrideResolution { get; set; }
+    public DateTimeOffset? OverrideResolvedAt { get; set; }
 
     public Camp Camp { get; set; } = null!;
     public Participant Participant { get; set; } = null!;

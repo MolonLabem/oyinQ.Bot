@@ -112,6 +112,33 @@ public sealed class AppDbContextMigrationTests
             .FindProperty(nameof(Club.CollectionRevision))?.GetDefaultValue());
     }
 
+    [Fact]
+    public void GatheringCleanupMigration_MapsFocusedTelegramDeletionQueue()
+    {
+        using var dbContext = CreateDbContext();
+        var cleanup = dbContext.Model.FindEntityType(typeof(TelegramMessageCleanup));
+
+        Assert.NotNull(cleanup);
+        Assert.Equal(2000, cleanup.FindProperty(nameof(TelegramMessageCleanup.LastError))?.GetMaxLength());
+        Assert.Contains("20260830193242_GatheringHistoryAndCleanup", dbContext.Database.GetMigrations());
+    }
+
+    [Fact]
+    public void CatalogMetadataMigrations_AreAdditiveAndMapped()
+    {
+        using var dbContext = CreateDbContext();
+        var migrations = dbContext.Database.GetMigrations();
+
+        Assert.Contains("20260830200452_CatalogMetadataCampAvailability", migrations);
+        Assert.Contains("20260830201423_CampImportSkipResolution", migrations);
+        Assert.Contains("20260830201708_ClubMetadataRefreshJobs", migrations);
+        Assert.Equal(100, dbContext.Model.FindEntityType(typeof(CampRegistration))?
+            .FindProperty(nameof(CampRegistration.City))?.GetMaxLength());
+        Assert.NotNull(dbContext.Model.FindEntityType(typeof(CampGameContribution))?
+            .FindProperty(nameof(CampGameContribution.Commitment)));
+        Assert.NotNull(dbContext.Model.FindEntityType(typeof(ClubMetadataRefresh)));
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

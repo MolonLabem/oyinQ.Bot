@@ -6,7 +6,9 @@ declare global {
   interface TelegramWebApp {
     initData: string; initDataUnsafe: { start_param?: string }; colorScheme: "light" | "dark";
     themeParams?: { bg_color?: string };
-    ready(): void; expand(): void; onEvent(event: string, callback: () => void): void; offEvent(event: string, callback: () => void): void;
+    ready(): void; expand(): void; requestFullscreen?(): void; exitFullscreen?(): void;
+    isFullscreen?: boolean; viewportStableHeight?: number;
+    onEvent(event: string, callback: (payload?: unknown) => void): void; offEvent(event: string, callback: (payload?: unknown) => void): void;
     requestChat(preparedButtonId: string, callback?: (sent: boolean) => void): void;
     BackButton: TelegramBackButton; MainButton: TelegramMainButton; HapticFeedback?: TelegramHaptic;
     showConfirm?(message: string, callback: (confirmed: boolean) => void): void;

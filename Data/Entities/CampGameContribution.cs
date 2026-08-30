@@ -10,6 +10,7 @@ public sealed class CampGameContribution
     public long BggId { get; set; }
     public CampContributionItemType ItemType { get; set; }
     public CampContributionSource Source { get; set; }
+    public CampBringCommitment Commitment { get; set; }
     public long? ParentBggId { get; set; }
     public string SnapshotJson { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }

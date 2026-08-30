@@ -6,6 +6,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Catalog;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Features.MiniApp;
@@ -54,21 +55,29 @@ builder.Services.AddScoped<IAdministratorStore, AdministratorStore>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<ManagedCommunityService>();
 builder.Services.AddScoped<ClubCollectionService>();
+builder.Services.AddScoped<ClubMetadataRefreshService>();
 builder.Services.AddScoped<CampContributionSelectionService>();
+builder.Services.AddScoped<GameCatalogService>();
 builder.Services.AddScoped<CampBggImportService>();
 builder.Services.AddScoped<CampBggImportCoordinator>();
+builder.Services.AddScoped<CampImportNotificationService>();
 builder.Services.AddScoped<TelegramPeerSelectionService>();
 builder.Services.AddScoped<GatheringGameSelectionService>();
 builder.Services.AddScoped<GatheringService>();
 builder.Services.AddScoped<GatheringManagementService>();
 builder.Services.AddScoped<GatheringPublicationService>();
+builder.Services.AddScoped<TelegramMessageCleanupProcessor>();
+builder.Services.AddSingleton<ITelegramMessageDeletionClient, TelegramMessageDeletionClient>();
+builder.Services.AddSingleton<TelegramMessageDeletionHandler>();
 builder.Services.AddSingleton<TelegramMiniAppAuthenticator>();
 builder.Services.AddSingleton<GatheringTelegramPublisher>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
 builder.Services.AddHostedService<CampBggImportWorker>();
-builder.Services.AddHostedService<GatheringAutoCloseWorker>();
+builder.Services.AddHostedService<ClubMetadataRefreshWorker>();
+builder.Services.AddHostedService<GatheringLifecycleWorker>();
+builder.Services.AddHostedService<TelegramMessageCleanupWorker>();
 
 if (botOptions.UseLongPolling)
 {

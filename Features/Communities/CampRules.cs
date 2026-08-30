@@ -19,6 +19,14 @@ public static class CampRules
                 $"Количество дней должно быть от 1 до {duration}.");
     }
 
+    public static string NormalizeCity(string? value)
+    {
+        var city = value?.Trim();
+        if (string.IsNullOrWhiteSpace(city) || city.Length > 100)
+            throw new ArgumentException("Укажите город (не более 100 символов).", nameof(value));
+        return city;
+    }
+
     public static void ValidateTransition(CampStatus current, CampStatus next)
     {
         if (current == next) return;

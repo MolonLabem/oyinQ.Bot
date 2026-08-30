@@ -74,4 +74,30 @@ public sealed class GatheringRulesTests
 
         Assert.Equal("Дата и время сбора должны быть в будущем.", exception.Message);
     }
+
+    [Theory]
+    [InlineData("close")]
+    [InlineData("cancel")]
+    public void OrganizerLifecycleMutation_RejectsAtScheduledStart(string action)
+    {
+        var now = new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
+        var gathering = new GameGathering { StartsAtUtc = now, Status = GatheringStatus.Ready };
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            if (action == "close") GatheringRules.Close(gathering, now);
+            else GatheringRules.Cancel(gathering, null, now);
+        });
+    }
+
+    [Fact]
+    public void ParticipationPolicies_RejectJoiningLeavingAndRejoiningAtScheduledStart()
+    {
+        var now = new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
+        var gathering = new GameGathering { StartsAtUtc = now, Status = GatheringStatus.Ready };
+
+        Assert.False(GatheringAccessPolicy.CanJoin(gathering, false, false, now));
+        Assert.False(GatheringAccessPolicy.CanJoin(gathering, false, false, now.AddMinutes(1)));
+        Assert.False(GatheringAccessPolicy.CanLeave(gathering, false, true, now));
+    }
 }

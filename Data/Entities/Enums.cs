@@ -84,6 +84,34 @@ public enum CampContributionSource
     Manual = 2
 }
 
+public enum CampBringCommitment
+{
+    Available = 0,
+    Bringing = 1
+}
+
+public enum CampImportSkipReason
+{
+    AlreadyInBaseCollection = 0,
+    AlreadyAddedManually = 1,
+    InvalidOrUnsupportedItem = 2,
+    ProviderDataIncomplete = 3
+}
+
+public enum CampImportOverrideResolution
+{
+    KeepBaseCollection = 0,
+    AddPersonalCopies = 1
+}
+
+public enum ClubMetadataRefreshStatus
+{
+    Queued = 0,
+    Running = 1,
+    Completed = 2,
+    Failed = 3
+}
+
 public enum CampBggImportStatus
 {
     Queued = 0,
