@@ -6,6 +6,7 @@ using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.MiniApp;
@@ -52,11 +53,12 @@ internal static class AdminEndpoints
             return Results.Forbid();
         var clubs = await dbContext.Clubs.AsNoTracking().Include(x => x.BotChat).OrderBy(x => x.Name)
             .Select(x => new { x.Id, x.Name, TelegramTitle = x.BotChat.Name, x.BotChat.TimeZoneId,
-                x.BotChat.IsActive, GameCount = x.CollectionJson, x.CollectionRevision, x.UpdatedAt })
+                x.BotChat.IsActive, GameCount = x.CollectionJson, x.CollectionRevision, x.UpdatedAt,
+                Gatherings = x.BotChat.Gatherings.Count })
             .ToArrayAsync(cancellationToken);
         var clubViews = clubs.Select(x => new { x.Id, x.Name, x.TelegramTitle, x.TimeZoneId, x.IsActive,
             GameCount = ClubCollectionSerializer.Deserialize(x.GameCount).Games.Count,
-            x.CollectionRevision, x.UpdatedAt });
+            x.CollectionRevision, x.UpdatedAt, x.Gatherings });
         var camps = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).Include(x => x.SourceClub)
             .OrderByDescending(x => x.StartDate).Select(x => new
             {
@@ -176,6 +178,9 @@ internal static class AdminEndpoints
                 cancellationToken) ?? throw new KeyNotFoundException("Клуб не найден.");
             if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Trim().Length > 160)
                 throw new InvalidOperationException("Название клуба некорректно.");
+            CommunityTimeZonePolicy.EnsureChangeAllowed(club.BotChat.TimeZoneId, body.TimeZoneId,
+                await dbContext.GameGatherings.AnyAsync(x => x.CommunityKey == club.BotChatKey,
+                    cancellationToken));
             club.Name = club.BotChat.Name = body.Name.Trim();
             club.BotChat.TimeZoneId = body.TimeZoneId;
             club.BotChat.IsActive = body.IsActive;
@@ -246,13 +251,24 @@ internal static class AdminEndpoints
     private static async Task<IResult> ChangeCampStatusAsync(HttpRequest request, long campId,
         ChangeCampStatusRequest body, TelegramMiniAppAuthenticator authenticator,
         IAdministratorStore administrators, ManagedCommunityService communities,
+        GatheringPublicationService publication,
+        GatheringNotificationService notifications,
         CancellationToken cancellationToken)
     {
         if (await AdminIdentityAsync(request, authenticator, administrators, cancellationToken) is null)
             return Results.Forbid();
         if (!Enum.TryParse<CampStatus>(body.Status, true, out var status))
             return MiniAppEndpointSupport.Problem("validation", "Неизвестный статус кэмпа.");
-        try { await communities.SetCampStatusAsync(campId, status, cancellationToken); return Results.NoContent(); }
+        try
+        {
+            var result = await communities.SetCampStatusAsync(campId, status, cancellationToken);
+            foreach (var gatheringId in result.CancelledGatheringIds)
+            {
+                await publication.PublishAsync(gatheringId, cancellationToken);
+                await notifications.NotifyCancellationAsync(gatheringId, cancellationToken);
+            }
+            return Results.NoContent();
+        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 

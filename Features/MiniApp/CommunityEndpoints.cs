@@ -5,6 +5,7 @@ using oyinQ.Bot.Features.Communities;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Catalog;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
@@ -47,7 +48,8 @@ internal static class CommunityEndpoints
 
     private static async Task<IResult> GetGamesAsync(HttpRequest request, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, CancellationToken cancellationToken)
+        CommunityContextResolver resolver, EffectiveCampCatalogService campCatalog,
+        CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator,
             resolver, cancellationToken);
@@ -58,20 +60,10 @@ internal static class CommunityEndpoints
                 .Select(x => x.CollectionJson).SingleAsync(cancellationToken);
             return Results.Ok(ClubCollectionSerializer.Deserialize(json).Games);
         }
-        var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == community,
-            cancellationToken);
-        var baseGames = camp.ReadBaseCollection().Games;
-        var contributed = await dbContext.CampGameContributions.AsNoTracking()
-            .Where(x => x.CampId == camp.Id && x.ItemType == Data.Entities.CampContributionItemType.BaseGame)
-            .ToArrayAsync(cancellationToken);
-        return Results.Ok(baseGames.Concat(contributed.GroupBy(x => x.BggId)
-            .Where(group => baseGames.All(x => x.BggId != group.Key))
-            .Select(group =>
-            {
-                var snapshot = group.First().ReadSnapshot();
-                return new ClubCollectionGame(group.Key, snapshot.Name, snapshot.ThumbnailImageUrl,
-                    snapshot.ImageUrl, snapshot.MinPlayers, snapshot.MaxPlayers, snapshot.BestPlayers, [],
-                    snapshot.Types, snapshot.Categories);
-            })).OrderBy(x => x.Name));
+        var participantId = await dbContext.Participants.AsNoTracking()
+            .Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
+            .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
+        return Results.Ok((await campCatalog.LoadAsync(community, participantId, cancellationToken))
+            .Select(x => x.Game));
     }
 }

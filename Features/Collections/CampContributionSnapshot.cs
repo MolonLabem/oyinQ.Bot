@@ -20,9 +20,10 @@ public sealed record CampContributionSnapshot(
     GameType Type = GameType.Other,
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
-    IReadOnlyList<GameTaxonomyItem>? Mechanics = null)
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
+    IReadOnlyList<long>? ParentBggIds = null)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 }
 
 public static class CampContributionSnapshotSerializer
@@ -52,7 +53,7 @@ public static class CampContributionSnapshotSerializer
 
     private static void Validate(CampContributionSnapshot snapshot)
     {
-        if (snapshot.Version is not 1 and not CampContributionSnapshot.CurrentVersion)
+        if (snapshot.Version is not 1 and not 2 and not CampContributionSnapshot.CurrentVersion)
             throw new InvalidOperationException($"Версия снимка вклада {snapshot.Version} не поддерживается.");
         if (string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.Name.Length > 300)
             throw new InvalidOperationException("Название игры во вкладе некорректно.");
@@ -70,5 +71,7 @@ public static class CampContributionSnapshotSerializer
             || snapshot.MaxPlayTimeMinutes is < 0 || snapshot.MinPlayTimeMinutes > snapshot.MaxPlayTimeMinutes
             || snapshot.MinAge is < 0 or > 100)
             throw new InvalidOperationException("Метаданные игры во вкладе некорректны.");
+        if (snapshot.ParentBggIds?.Any(x => x <= 0) == true)
+            throw new InvalidOperationException("Связи дополнения с базовыми играми некорректны.");
     }
 }

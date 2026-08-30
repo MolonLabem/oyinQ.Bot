@@ -21,14 +21,15 @@ function availableTimeZones(current: string) {
   return [...new Set([current, ...preferredTimeZones, ...supported].filter(Boolean))];
 }
 
-export function TimeZoneSelect({ value, onChange }: {
+export function TimeZoneSelect({ value, onChange, disabled = false }: {
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   const zones = availableTimeZones(value);
   const preferred = zones.filter(zone => preferredTimeZones.includes(zone));
   const others = zones.filter(zone => !preferredTimeZones.includes(zone));
-  return <select value={value} onChange={event => onChange(event.target.value)}>
+  return <select value={value} disabled={disabled} onChange={event => onChange(event.target.value)}>
     <optgroup label="Часто используемые">
       {preferred.map(zone => <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>)}
     </optgroup>

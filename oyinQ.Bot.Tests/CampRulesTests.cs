@@ -32,4 +32,20 @@ public sealed class CampRulesTests
     [InlineData(CampStatus.Cancelled, CampStatus.Active)]
     public void Lifecycle_RejectsBackwardTransitions(CampStatus current, CampStatus next) =>
         Assert.Throws<InvalidOperationException>(() => CampRules.ValidateTransition(current, next));
+
+    [Fact]
+    public void BaseSnapshot_IsMutableOnlyInDraft()
+    {
+        CampRules.EnsureBaseSnapshotMutable(CampStatus.Draft);
+        Assert.Throws<InvalidOperationException>(() =>
+            CampRules.EnsureBaseSnapshotMutable(CampStatus.Active));
+    }
+
+    [Fact]
+    public void Closing_RejectsFutureActiveGatherings()
+    {
+        CampRules.EnsureCanClose(0);
+        var error = Assert.Throws<InvalidOperationException>(() => CampRules.EnsureCanClose(2));
+        Assert.Contains("2 будущих сборов", error.Message);
+    }
 }

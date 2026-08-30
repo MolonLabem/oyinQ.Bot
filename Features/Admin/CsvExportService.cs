@@ -13,6 +13,12 @@ public sealed class CsvExportService(
     AppDbContext dbContext,
     IAdministratorStore administratorStore)
 {
+    public static readonly string[] CampRegistrationHeaders =
+        ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "display_name", "city",
+            "days_staying", "needs_accommodation", "created_at", "updated_at"];
+    public static readonly string[] CampContributionHeaders =
+        ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "bgg_id", "item_type",
+            "source", "commitment", "parent_bgg_id", "parent_bgg_ids", "created_at", "updated_at"];
     public async Task<IReadOnlyList<CsvExportFile>> CreateAllAsync(
         long telegramUserId,
         CancellationToken cancellationToken)
@@ -49,24 +55,32 @@ public sealed class CsvExportService(
                 value.Id, value.CampId, value.Camp.Name, value.ParticipantId,
                 value.Participant.TelegramUserId,
                 value.Participant.PreferredDisplayName ?? value.Participant.DisplayName,
-                value.DaysStaying, value.NeedsAccommodation, value.CreatedAt, value.UpdatedAt
+                value.City, value.DaysStaying, value.NeedsAccommodation, value.CreatedAt, value.UpdatedAt
             })
             .ToListAsync(cancellationToken);
-        return File("camp-registrations.csv", ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "display_name", "days_staying", "needs_accommodation", "created_at", "updated_at"], rows);
+        return File("camp-registrations.csv", CampRegistrationHeaders, rows);
     }
 
     private async Task<CsvExportFile> CreateCampContributionsAsync(CancellationToken cancellationToken)
     {
-        var rows = await dbContext.CampGameContributions.AsNoTracking()
+        var contributions = await dbContext.CampGameContributions.AsNoTracking()
+            .Include(value => value.Camp).Include(value => value.Participant)
             .OrderBy(value => value.CampId).ThenBy(value => value.ParticipantId).ThenBy(value => value.BggId)
-            .Select(value => new object?[]
+            .ToArrayAsync(cancellationToken);
+        var rows = contributions.Select(value =>
             {
+                var parentIds = (value.ReadSnapshot().ParentBggIds ?? [])
+                    .Concat(value.ParentBggId is { } parent ? [parent] : [])
+                    .Distinct().Order();
+                return new object?[]
+                {
                 value.Id, value.CampId, value.Camp.Name, value.ParticipantId,
                 value.Participant.TelegramUserId, value.BggId, value.ItemType,
-                value.ParentBggId, value.CreatedAt, value.UpdatedAt
-            })
-            .ToListAsync(cancellationToken);
-        return File("camp-contributions.csv", ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "bgg_id", "item_type", "parent_bgg_id", "created_at", "updated_at"], rows);
+                value.Source, value.Commitment, value.ParentBggId, string.Join(";", parentIds),
+                value.CreatedAt, value.UpdatedAt
+                };
+            });
+        return File("camp-contributions.csv", CampContributionHeaders, rows);
     }
 
     private async Task<CsvExportFile> CreateGatheringsAsync(CancellationToken cancellationToken)

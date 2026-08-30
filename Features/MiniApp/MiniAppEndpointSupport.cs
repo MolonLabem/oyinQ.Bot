@@ -4,6 +4,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
@@ -49,6 +50,11 @@ internal static class MiniAppEndpointSupport
                 CreatedAt = now
             };
             dbContext.Participants.Add(participant);
+        }
+        else
+        {
+            ParticipantIdentityPolicy.RefreshTrustedPresentation(participant, identity.TelegramUsername,
+                identity.DisplayName, now);
         }
         participant.ActiveCommunityKey = communityKey;
         participant.UpdatedAt = now;

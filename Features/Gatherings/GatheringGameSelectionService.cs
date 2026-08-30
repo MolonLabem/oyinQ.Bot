@@ -1,13 +1,15 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Catalog;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
 public sealed class GatheringGameSelectionService(
     AppDbContext dbContext,
-    IBoardGameGeekClient bggClient)
+    IBoardGameGeekClient bggClient,
+    EffectiveCampCatalogService? campCatalog = null)
 {
     public async Task<GatheringGameSnapshot> FromClubCollectionAsync(
         string communityKey,
@@ -58,53 +60,13 @@ public sealed class GatheringGameSelectionService(
         IReadOnlyCollection<long> selectedExpansionIds,
         CancellationToken cancellationToken)
     {
-        var camp = await dbContext.Camps.AsNoTracking()
-            .Include(value => value.Contributions)
-            .SingleOrDefaultAsync(value => value.BotChatKey == communityKey, cancellationToken)
-            ?? throw new KeyNotFoundException("Кэмп не найден.");
-        var baseGame = camp.ReadBaseCollection().Games.SingleOrDefault(value => value.BggId == bggId);
-        if (baseGame is not null)
-        {
-            var contributedExpansions = ReadContributionExpansions(camp, bggId);
-            var allExpansions = baseGame.Expansions.Concat(contributedExpansions)
-                .DistinctBy(value => value.BggId)
-                .ToArray();
-            EnsureKnownExpansions(allExpansions, selectedExpansionIds);
-            return GatheringGameSnapshot.FromClubGame(
-                baseGame with { Expansions = allExpansions },
-                selectedExpansionIds);
-        }
-
-        var contribution = camp.Contributions.FirstOrDefault(value =>
-            value.BggId == bggId && value.ItemType == Data.Entities.CampContributionItemType.BaseGame)
+        var effective = (await (campCatalog ?? throw new InvalidOperationException("Каталог кэмпа недоступен."))
+                .LoadAsync(communityKey, null, cancellationToken))
+            .SingleOrDefault(x => x.Game.BggId == bggId)
             ?? throw new KeyNotFoundException("Игра не найдена в каталоге этого кэмпа.");
-        var contributionSnapshot = contribution.ReadSnapshot();
-        var expansions = ReadContributionExpansions(camp, bggId);
-        EnsureKnownExpansions(expansions, selectedExpansionIds);
-        return new GatheringGameSnapshot(
-            GatheringGameSnapshot.CurrentVersion,
-            bggId,
-            contributionSnapshot.Name,
-            contributionSnapshot.ThumbnailImageUrl,
-            contributionSnapshot.ImageUrl,
-            contributionSnapshot.MinPlayers,
-            contributionSnapshot.MaxPlayers,
-            contributionSnapshot.BestPlayers,
-            expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
-            "catalog",
-            expansions);
+        EnsureKnownExpansions(effective.Game.Expansions, selectedExpansionIds);
+        return GatheringGameSnapshot.FromClubGame(effective.Game, selectedExpansionIds);
     }
-
-    private static ClubCollectionExpansion[] ReadContributionExpansions(Data.Entities.Camp camp, long parentBggId) =>
-        camp.Contributions
-            .Where(value => value.ItemType == Data.Entities.CampContributionItemType.Expansion
-                && value.ParentBggId == parentBggId)
-            .Select(value =>
-            {
-                return new ClubCollectionExpansion(value.BggId, value.ReadSnapshot().Name);
-            })
-            .DistinctBy(value => value.BggId)
-            .ToArray();
 
     private static void EnsureKnownExpansions(
         IReadOnlyCollection<ClubCollectionExpansion> available,

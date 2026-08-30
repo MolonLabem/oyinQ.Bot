@@ -10,6 +10,8 @@ public sealed class ClubMetadataRefresh
     public int ProgressCurrent { get; set; }
     public int ProgressTotal { get; set; }
     public string? Error { get; set; }
+    public Guid? LeaseId { get; set; }
+    public DateTimeOffset? LeaseExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public Club Club { get; set; } = null!;

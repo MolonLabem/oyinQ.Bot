@@ -5,6 +5,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Features.Collections;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -17,16 +18,55 @@ public sealed class TelegramUpdateHandler(
     ITelegramBotClient botClient,
     AdminHandler adminHandler,
     CommunityContextResolver communityContextResolver,
+    ManagedCommunityService managedCommunities,
     IAdministratorStore administratorStore,
     TelegramPeerSelectionService peerSelectionService,
+    CampBggImportCoordinator campImports,
     IOptions<BotOptions> botOptions,
     ILogger<TelegramUpdateHandler> logger)
 {
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
+        if (update.Message is { MigrateToChatId: { } migrateTo } toMessage)
+        {
+            await HandleChatMigrationAsync(toMessage.Chat.Id, migrateTo, cancellationToken);
+            return;
+        }
+        if (update.Message is { MigrateFromChatId: { } migrateFrom } fromMessage)
+        {
+            await HandleChatMigrationAsync(migrateFrom, fromMessage.Chat.Id, cancellationToken);
+            return;
+        }
         var callback = update.CallbackQuery;
         var user = callback?.From ?? update.Message?.From;
         if (user is null) return;
+        var participant = await dbContext.Participants.SingleOrDefaultAsync(
+            value => value.TelegramUserId == user.Id, cancellationToken);
+        if (participant is not null && ParticipantIdentityPolicy.RefreshTrustedPresentation(participant,
+                user.Username, BuildDisplayName(user), DateTimeOffset.UtcNow))
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (callback is not null && CampImportCallbackData.TryParse(callback.Data, out var importId,
+                out var resolution))
+        {
+            try
+            {
+                await campImports.ResolveBaseDuplicatesFromTelegramAsync(importId, user.Id, resolution,
+                    cancellationToken);
+                await botClient.AnswerCallbackQuery(callback.Id,
+                    resolution == CampImportOverrideResolution.AddPersonalCopies
+                        ? "Личные копии добавлены." : "Оставлено без изменений.",
+                    cancellationToken: cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "Camp import callback {ImportId} failed for {TelegramUserId}.",
+                    importId, user.Id);
+                await botClient.AnswerCallbackQuery(callback.Id, exception.Message, showAlert: true,
+                    cancellationToken: cancellationToken);
+            }
+            return;
+        }
 
         var message = update.Message;
         var command = TelegramUpdateRouting.GetCommand(message?.Text);
@@ -67,9 +107,6 @@ public sealed class TelegramUpdateHandler(
             return;
         }
 
-        var participant = await dbContext.Participants.SingleOrDefaultAsync(
-            value => value.TelegramUserId == user.Id,
-            cancellationToken);
         var isAdministrator = await administratorStore.IsAdministratorAsync(user.Id, cancellationToken);
         if (participant is null && (command is "/start" or "/menu" || command == "/admin" && isAdministrator))
         {
@@ -107,6 +144,24 @@ public sealed class TelegramUpdateHandler(
         await SendMiniAppEntryAsync(participant, user.Id, user.Id, startContext, isAdministrator,
             command == "/start",
             cancellationToken);
+    }
+
+    private async Task HandleChatMigrationAsync(long oldChatId, long newChatId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await managedCommunities.MigrateTelegramChatAsync(oldChatId, newChatId,
+                cancellationToken);
+            if (result.Updated)
+                logger.LogInformation("Telegram chat migrated from {OldChatId} to {NewChatId} for {CommunityKey}.",
+                    oldChatId, newChatId, result.CommunityKey);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(exception,
+                "Telegram chat migration from {OldChatId} to {NewChatId} was rejected.", oldChatId, newChatId);
+        }
     }
 
     private async Task SendPrivateEntryPointAsync(long groupChatId, CancellationToken cancellationToken)

@@ -11,6 +11,7 @@ public sealed class CampBggImport
     public int ProgressCurrent { get; set; }
     public int? ProgressTotal { get; set; }
     public string? DraftJson { get; set; }
+    public string? ConfirmationJson { get; set; }
     public string? Error { get; set; }
     public Guid? LeaseId { get; set; }
     public DateTimeOffset? LeaseExpiresAt { get; set; }

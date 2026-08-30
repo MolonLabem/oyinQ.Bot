@@ -2,7 +2,7 @@
 
 This directory contains the reviewed inputs for the one-time migration from the Tesera collection of user `John90` to the dedicated BoardGameGeek account `RollMoveClub`.
 
-Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is a reviewed disaster-recovery/bootstrap snapshot, not a synchronization source. Restore it only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
+Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is a reviewed backward-compatible disaster-recovery/bootstrap snapshot, not a synchronization source. Prefer the audited `club-collection.v2.json` after it has been generated because it also contains current catalog metadata. Restore either snapshot only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
 
 ## Audit status
 
@@ -27,6 +27,15 @@ The BGG-backed enrichment resolved 219 base games and 121 expansions. Twelve exp
 1. Resolve the remaining 22 review-only rows separately; do not infer IDs from translated names alone.
 2. Keep the server-side `BGG_API_TOKEN` outside source control. The BGG account password is never used or stored by OyinQ.
 3. Preview the `RollMoveClub` collection in Mini App administration. Review removals, metadata changes, and orphan expansions before applying it.
-4. Treat `club-collection.v1.json` as the initial audited recovery snapshot. Normal later synchronization updates PostgreSQL only and does not rewrite this file automatically.
+4. Generate the current-version recovery snapshot with a server-side BGG token:
+
+   ```powershell
+   $env:BoardGameGeek__ApiToken = '<server-side BGG token>'
+   dotnet run --project oyinQ.Bot.csproj -- --generate-rollmove-recovery
+   Remove-Item Env:BoardGameGeek__ApiToken
+   ```
+
+   The command enriches only the reviewed IDs, preserves every reviewed game/expansion membership relation, and fails if BGG omits a reviewed game. Audit `club-collection.v2.json` before making it the preferred recovery artifact.
+5. Normal metadata refresh updates PostgreSQL only and does not rewrite recovery files automatically.
 
 Do not commit the BGG password, email address, application token, browser profile, or uploader logs.

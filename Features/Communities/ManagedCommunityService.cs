@@ -3,6 +3,7 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Gatherings;
 
 namespace oyinQ.Bot.Features.Communities;
 
@@ -21,6 +22,9 @@ public sealed record CreateCampCommand(string Name, long TelegramChatId, string 
     long CreatedByTelegramUserId, long? SourceClubId, DateOnly StartDate, DateOnly EndDate);
 
 public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
+public sealed record CampStatusTransitionResult(IReadOnlyList<Guid> CancelledGatheringIds);
+public sealed record ManagedChatMigrationResult(bool Updated, string? CommunityKey);
+public enum ManagedChatMigrationAction { Ignore, Update, Replay, Collision }
 
 public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChatValidator chatValidator,
     TimeProvider timeProvider)
@@ -43,6 +47,42 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         dbContext.Clubs.Add(club);
         await SaveBindingAsync(cancellationToken);
         return club;
+    }
+
+    public async Task<ManagedChatMigrationResult> MigrateTelegramChatAsync(long oldChatId, long newChatId,
+        CancellationToken cancellationToken)
+    {
+        if (oldChatId == newChatId) return new(false, null);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var community = await dbContext.OyinQCommunities
+            .FromSqlInterpolated($"SELECT * FROM \"OyinQCommunities\" WHERE \"TelegramChatId\" = {oldChatId} FOR UPDATE")
+            .SingleOrDefaultAsync(cancellationToken);
+        var newBindingKey = await dbContext.OyinQCommunities.AsNoTracking()
+            .Where(x => x.TelegramChatId == newChatId).Select(x => x.Key)
+            .SingleOrDefaultAsync(cancellationToken);
+        var action = ClassifyChatMigration(community?.Key, newBindingKey);
+        if (community is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new(false, action == ManagedChatMigrationAction.Replay ? newBindingKey : null);
+        }
+        if (action == ManagedChatMigrationAction.Collision)
+            throw new InvalidOperationException("Новая Telegram-группа уже назначена другому сообществу.");
+        community.TelegramChatId = newChatId;
+        community.UpdatedAt = timeProvider.GetUtcNow();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(true, community.Key);
+    }
+
+    public static ManagedChatMigrationAction ClassifyChatMigration(string? oldBindingKey,
+        string? newBindingKey)
+    {
+        if (oldBindingKey is null)
+            return newBindingKey is null ? ManagedChatMigrationAction.Ignore : ManagedChatMigrationAction.Replay;
+        if (newBindingKey is null) return ManagedChatMigrationAction.Update;
+        return string.Equals(oldBindingKey, newBindingKey, StringComparison.Ordinal)
+            ? ManagedChatMigrationAction.Replay : ManagedChatMigrationAction.Collision;
     }
 
     public async Task<Camp> CreateCampAsync(CreateCampCommand command, CancellationToken cancellationToken)
@@ -76,18 +116,45 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         return camp;
     }
 
-    public async Task SetCampStatusAsync(long campId, CampStatus status, CancellationToken cancellationToken)
+    public async Task<CampStatusTransitionResult> SetCampStatusAsync(long campId, CampStatus status,
+        CancellationToken cancellationToken)
     {
-        var camp = await dbContext.Camps.Include(x => x.BotChat)
-            .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var camp = await dbContext.Camps
+            .FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
+            .Include(x => x.BotChat).SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
+        if (camp.Status == status)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new([]);
+        }
         if (status == CampStatus.Active && (camp.StartDate is null || camp.EndDate is null))
             throw new InvalidOperationException("Перед активацией задайте даты кэмпа.");
+        if (status == CampStatus.Active
+            && CampParticipationPolicy.HasEnded(camp, camp.BotChat.TimeZoneId, timeProvider.GetUtcNow()))
+            throw new InvalidOperationException("Нельзя активировать кэмп после даты его завершения.");
         CampRules.ValidateTransition(camp.Status, status);
+        var now = timeProvider.GetUtcNow();
+        var activeStatuses = new[] { GatheringStatus.Recruiting, GatheringStatus.Ready,
+            GatheringStatus.Full, GatheringStatus.Closed };
+        var future = await dbContext.GameGatherings
+            .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
+                && activeStatuses.Contains(x.Status))
+            .Include(x => x.Participants).ToArrayAsync(cancellationToken);
+        if (status == CampStatus.Closed) CampRules.EnsureCanClose(future.Length);
+        if (status == CampStatus.Cancelled)
+            foreach (var gathering in future)
+            {
+                GatheringRules.Cancel(gathering, "Кэмп отменён", now);
+                gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            }
         camp.Status = status;
         camp.BotChat.IsActive = status == CampStatus.Active;
-        camp.UpdatedAt = camp.BotChat.UpdatedAt = timeProvider.GetUtcNow();
+        camp.UpdatedAt = camp.BotChat.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(status == CampStatus.Cancelled ? future.Select(x => x.PublicId).ToArray() : []);
     }
 
     public async Task UpdateCampAsync(long campId, UpdateCampCommand command,
@@ -100,6 +167,9 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var camp = await dbContext.Camps.Include(x => x.BotChat).Include(x => x.Registrations)
             .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
+        CommunityTimeZonePolicy.EnsureChangeAllowed(camp.BotChat.TimeZoneId, command.TimeZoneId,
+            await dbContext.GameGatherings.AnyAsync(x => x.CommunityKey == camp.BotChatKey,
+                cancellationToken));
         if (camp.Registrations.Any(x => x.DaysStaying > duration))
             throw new InvalidOperationException("Новый диапазон короче уже подтверждённого срока проживания участника.");
         var gatheringStarts = await dbContext.GameGatherings.AsNoTracking()
@@ -127,6 +197,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             .FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
+        CampRules.EnsureBaseSnapshotMutable(camp.Status);
         var source = await dbContext.Clubs.AsNoTracking()
             .Where(value => value.Id == sourceClubId)
             .Select(value => new { value.Id, value.CollectionJson })

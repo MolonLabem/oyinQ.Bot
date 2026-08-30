@@ -23,7 +23,7 @@ public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> C
     IReadOnlyList<KeyValuePair<GameType, string>> Types);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
 
-public sealed class GameCatalogService(AppDbContext dbContext, CampContributionSelectionService contributions)
+public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog)
 {
     public async Task<GameCatalogResponse> ListAsync(string communityKey, BotMode mode, long telegramUserId,
         CatalogQuery query, CancellationToken cancellationToken)
@@ -79,27 +79,10 @@ public sealed class GameCatalogService(AppDbContext dbContext, CampContributionS
                 .Select(game => new EffectiveGame(game, true, [])).ToArray();
         }
 
-        var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == key, cancellationToken);
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == telegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
-        var personal = await contributions.GetEffectiveContributionsAsync(camp.Id, cancellationToken, participantId);
-        var baseGames = camp.ReadBaseCollection().Games.Select(game =>
-        {
-            var own = personal.SingleOrDefault(x => x.ItemType == CampContributionItemType.BaseGame && x.BggId == game.BggId);
-            return new EffectiveGame(game, true, own?.Providers ?? []);
-        }).ToList();
-        baseGames.AddRange(personal.Where(x => x.ItemType == CampContributionItemType.BaseGame
-                && baseGames.All(existing => existing.Game.BggId != x.BggId))
-            .Select(x => new EffectiveGame(ToGame(x), false, x.Providers)));
-        return baseGames;
-    }
-
-    private static ClubCollectionGame ToGame(EffectiveCampCatalogItem value)
-    {
-        var s = value.Snapshot;
-        return new ClubCollectionGame(value.BggId, s.Name, s.ThumbnailImageUrl, s.ImageUrl, s.MinPlayers,
-            s.MaxPlayers, s.BestPlayers, [], s.Types, s.Categories, s.Description, s.YearPublished,
-            s.MinPlayTimeMinutes, s.MaxPlayTimeMinutes, s.MinAge, s.Type, s.Subdomains, s.CategoryItems, s.Mechanics);
+        return (await campCatalog.LoadAsync(key, participantId, cancellationToken))
+            .Select(x => new EffectiveGame(x.Game, x.IsInBaseCollection, x.Providers)).ToArray();
     }
 
     private static GameListItemResponse ToListItem(EffectiveGame value)

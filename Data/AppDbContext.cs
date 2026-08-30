@@ -80,6 +80,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             });
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.BotChatKey).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.EndDate, x.Id });
             entity.Property(x => x.BotChatKey).HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.BaseCollectionJson).HasColumnType("jsonb");
@@ -136,8 +137,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => x.PublicId).IsUnique();
             entity.HasIndex(x => new { x.Status, x.LeaseExpiresAt, x.CreatedAt });
             entity.HasIndex(x => new { x.CampId, x.ParticipantId, x.UpdatedAt });
+            entity.HasIndex(x => new { x.CampId, x.ParticipantId }).IsUnique()
+                .HasDatabaseName("IX_CampBggImports_ActiveCampParticipant")
+                .HasFilter("\"Status\" IN (0, 1)");
             entity.Property(x => x.BggUsername).HasMaxLength(100);
             entity.Property(x => x.DraftJson).HasColumnType("jsonb");
+            entity.Property(x => x.ConfirmationJson).HasColumnType("jsonb");
             entity.Property(x => x.Error).HasMaxLength(2000);
             entity.HasOne(x => x.Camp)
                 .WithMany(x => x.BggImports)
@@ -154,7 +159,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.ToTable("ClubMetadataRefreshes");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.PublicId).IsUnique();
-            entity.HasIndex(x => new { x.Status, x.CreatedAt });
+            entity.HasIndex(x => new { x.Status, x.LeaseExpiresAt, x.CreatedAt });
+            entity.HasIndex(x => x.ClubId).IsUnique()
+                .HasDatabaseName("IX_ClubMetadataRefreshes_ActiveClub")
+                .HasFilter("\"Status\" IN (0, 1)");
             entity.Property(x => x.BggIdsJson).HasColumnType("jsonb");
             entity.Property(x => x.Error).HasMaxLength(2000);
             entity.HasOne(x => x.Club).WithMany().HasForeignKey(x => x.ClubId).OnDelete(DeleteBehavior.Cascade);

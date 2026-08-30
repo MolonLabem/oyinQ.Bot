@@ -15,21 +15,24 @@ Telegram identity is global. `Participant.ActiveCommunityKey` is the last select
 
 `OyinQCommunity` is the managed Telegram binding. `Club` and `Camp` are mode-qualified one-to-one rows with composite foreign keys and mode checks. Create subtype and community together.
 
-Clubs have no registration gate. Camps use relational `(CampId, ParticipantId)` registration and inclusive local `StartDate`/`EndDate`. Club ownership is versioned OyinQ JSON in `Club.CollectionJson`; every mutation locks the current document, checks `CollectionRevision`, and increments it. Camp base collections are immutable-at-creation snapshots in `Camp.BaseCollectionJson`; participant availability is relational `CampGameContributions`. Use the typed, versioned collection/contribution serializers. Never store raw provider JSON or accept client-authored provider snapshots.
+Clubs have no registration gate. Camps use relational `(CampId, ParticipantId)` registration and inclusive local `StartDate`/`EndDate`; a complete registration requires valid days, an accommodation choice, and normalized non-empty `City`. Club ownership is a versioned v2 OyinQ JSON document in `Club.CollectionJson`; every mutation locks the current document, checks `CollectionRevision`, and increments it. Camp base collections are Draft-only snapshots in `Camp.BaseCollectionJson` and become immutable with their `SourceClubId` after activation. Participant availability is relational `CampGameContributions`, with `Available` or `Bringing` commitment. Use the typed, versioned collection/contribution serializers. Expansion snapshots preserve every provider-reported parent in `ParentBggIds`, while `ParentBggId` remains a compatibility bridge. Never store raw provider JSON or accept client-authored provider snapshots.
 
-New Camps start as `Draft`; only `Active` Camps accept registrations, imports, contributions, gatherings, joins, or leaves. `Closed` and `Cancelled` Camps remain readable to administrators. Existing migrated Camps without dates remain readable but must receive dates before new mutations.
+New Camps start as `Draft`; only `Active` Camps before or on their local `EndDate` accept registrations, imports, contributions, gatherings, joins, or leaves. A worker closes expired Active Camps, but every mutation enforces the date boundary independently. Closing rejects future active gatherings; cancelling a Camp cancels its future gatherings after commit-aware notification/publication handling. `Closed` and `Cancelled` Camps remain readable to administrators. Existing migrated Camps without dates remain readable but must receive dates before new mutations. A community timezone is immutable after its first gathering.
 
-Personal BGG imports are Camp-only persisted jobs in `CampBggImports`. The hosted worker leases queued or stale-running jobs, and the server owns the versioned selection draft. Confirmation accepts only draft IDs plus selected base/expansion IDs. `CampGameContribution.Source` is `Legacy`, `BggImport`, or `Manual`; re-import replaces only BGG-import rows.
+Personal BGG imports are Camp-only persisted jobs in `CampBggImports`. The hosted worker leases queued or stale-running jobs, and a partial unique index permits one active job per Camp/participant. The server owns the versioned selection draft and persisted confirmation result. Confirmation accepts only draft IDs plus selected base/expansion IDs; a retry returns the original result. Base-library soft duplicates can be kept or added as personal copies, but only from the persisted selected subset and only by the import owner. `CampGameContribution.Source` is `Legacy`, `BggImport`, or `Manual`; re-import replaces only BGG-import rows.
 
-Both modes use `GameGathering`. New gatherings render from immutable `GameSnapshotJson`; `GameId` is a nullable compatibility bridge only. `GatheringGameSelectionService` may use a selected collection item or transient BGG details but must not insert a global `Game`. Base games and expansions are independent selections.
+Both modes use `GameGathering`. New gatherings render from immutable `GameSnapshotJson`; `GameId` is a nullable compatibility bridge only. Camp browsing, details, and gathering creation share one effective projection of base snapshot plus contributions. `GatheringGameSelectionService` may use a selected collection item or transient BGG details but must not insert a global `Game`. Base games and expansions are independent selections.
 
 Player limits include the organizer and satisfy `minimum <= desired <= maximum`. PostgreSQL transactions and row locks are the concurrency authority. Signups are unique; waitlists are ordered; leaving/giving up promotes exactly one eligible person in the same transaction. Capacity changes cannot silently displace confirmed participants.
 
 Attendance is explicit: `Attended`, `NoShow`, `CancelledInAdvance`, or `Unknown`. Never infer no-shows, and never create no-shows for a cancelled gathering. Do not add karma, ratings, voting, or opaque reliability scores.
 
+Gathering lists expose Upcoming and History. Due gatherings that meet minimum attendance become `Completed`; underfilled due gatherings are hard-deleted after their Telegram announcement is queued for cleanup, with organizer/confirmed-participant DMs sent after commit. This is failed-gathering cleanup, not cancellation history.
+
 ## Integrations and background work
 
 BGG is the only external board-game provider. `BoardGameGeek:ApiToken` is server-only and optional; missing credentials must degrade gracefully. Tests use fake HTTP and never call live BGG. Expansion relationships come only from inbound BGG `boardgameexpansion` links.
+Rich collection metadata stores BGG taxonomy IDs and canonical labels. Russian presentation uses an ID-based translation catalog with canonical English fallback. Club metadata refresh is a persisted leased job; it preserves current membership and selected expansions and locks the current Club document before applying one item.
 BGG name search is explicitly user-triggered, returns at most five lightweight results, and fetches full game details only after selection. Do not add background search polling or recurring catalog synchronization.
 
 Business code requests typed gathering notifications; Telegram is the delivery adapter. Persist time-based work in PostgreSQL using hosted services. Never schedule important work only with `Task.Delay`. Prefer editing one group announcement plus relevant DMs.
@@ -66,6 +69,7 @@ dotnet test oyinQ.Bot.slnx --configuration Release --no-build --no-restore
 Set-Location MiniApp
 npm ci
 npm run check
+npm test
 npm run build
 Set-Location ..
 docker build -t oyinq-bot .

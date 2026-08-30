@@ -46,7 +46,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                     value.Type,
                     value.Subdomains,
                     value.CategoryItems,
-                    value.Mechanics))).ToArray());
+                    value.Mechanics,
+                    value.ParentBggIds),
+                ParentBggIds: value.ParentBggIds)).ToArray());
     }
 
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
@@ -86,7 +88,8 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.MinAge, value.Type, value.Subdomains, value.CategoryItems, value.Mechanics)));
         items.AddRange(expansions.Where(value => value.Expansion.BggId is > 0).Select(value =>
         {
-            var parentId = value.ParentBggIds.FirstOrDefault(ownedBaseIds.Contains);
+            var parentIds = value.ParentBggIds.Where(x => x > 0).Distinct().ToArray();
+            var parentId = parentIds.FirstOrDefault(ownedBaseIds.Contains);
             if (parentId <= 0) parentId = value.ParentBggIds.FirstOrDefault();
             return new CampImportSelectionItem(
                 value.Expansion.BggId!.Value,
@@ -104,7 +107,7 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.Expansion.Description, value.Expansion.YearPublished,
                 value.Expansion.MinPlayTimeMinutes, value.Expansion.MaxPlayTimeMinutes,
                 value.Expansion.MinAge, value.Expansion.Type, value.Expansion.Subdomains,
-                value.Expansion.CategoryItems, value.Expansion.Mechanics);
+                value.Expansion.CategoryItems, value.Expansion.Mechanics, parentIds);
         }));
 
         return items

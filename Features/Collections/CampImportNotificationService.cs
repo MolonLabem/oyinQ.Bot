@@ -1,10 +1,35 @@
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
+using oyinQ.Bot.Data.Entities;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Collections;
+
+public static class CampImportCallbackData
+{
+    private const string Prefix = "campimp:";
+
+    public static string Create(Guid importId, CampImportOverrideResolution resolution) =>
+        $"{Prefix}{importId:N}:{(resolution == CampImportOverrideResolution.AddPersonalCopies ? "add" : "keep")}";
+
+    public static bool TryParse(string? value, out Guid importId, out CampImportOverrideResolution resolution)
+    {
+        importId = default;
+        resolution = default;
+        if (value is null || !value.StartsWith(Prefix, StringComparison.Ordinal)) return false;
+        var parts = value[Prefix.Length..].Split(':');
+        if (parts.Length != 2 || !Guid.TryParseExact(parts[0], "N", out importId)) return false;
+        resolution = parts[1] switch
+        {
+            "add" => CampImportOverrideResolution.AddPersonalCopies,
+            "keep" => CampImportOverrideResolution.KeepBaseCollection,
+            _ => (CampImportOverrideResolution)(-1)
+        };
+        return Enum.IsDefined(resolution);
+    }
+}
 
 public sealed class CampImportNotificationService(ITelegramBotClient botClient, IOptions<BotOptions> botOptions,
     ILogger<CampImportNotificationService> logger)
@@ -29,9 +54,13 @@ public sealed class CampImportNotificationService(ITelegramBotClient botClient, 
             if (result.HasOverridableItems)
             {
                 var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(communityKey)}&tab=mine&import={importId}";
-                keyboard = new InlineKeyboardMarkup([[
-                    InlineKeyboardButton.WithWebApp("Выбрать действие", new WebAppInfo { Url = url })
-                ]]);
+                keyboard = new InlineKeyboardMarkup([
+                    [InlineKeyboardButton.WithCallbackData("Оставить как есть",
+                        CampImportCallbackData.Create(importId, Data.Entities.CampImportOverrideResolution.KeepBaseCollection))],
+                    [InlineKeyboardButton.WithCallbackData("Добавить мои копии",
+                        CampImportCallbackData.Create(importId, Data.Entities.CampImportOverrideResolution.AddPersonalCopies))],
+                    [InlineKeyboardButton.WithWebApp("Выбрать игры", new WebAppInfo { Url = url })]
+                ]);
             }
             await botClient.SendMessage(telegramUserId, string.Join('\n', lines), replyMarkup: keyboard,
                 cancellationToken: cancellationToken);

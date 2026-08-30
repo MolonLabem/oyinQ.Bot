@@ -56,6 +56,9 @@ jobs:
       - name: Typecheck Mini App
         working-directory: MiniApp
         run: npm run check
+      - name: Test Mini App
+        working-directory: MiniApp
+        run: npm test
       - name: Build Mini App
         working-directory: MiniApp
         run: npm run build

@@ -4,6 +4,7 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Catalog;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
@@ -57,14 +58,22 @@ internal static class CampEndpoints
         var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == community, cancellationToken);
         var registration = await dbContext.CampRegistrations.AsNoTracking()
             .Where(x => x.CampId == camp.Id && x.Participant.TelegramUserId == access.Identity.TelegramUserId)
-            .Select(x => new { Registered = x.City != null, x.DaysStaying, x.NeedsAccommodation, x.City }).SingleOrDefaultAsync(cancellationToken);
+            .Select(x => new { Row = x, DisplayName = x.Participant.PreferredDisplayName
+                ?? x.Participant.DisplayName }).SingleOrDefaultAsync(cancellationToken);
         return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate,
-            Registration = registration });
+            Registration = registration is null ? null : new
+            {
+                Registered = CampParticipationPolicy.IsRegistrationComplete(registration.Row, camp),
+                registration.Row.DaysStaying,
+                registration.Row.NeedsAccommodation,
+                registration.Row.City,
+                registration.DisplayName
+            } });
     }
 
     private static async Task<IResult> SaveRegistrationAsync(HttpRequest request, CampRegistrationRequest body,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, CancellationToken cancellationToken)
+        CommunityContextResolver resolver, TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
             authenticator, resolver, cancellationToken);
@@ -72,6 +81,8 @@ internal static class CampEndpoints
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Регистрация нужна только для кэмпа.");
         var camp = await dbContext.Camps.SingleAsync(x => x.BotChatKey == body.CommunityKey, cancellationToken);
         if (camp.Status != CampStatus.Active) return MiniAppEndpointSupport.Problem("camp_closed", "Кэмп не принимает регистрации.");
+        if (CampParticipationPolicy.HasEnded(camp, access.Community.TimeZoneId, timeProvider.GetUtcNow()))
+            return MiniAppEndpointSupport.Problem("camp_ended", "Кэмп уже завершён и не принимает изменения.");
         if (camp.StartDate is not { } start || camp.EndDate is not { } end)
             return MiniAppEndpointSupport.Problem("camp_dates_missing",
                 "Организатор ещё не указал даты кэмпа. Откройте настройки кэмпа в админ-панели.");
@@ -85,7 +96,7 @@ internal static class CampEndpoints
             body.CommunityKey, cancellationToken);
         var registration = await dbContext.CampRegistrations.SingleOrDefaultAsync(
             x => x.CampId == camp.Id && x.ParticipantId == participant.Id, cancellationToken);
-        var now = DateTimeOffset.UtcNow;
+        var now = timeProvider.GetUtcNow();
         if (registration is null)
         {
             registration = new CampRegistration { CampId = camp.Id, ParticipantId = participant.Id, CreatedAt = now };
@@ -227,7 +238,8 @@ internal static class CampEndpoints
             foreach (var expansion in details.Expansions.Where(x => selected.Contains(x.BggId)))
                 await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, expansion.BggId,
                     CampContributionItemType.Expansion, bggId.Value,
-                    Snapshot(expansion.Name, null, null, null, null, null, null, null, null),
+                    Snapshot(expansion.Name, null, null, null, null, null, null, null, null) with
+                    { ParentBggIds = [bggId.Value] },
                     DateTimeOffset.UtcNow, cancellationToken);
             return Results.NoContent();
         }
@@ -270,49 +282,23 @@ internal static class CampEndpoints
 
     private static async Task<IResult> GetCatalogAsync(HttpRequest request, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        CampContributionSelectionService contributions, CancellationToken cancellationToken)
+        EffectiveCampCatalogService catalog, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Каталог кэмпа недоступен.");
-        var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == community, cancellationToken);
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
-        var contributed = await contributions.GetEffectiveContributionsAsync(camp.Id, cancellationToken, participantId);
-        var collection = camp.ReadBaseCollection();
-        IReadOnlyList<ClubCollectionExpansion> ExpansionsFor(long baseId,
-            IReadOnlyList<ClubCollectionExpansion> snapshot) => snapshot.Concat(contributed
-                .Where(x => x.ItemType == CampContributionItemType.Expansion && x.ParentBggId == baseId)
-                .Select(x => new ClubCollectionExpansion(x.BggId, x.Name)))
-            .DistinctBy(x => x.BggId).OrderBy(x => x.Name).ToArray();
-        var baseGames = collection.Games.Select(game =>
-        {
-            var contribution = contributed.SingleOrDefault(x => x.BggId == game.BggId
-                && x.ItemType == CampContributionItemType.BaseGame);
-            return new CampCatalogResponse(
-                game.BggId, CampContributionItemType.BaseGame.ToString(), null, game.Name,
-                game.ThumbnailImageUrl ?? contribution?.Snapshot.ThumbnailImageUrl,
-                game.ImageUrl ?? contribution?.Snapshot.ImageUrl,
-                game.MinPlayers ?? contribution?.Snapshot.MinPlayers,
-                game.MaxPlayers ?? contribution?.Snapshot.MaxPlayers,
-                game.BestPlayers ?? contribution?.Snapshot.BestPlayers,
-                game.Types is { Count: > 0 } ? game.Types : contribution?.Snapshot.Types ?? [],
-                game.Categories is { Count: > 0 } ? game.Categories : contribution?.Snapshot.Categories ?? [],
-                1 + (contribution?.CopyCount ?? 0),
-                [new CampCatalogProvider(null, "Коллекция клуба", null, null), .. (contribution?.Providers ?? [])],
-                ExpansionsFor(game.BggId, game.Expansions), true,
-                contribution?.Providers.Any(x => x.Commitment == CampBringCommitment.Bringing) == true,
-                false);
-        });
-        var extra = contributed.Where(x => x.ItemType == CampContributionItemType.BaseGame
-            && collection.Games.All(game => game.BggId != x.BggId))
-            .Select(x => new CampCatalogResponse(x.BggId, x.ItemType.ToString(), x.ParentBggId,
-                x.Name, x.Snapshot.ThumbnailImageUrl, x.Snapshot.ImageUrl, x.Snapshot.MinPlayers,
-                x.Snapshot.MaxPlayers, x.Snapshot.BestPlayers, x.Snapshot.Types ?? [],
-                x.Snapshot.Categories ?? [], x.CopyCount, x.Providers, ExpansionsFor(x.BggId, []), false,
-                x.Providers.Any(p => p.Commitment == CampBringCommitment.Bringing),
-                x.Providers.Count > 1 && x.Providers.All(p => p.Commitment != CampBringCommitment.Bringing)));
-        return Results.Ok(baseGames.Concat(extra).OrderBy(x => x.Name));
+        var effective = await catalog.LoadAsync(community, participantId, cancellationToken);
+        return Results.Ok(effective.Select(x => new CampCatalogResponse(
+            x.Game.BggId, CampContributionItemType.BaseGame.ToString(), null, x.Game.Name,
+            x.Game.ThumbnailImageUrl, x.Game.ImageUrl, x.Game.MinPlayers, x.Game.MaxPlayers,
+            x.Game.BestPlayers, x.Game.Types ?? [], x.Game.Categories ?? [],
+            (x.IsInBaseCollection ? 1 : 0) + x.Providers.Count, x.Providers,
+            x.Game.Expansions, x.IsInBaseCollection,
+            x.Providers.Any(p => p.Commitment == CampBringCommitment.Bringing),
+            !x.IsInBaseCollection && x.Providers.Count > 1
+                && x.Providers.All(p => p.Commitment != CampBringCommitment.Bringing))));
     }
 
     private static CampContributionSnapshot Snapshot(string name, string? thumbnail, string? image,

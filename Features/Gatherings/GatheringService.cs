@@ -2,13 +2,14 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Communities;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
 public sealed record GatheringPromotion(long TelegramUserId, string DisplayName);
 public sealed record GatheringMutationResult(GameGathering Gathering, GatheringPromotion? Promotion = null);
 
-public sealed class GatheringService(AppDbContext dbContext)
+public sealed class GatheringService(AppDbContext dbContext, CampParticipationPolicy participationPolicy)
 {
     public async Task<GatheringMutationResult> JoinAsync(
         Guid publicId,
@@ -138,20 +139,13 @@ public sealed class GatheringService(AppDbContext dbContext)
             value => value.TelegramUserId == telegramUserId,
             cancellationToken)
             ?? throw new UnauthorizedAccessException("Участник не найден.");
-        var mode = await dbContext.OyinQCommunities.AsNoTracking()
+        var context = await dbContext.OyinQCommunities.AsNoTracking()
             .Where(value => value.Key == gathering.CommunityKey)
-            .Select(value => value.Mode)
+            .Select(value => new { value.Mode, CampId = value.Camp == null ? (long?)null : value.Camp.Id })
             .SingleAsync(cancellationToken);
-        if (GatheringAccessPolicy.RequiresRegistration(mode)
-            && (!await dbContext.Camps.AnyAsync(
-                    value => value.BotChatKey == gathering.CommunityKey && value.Status == CampStatus.Active,
-                    cancellationToken)
-                || !await dbContext.CampRegistrations.AnyAsync(
-                value => value.Camp.BotChatKey == gathering.CommunityKey && value.ParticipantId == participant.Id,
-                cancellationToken)))
-        {
-            throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
-        }
+        if (GatheringAccessPolicy.RequiresRegistration(context.Mode))
+            await participationPolicy.RequireCompleteRegistrationAsync(context.CampId!.Value, participant.Id,
+                cancellationToken);
 
         return participant;
     }

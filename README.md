@@ -50,7 +50,7 @@ For deliberate fresh-database recovery:
 1. Bootstrap the first administrator.
 2. Create the Club with the native Telegram group picker.
 3. Open **Manage collection → Import JSON**.
-4. Select `Data/Imports/RollMove/club-collection.v1.json` or a newer exported Club JSON file.
+4. Prefer the audited `Data/Imports/RollMove/club-collection.v2.json` when present; otherwise select the reviewed v1 membership artifact or a newer exported Club JSON file. See `Data/Imports/RollMove/README.md` for deterministic v2 generation.
 5. Verify the displayed revision and game count before enabling normal use.
 
 Import requires the current collection revision and returns HTTP 409 if another administrator changed the document. It never silently overwrites a newer revision.
@@ -89,6 +89,7 @@ dotnet test oyinQ.Bot.slnx --configuration Release --no-build --no-restore
 Set-Location MiniApp
 npm ci
 npm run check
+npm test
 npm run build
 Set-Location ..
 
@@ -96,6 +97,8 @@ docker build -t oyinq-bot .
 ```
 
 The Dockerfile builds the Mini App and backend in separate stages. Northflank supplies `PORT`; the image uses it when present and falls back to `8080` locally.
+
+`GET /health` is process liveness and intentionally performs no external calls. Configure `GET /ready` as readiness; it runs a cheap PostgreSQL connectivity check and does not depend on optional BGG or Telegram.
 
 ## Northflank
 
@@ -130,6 +133,8 @@ Migration `20260828183821_ClubCampContextsAndGatheringSnapshots` is additive and
 Migration `20260828230514_PersistAdministrators` is also additive. It creates only `OyinQAdministrators`; startup then inserts missing comma-separated bootstrap IDs with `ON CONFLICT DO NOTHING`. It does not delete or rewrite application data.
 
 Migration `20260829000852_StabilizeClubCampMiniApp` is additive. It adds Club revisions, Camp dates, typed contribution source, Camp import jobs, pending Telegram peer selections, administrator presentation fields, and gathering publication state. Existing contribution JSON receives only the required version marker; existing published gatherings are marked published. Existing legacy tables and `Club.BggUsername` remain mapped and deprecated.
+
+The additive migrations after it are `20260830193242_GatheringHistoryAndCleanup`, `20260830200452_CatalogMetadataCampAvailability`, `20260830201423_CampImportSkipResolution`, `20260830201708_ClubMetadataRefreshJobs`, and `20260830210951_FinalConsistencyAndReliability`. The final migration adds persisted import confirmations, Club-refresh leases, worker indexes, and partial unique active-job invariants. Its deterministic pre-index reconciliation ends duplicate active jobs without deleting application data. Validate this full batch and its generated SQL against a production backup before deployment; do not apply it as part of this repository review.
 
 ## Manual verification
 

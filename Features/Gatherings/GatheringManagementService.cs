@@ -3,6 +3,8 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.MiniApp;
+using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -17,6 +19,8 @@ public sealed record UpdateGatheringCommand(DateTimeOffset StartsAt, int Minimum
 public sealed class GatheringManagementService(
     AppDbContext dbContext,
     GatheringGameSelectionService gameSelection,
+    CampParticipationPolicy participationPolicy,
+    GatheringNotificationService notifications,
     TimeProvider timeProvider)
 {
     public async Task<GameGathering> CreateAsync(BotCommunity community, TelegramMiniAppIdentity identity,
@@ -49,6 +53,7 @@ public sealed class GatheringManagementService(
         var now = timeProvider.GetUtcNow();
         GatheringRules.EnsureFutureStart(command.StartsAt, now);
         var gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
+        var timeChanged = gathering.StartsAtUtc != command.StartsAt.ToUniversalTime();
         var community = await dbContext.OyinQCommunities.AsNoTracking().SingleAsync(x => x.Key == communityKey,
             cancellationToken);
         await EnsureCommunityMutationAllowedAsync(community.ToBotCommunity(), telegramUserId,
@@ -60,6 +65,7 @@ public sealed class GatheringManagementService(
             command.SelectedExpansionIds, now);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (timeChanged) await notifications.NotifyTimeChangedAsync(publicId, cancellationToken);
         return gathering;
     }
 
@@ -76,15 +82,17 @@ public sealed class GatheringManagementService(
     {
         var gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
         var now = timeProvider.GetUtcNow();
+        var cancelled = false;
         switch (action.ToLowerInvariant())
         {
             case "close": GatheringRules.Close(gathering, now); break;
             case "reopen": GatheringRules.Reopen(gathering, now); break;
-            case "cancel": GatheringRules.Cancel(gathering, reason, now); break;
+            case "cancel": GatheringRules.Cancel(gathering, reason, now); cancelled = true; break;
             default: throw new InvalidOperationException("Неизвестное действие со сбором.");
         }
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (cancelled) await notifications.NotifyCancellationAsync(publicId, cancellationToken);
         return gathering;
     }
 
@@ -105,14 +113,13 @@ public sealed class GatheringManagementService(
         DateTimeOffset startsAt, CancellationToken cancellationToken)
     {
         if (community.Mode != BotMode.Camp) return;
-        var camp = await dbContext.Camps.AsNoTracking()
+        var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat)
             .SingleAsync(x => x.BotChatKey == community.Key, cancellationToken);
-        if (camp.Status != CampStatus.Active) throw new InvalidOperationException("Кэмп не принимает новые сборы.");
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == telegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
-        if (participantId is null || !await dbContext.CampRegistrations.AnyAsync(
-                x => x.CampId == camp.Id && x.ParticipantId == participantId, cancellationToken))
+        if (participantId is null)
             throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
+        await participationPolicy.RequireCompleteRegistrationAsync(camp.Id, participantId.Value, cancellationToken);
         if (camp.StartDate is not { } start || camp.EndDate is not { } end)
             throw new InvalidOperationException("Для кэмпа ещё не настроены даты.");
         var local = TimeZoneInfo.ConvertTime(startsAt, TimeZoneInfo.FindSystemTimeZoneById(community.TimeZoneId));
@@ -126,7 +133,16 @@ public sealed class GatheringManagementService(
     {
         var participant = await dbContext.Participants.SingleOrDefaultAsync(
             x => x.TelegramUserId == identity.TelegramUserId, cancellationToken);
-        if (participant is not null) return participant;
+        if (participant is not null)
+        {
+            var refreshTime = timeProvider.GetUtcNow();
+            ParticipantIdentityPolicy.RefreshTrustedPresentation(participant, identity.TelegramUsername,
+                identity.DisplayName, refreshTime);
+            participant.ActiveCommunityKey = communityKey;
+            participant.UpdatedAt = refreshTime;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return participant;
+        }
         var now = timeProvider.GetUtcNow();
         participant = new Participant
         {

@@ -41,6 +41,7 @@ public sealed class GatheringLifecycleWorker(
         var full = GatheringStatus.Full;
         var closed = GatheringStatus.Closed;
         Guid? completedPublicId = null;
+        UnderfilledGatheringNotification? underfilled = null;
 
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken))
         {
@@ -52,7 +53,8 @@ public sealed class GatheringLifecycleWorker(
                     ORDER BY "StartsAtUtc", "Id"
                     FOR UPDATE SKIP LOCKED LIMIT 1
                     """)
-                .Include(x => x.Participants)
+                .Include(x => x.OrganizerParticipant)
+                .Include(x => x.Participants).ThenInclude(x => x.Participant)
                 .SingleOrDefaultAsync(cancellationToken);
             if (gathering is null)
             {
@@ -67,6 +69,7 @@ public sealed class GatheringLifecycleWorker(
             }
             else if (outcome == GatheringLifecycleOutcome.Delete)
             {
+                underfilled = GatheringNotificationService.CaptureUnderfilled(gathering);
                 var cleanup = GatheringLifecycle.CreateCleanup(gathering, now);
                 if (cleanup is not null) dbContext.TelegramMessageCleanups.Add(cleanup);
                 dbContext.GameGatherings.Remove(gathering);
@@ -80,6 +83,11 @@ public sealed class GatheringLifecycleWorker(
         {
             var publication = scope.ServiceProvider.GetRequiredService<GatheringPublicationService>();
             await publication.PublishAsync(publicId, cancellationToken);
+        }
+        if (underfilled is not null)
+        {
+            var notifications = scope.ServiceProvider.GetRequiredService<GatheringNotificationService>();
+            await notifications.NotifyUnderfilledAsync(underfilled, cancellationToken);
         }
         return true;
     }

@@ -12,6 +12,7 @@ public sealed record ClubMetadataRefreshView(Guid PublicId, ClubMetadataRefreshS
 public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGameGeekClient bggClient,
     TimeProvider timeProvider)
 {
+    internal static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<ClubMetadataRefreshView> QueueAsync(long clubId, CancellationToken cancellationToken)
@@ -26,8 +27,20 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
         var job = new ClubMetadataRefresh { PublicId = Guid.NewGuid(), ClubId = clubId,
             Status = ClubMetadataRefreshStatus.Queued, BggIdsJson = JsonSerializer.Serialize(ids, JsonOptions),
             ProgressTotal = ids.Length, CreatedAt = now, UpdatedAt = now };
-        dbContext.ClubMetadataRefreshes.Add(job); await dbContext.SaveChangesAsync(cancellationToken);
-        return ToView(job);
+        dbContext.ClubMetadataRefreshes.Add(job);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ToView(job);
+        }
+        catch (DbUpdateException)
+        {
+            dbContext.Entry(job).State = EntityState.Detached;
+            var concurrent = await dbContext.ClubMetadataRefreshes.AsNoTracking()
+                .SingleAsync(x => x.ClubId == clubId && (x.Status == ClubMetadataRefreshStatus.Queued
+                    || x.Status == ClubMetadataRefreshStatus.Running), cancellationToken);
+            return ToView(concurrent);
+        }
     }
 
     public async Task<ClubMetadataRefreshView> GetAsync(Guid publicId, long clubId, CancellationToken cancellationToken)
@@ -40,21 +53,64 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
 
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken)
     {
-        var job = await dbContext.ClubMetadataRefreshes
-            .Where(x => x.Status == ClubMetadataRefreshStatus.Queued || x.Status == ClubMetadataRefreshStatus.Running)
-            .OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (job is null) return false;
-        var ids = JsonSerializer.Deserialize<long[]>(job.BggIdsJson, JsonOptions) ?? [];
-        if (job.ProgressCurrent >= ids.Length) { job.Status = ClubMetadataRefreshStatus.Completed; job.UpdatedAt = timeProvider.GetUtcNow(); await dbContext.SaveChangesAsync(cancellationToken); return true; }
-        job.Status = ClubMetadataRefreshStatus.Running; job.Error = null; job.UpdatedAt = timeProvider.GetUtcNow();
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var leaseId = Guid.NewGuid();
+        long jobId;
+        long clubId;
+        int claimedIndex;
+        long[] ids;
+        await using (var claim = await dbContext.Database.BeginTransactionAsync(cancellationToken))
+        {
+            var job = await dbContext.ClubMetadataRefreshes.FromSqlInterpolated($$"""
+                SELECT * FROM "ClubMetadataRefreshes"
+                WHERE "Status" = 0 OR ("Status" = 1 AND "LeaseExpiresAt" < {{now}})
+                ORDER BY "CreatedAt" FOR UPDATE SKIP LOCKED LIMIT 1
+                """).SingleOrDefaultAsync(cancellationToken);
+            if (job is null)
+            {
+                await claim.CommitAsync(cancellationToken);
+                return false;
+            }
+            ids = JsonSerializer.Deserialize<long[]>(job.BggIdsJson, JsonOptions) ?? [];
+            if (job.ProgressCurrent >= ids.Length)
+            {
+                job.Status = ClubMetadataRefreshStatus.Completed;
+                job.LeaseId = null;
+                job.LeaseExpiresAt = null;
+                job.UpdatedAt = now;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await claim.CommitAsync(cancellationToken);
+                return true;
+            }
+            job.Status = ClubMetadataRefreshStatus.Running;
+            job.LeaseId = leaseId;
+            job.LeaseExpiresAt = now.Add(LeaseDuration);
+            job.Error = null;
+            job.UpdatedAt = now;
+            jobId = job.Id;
+            clubId = job.ClubId;
+            claimedIndex = job.ProgressCurrent;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await claim.CommitAsync(cancellationToken);
+        }
+        dbContext.ChangeTracker.Clear();
         try
         {
-            var details = await bggClient.GetGameDetailsAsync(ids[job.ProgressCurrent], cancellationToken);
+            var details = await bggClient.GetGameDetailsAsync(ids[claimedIndex], cancellationToken);
+            await using var finalize = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+            var job = await dbContext.ClubMetadataRefreshes
+                .FromSqlInterpolated($"SELECT * FROM \"ClubMetadataRefreshes\" WHERE \"Id\" = {jobId} FOR UPDATE")
+                .SingleAsync(cancellationToken);
+            if (job.LeaseId != leaseId)
+            {
+                await finalize.CommitAsync(cancellationToken);
+                return true;
+            }
+            if (job.ProgressCurrent != claimedIndex)
+                throw new InvalidOperationException("Прогресс обновления метаданных изменился вне активной аренды.");
             if (details is not null)
             {
-                await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-                var club = await dbContext.Clubs.FromSqlInterpolated($"SELECT * FROM \"Clubs\" WHERE \"Id\" = {job.ClubId} FOR UPDATE")
+                var club = await dbContext.Clubs.FromSqlInterpolated($"SELECT * FROM \"Clubs\" WHERE \"Id\" = {clubId} FOR UPDATE")
                     .SingleAsync(cancellationToken);
                 var document = club.ReadCollection();
                 var existing = document.Games.SingleOrDefault(x => x.BggId == details.Game.BggId);
@@ -62,19 +118,35 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
                 {
                     var updated = EnrichPreservingMembership(existing, details);
                     club.ReplaceCollection(ClubCollectionEditor.AddOrReplace(document, updated), timeProvider.GetUtcNow());
-                    await dbContext.SaveChangesAsync(cancellationToken);
                 }
-                await transaction.CommitAsync(cancellationToken);
             }
-            job.ProgressCurrent++; job.UpdatedAt = timeProvider.GetUtcNow();
-            if (job.ProgressCurrent >= job.ProgressTotal) job.Status = ClubMetadataRefreshStatus.Completed;
+            job.ProgressCurrent++;
+            job.Status = job.ProgressCurrent >= job.ProgressTotal
+                ? ClubMetadataRefreshStatus.Completed : ClubMetadataRefreshStatus.Queued;
+            job.LeaseId = null;
+            job.LeaseExpiresAt = null;
+            job.UpdatedAt = timeProvider.GetUtcNow();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await finalize.CommitAsync(cancellationToken);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            job.Status = ClubMetadataRefreshStatus.Failed;
-            job.Error = exception.Message[..Math.Min(2000, exception.Message.Length)];
+            dbContext.ChangeTracker.Clear();
+            await using var failed = await dbContext.Database.BeginTransactionAsync(CancellationToken.None);
+            var job = await dbContext.ClubMetadataRefreshes
+                .FromSqlInterpolated($"SELECT * FROM \"ClubMetadataRefreshes\" WHERE \"Id\" = {jobId} FOR UPDATE")
+                .SingleAsync(CancellationToken.None);
+            if (job.LeaseId == leaseId)
+            {
+                job.Status = ClubMetadataRefreshStatus.Failed;
+                job.Error = exception.Message[..Math.Min(2000, exception.Message.Length)];
+                job.LeaseId = null;
+                job.LeaseExpiresAt = null;
+                job.UpdatedAt = timeProvider.GetUtcNow();
+                await dbContext.SaveChangesAsync(CancellationToken.None);
+            }
+            await failed.CommitAsync(CancellationToken.None);
         }
-        await dbContext.SaveChangesAsync(CancellationToken.None);
         return true;
     }
 

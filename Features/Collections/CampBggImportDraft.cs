@@ -5,7 +5,7 @@ namespace oyinQ.Bot.Features.Collections;
 
 public sealed record CampBggImportDraft(int Version, string BggUsername, IReadOnlyList<CampBggImportDraftItem> Items)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 }
 
 public sealed record CampBggImportDraftItem(
@@ -15,7 +15,8 @@ public sealed record CampBggImportDraftItem(
     CampContributionSnapshot Snapshot,
     bool SelectedByDefault = true,
     CampImportSkipReason? SkipReason = null,
-    bool IsOverridable = false);
+    bool IsOverridable = false,
+    IReadOnlyList<long>? ParentBggIds = null);
 
 public static class CampBggImportDraftSerializer
 {
@@ -44,7 +45,7 @@ public static class CampBggImportDraftSerializer
 
     private static void Validate(CampBggImportDraft draft)
     {
-        if (draft.Version is not 1 and not CampBggImportDraft.CurrentVersion)
+        if (draft.Version is not 1 and not 2 and not CampBggImportDraft.CurrentVersion)
             throw new InvalidOperationException($"Версия черновика {draft.Version} не поддерживается.");
         if (string.IsNullOrWhiteSpace(draft.BggUsername) || draft.BggUsername.Length > 100)
             throw new InvalidOperationException("Имя пользователя BGG в черновике некорректно.");
@@ -52,7 +53,7 @@ public static class CampBggImportDraftSerializer
             throw new InvalidOperationException("Черновик содержит повторяющиеся элементы.");
         foreach (var item in draft.Items)
         {
-            if (item.BggId <= 0 || item.ParentBggId is <= 0)
+            if (item.BggId <= 0 || item.ParentBggId is <= 0 || item.ParentBggIds?.Any(x => x <= 0) == true)
                 throw new InvalidOperationException("Черновик содержит некорректный BGG ID.");
             _ = CampContributionSnapshotSerializer.Serialize(item.Snapshot);
         }

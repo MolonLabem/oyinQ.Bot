@@ -16,6 +16,12 @@ using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (args.Any(x => string.Equals(x, "--generate-rollmove-recovery", StringComparison.OrdinalIgnoreCase)))
+{
+    Environment.ExitCode = await RollMoveRecoveryGenerator.RunAsync(builder.Configuration, args);
+    return;
+}
+
 var connectionString = builder.Configuration["Database:ConnectionString"]?.Trim();
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -54,10 +60,12 @@ builder.Services.AddScoped<ICommunityStore, CommunityStore>();
 builder.Services.AddScoped<IAdministratorStore, AdministratorStore>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<ManagedCommunityService>();
+builder.Services.AddScoped<CampParticipationPolicy>();
 builder.Services.AddScoped<ClubCollectionService>();
 builder.Services.AddScoped<ClubMetadataRefreshService>();
 builder.Services.AddScoped<CampContributionSelectionService>();
 builder.Services.AddScoped<GameCatalogService>();
+builder.Services.AddScoped<EffectiveCampCatalogService>();
 builder.Services.AddScoped<CampBggImportService>();
 builder.Services.AddScoped<CampBggImportCoordinator>();
 builder.Services.AddScoped<CampImportNotificationService>();
@@ -66,6 +74,7 @@ builder.Services.AddScoped<GatheringGameSelectionService>();
 builder.Services.AddScoped<GatheringService>();
 builder.Services.AddScoped<GatheringManagementService>();
 builder.Services.AddScoped<GatheringPublicationService>();
+builder.Services.AddScoped<GatheringNotificationService>();
 builder.Services.AddScoped<TelegramMessageCleanupProcessor>();
 builder.Services.AddSingleton<ITelegramMessageDeletionClient, TelegramMessageDeletionClient>();
 builder.Services.AddSingleton<TelegramMessageDeletionHandler>();
@@ -75,6 +84,7 @@ builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
 builder.Services.AddHostedService<CampBggImportWorker>();
+builder.Services.AddHostedService<CampLifecycleWorker>();
 builder.Services.AddHostedService<ClubMetadataRefreshWorker>();
 builder.Services.AddHostedService<GatheringLifecycleWorker>();
 builder.Services.AddHostedService<TelegramMessageCleanupWorker>();
@@ -194,6 +204,18 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.MapGet("/health", static () => Results.Ok());
+app.MapGet("/ready", async (AppDbContext dbContext, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        await dbContext.Database.ExecuteSqlRawAsync("SELECT 1", cancellationToken);
+        return Results.Ok();
+    }
+    catch (Exception) when (!cancellationToken.IsCancellationRequested)
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+});
 
 app.MapPost(
     "/telegram/webhook/{secret}",

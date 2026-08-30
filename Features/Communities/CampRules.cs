@@ -42,6 +42,20 @@ public static class CampRules
             throw new InvalidOperationException($"Переход кэмпа из статуса «{Label(current)}» в «{Label(next)}» недоступен.");
     }
 
+    public static void EnsureBaseSnapshotMutable(CampStatus status)
+    {
+        if (status != CampStatus.Draft)
+            throw new InvalidOperationException(
+                "Базовую коллекцию можно менять только пока кэмп является черновиком.");
+    }
+
+    public static void EnsureCanClose(int futureActiveGatheringCount)
+    {
+        if (futureActiveGatheringCount > 0)
+            throw new InvalidOperationException(
+                $"В кэмпе есть {futureActiveGatheringCount} будущих сборов. Сначала отмените их.");
+    }
+
     private static string Label(CampStatus status) => status switch
     {
         CampStatus.Draft => "черновик",
