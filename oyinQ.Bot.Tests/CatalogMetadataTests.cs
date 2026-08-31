@@ -49,6 +49,12 @@ public sealed class CatalogMetadataTests
             GameType.Other,
             [new(5496, "Thematic Games")],
             ["Other"]));
+        Assert.Equal(GameType.War, BggTaxonomyCatalog.ResolveType(
+            GameType.Other,
+            [],
+            [],
+            [new(1019, "Wargame")],
+            ["Wargame"]));
         Assert.Equal(GameType.Family, BggTaxonomyCatalog.InferLegacyType(["Family Games"]));
         Assert.Equal(GameType.War, BggTaxonomyCatalog.InferLegacyType(["Wargames"]));
     }

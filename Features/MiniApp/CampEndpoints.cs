@@ -63,6 +63,12 @@ internal static class CampEndpoints
             .Where(x => x.CampId == camp.Id && x.Participant.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => new { Row = x, DisplayName = x.Participant.PreferredDisplayName
                 ?? x.Participant.DisplayName }).SingleOrDefaultAsync(cancellationToken);
+        var storedParticipantDisplayName = await dbContext.Participants.AsNoTracking()
+            .Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
+            .Select(x => x.PreferredDisplayName ?? x.DisplayName)
+            .SingleOrDefaultAsync(cancellationToken);
+        var participantDisplayName = CampParticipantPresentation.RegistrationDisplayName(registration?.DisplayName,
+            storedParticipantDisplayName, access.Identity.DisplayName);
         var availableDates = camp.StartDate is { } start && camp.EndDate is { } end
             ? Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Select(start.AddDays).ToArray() : [];
         var selectedDates = registration?.Row.SelectedDays.Select(x => x.Date).Order().ToArray() ?? [];
@@ -71,7 +77,7 @@ internal static class CampEndpoints
                 ? availableDates : [];
         var baseGameIds = camp.ReadBaseCollection().Games.Select(x => x.BggId).Order().ToArray();
         return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate,
-            AvailableDates = availableDates, BaseGameIds = baseGameIds,
+            AvailableDates = availableDates, BaseGameIds = baseGameIds, DisplayName = participantDisplayName,
             Registration = registration is null ? null : new
             {
                 Registered = CampParticipationPolicy.IsRegistrationComplete(registration.Row, camp),

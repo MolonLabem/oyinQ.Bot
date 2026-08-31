@@ -1,10 +1,18 @@
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Features.MiniApp;
 
 namespace oyinQ.Bot.Tests;
 
 public sealed class CampRulesTests
 {
+    [Fact]
+    public void RegistrationDisplayNameFallsBackToTelegramBeforeFirstRegistration()
+    {
+        Assert.Equal("Sardar", CampParticipantPresentation.RegistrationDisplayName(null, null, " Sardar "));
+        Assert.Equal("Игровое имя", CampParticipantPresentation.RegistrationDisplayName(null, "Игровое имя", "Sardar"));
+    }
+
     [Fact]
     public void InclusiveDuration_UsesBothBoundaryDates()
     {

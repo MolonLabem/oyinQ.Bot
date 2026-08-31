@@ -57,7 +57,8 @@ public sealed class GatheringGameSelectionService(
             game.MinPlayTimeMinutes,
             game.MaxPlayTimeMinutes,
             game.MinAge,
-            BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types),
+            BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types,
+                game.CategoryItems, game.Categories),
             game.CategoryItems,
             game.Mechanics);
     }

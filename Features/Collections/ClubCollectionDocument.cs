@@ -86,9 +86,8 @@ public static class ClubCollectionSerializer
         Version = ClubCollectionDocument.CurrentVersion,
         Games = document.Games.Select(game => game with
         {
-            Type = game.Subdomains?.Count > 0
-                ? BggTaxonomyCatalog.MapGameType(game.Subdomains)
-                : game.Type != GameType.Other ? game.Type : BggTaxonomyCatalog.InferLegacyType(game.Types),
+            Type = BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types,
+                game.CategoryItems, game.Categories),
             Subdomains = game.Subdomains ?? [],
             CategoryItems = game.CategoryItems ?? [],
             Mechanics = game.Mechanics ?? []

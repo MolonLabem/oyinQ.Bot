@@ -86,16 +86,25 @@ public static class BggTaxonomyCatalog
 
     public static GameType ResolveType(GameType declaredType,
         IReadOnlyCollection<GameTaxonomyItem>? subdomains,
-        IReadOnlyCollection<string>? legacyTypes = null)
+        IReadOnlyCollection<string>? legacyTypes = null,
+        IReadOnlyCollection<GameTaxonomyItem>? categories = null,
+        IReadOnlyCollection<string>? legacyCategories = null)
     {
         var mapped = subdomains is { Count: > 0 } ? MapGameType(subdomains) : GameType.Other;
         if (mapped != GameType.Other) return mapped;
         if (declaredType != GameType.Other) return declaredType;
-        return InferLegacyType(legacyTypes);
+        var legacyType = InferLegacyType(legacyTypes);
+        if (legacyType != GameType.Other) return legacyType;
+        if (categories?.Any(item => item.BggId == 1019) == true) return GameType.War;
+        return (legacyCategories ?? []).Any(value =>
+            string.Equals(value.Trim(), "Wargame", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value.Trim(), "Варгейм", StringComparison.OrdinalIgnoreCase))
+            ? GameType.War
+            : GameType.Other;
     }
 
     public static Presentation Present(ClubCollectionGame game) => new(
-        DisplayName(ResolveType(game.Type, game.Subdomains, game.Types)),
+        DisplayName(ResolveType(game.Type, game.Subdomains, game.Types, game.CategoryItems, game.Categories)),
         (game.CategoryItems?.Count > 0
             ? game.CategoryItems.Select(LocalizeCategory)
             : game.Categories ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),

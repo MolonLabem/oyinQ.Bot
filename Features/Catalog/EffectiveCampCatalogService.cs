@@ -69,7 +69,8 @@ public sealed class EffectiveCampCatalogService(
         return new ClubCollectionGame(value.BggId, s.Name, s.ThumbnailImageUrl, s.ImageUrl, s.MinPlayers,
             s.MaxPlayers, s.BestPlayers, [], s.Types, s.Categories, s.Description, s.YearPublished,
             s.MinPlayTimeMinutes, s.MaxPlayTimeMinutes, s.MinAge,
-            BggTaxonomyCatalog.ResolveType(s.Type, s.Subdomains, s.Types), s.Subdomains, s.CategoryItems,
+            BggTaxonomyCatalog.ResolveType(s.Type, s.Subdomains, s.Types, s.CategoryItems, s.Categories),
+            s.Subdomains, s.CategoryItems,
             s.Mechanics);
     }
 
@@ -88,7 +89,9 @@ public sealed class EffectiveCampCatalogService(
         MinAge = current.MinAge ?? fallback.MinAge,
         Type = BggTaxonomyCatalog.ResolveType(current.Type,
             current.Subdomains is { Count: > 0 } ? current.Subdomains : fallback.Subdomains,
-            current.Types is { Count: > 0 } ? current.Types : fallback.Types),
+            current.Types is { Count: > 0 } ? current.Types : fallback.Types,
+            current.CategoryItems is { Count: > 0 } ? current.CategoryItems : fallback.CategoryItems,
+            current.Categories is { Count: > 0 } ? current.Categories : fallback.Categories),
         Types = current.Types is { Count: > 0 } ? current.Types : fallback.Types,
         Categories = current.Categories is { Count: > 0 } ? current.Categories : fallback.Categories,
         Subdomains = current.Subdomains is { Count: > 0 } ? current.Subdomains : fallback.Subdomains,
