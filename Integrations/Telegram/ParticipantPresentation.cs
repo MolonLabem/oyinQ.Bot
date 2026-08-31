@@ -32,4 +32,10 @@ public static class ParticipantPresentation
             ? $"<a href=\"tg://user?id={participant.TelegramUserId}\">{name}</a>"
             : name;
     }
+
+    public static string? GetPublicProfileUrl(Participant participant)
+    {
+        var username = participant.TelegramUsername?.Trim().TrimStart('@');
+        return string.IsNullOrWhiteSpace(username) ? null : $"https://t.me/{Uri.EscapeDataString(username)}?profile";
+    }
 }

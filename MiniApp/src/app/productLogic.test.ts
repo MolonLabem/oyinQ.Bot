@@ -3,6 +3,7 @@ import { plural } from "./format";
 import { buildCatalogQuery, toggleValue } from "./catalogQuery";
 import { defaultImportSelection, isImportItemSelectable } from "../pages/camp/importSelection";
 import type { ImportDraftItem } from "../api/types";
+import { fullscreenLabel, registrationSubmitEnabled, toggleRegistrationDate } from "../pages/camp/registrationLogic";
 
 describe("Russian product helpers", () => {
   it("uses Russian plural forms", () => {
@@ -35,5 +36,24 @@ describe("Russian product helpers", () => {
     expect(defaultImportSelection([item({ selectedByDefault: true }),
       item({ bggId: 2, selectedByDefault: true, skipReason: "AlreadyAddedManually" })]))
       .toEqual(new Set(["BaseGame-1"]));
+  });
+
+  it("adds, sorts, and removes exact registration dates immutably", () => {
+    const source = ["2026-08-31"];
+    expect(toggleRegistrationDate(source, "2026-08-29")).toEqual(["2026-08-29", "2026-08-31"]);
+    expect(toggleRegistrationDate(source, "2026-08-31")).toEqual([]);
+    expect(source).toEqual(["2026-08-31"]);
+  });
+
+  it("requires city, an exact date, and an active camp", () => {
+    expect(registrationSubmitEnabled("Астана", ["2026-08-29"], "Active")).toBe(true);
+    expect(registrationSubmitEnabled(" ", ["2026-08-29"], "Active")).toBe(false);
+    expect(registrationSubmitEnabled("Астана", [], "Active")).toBe(false);
+    expect(registrationSubmitEnabled("Астана", ["2026-08-29"], "Draft")).toBe(false);
+  });
+
+  it("shows reversible fullscreen labels", () => {
+    expect(fullscreenLabel(false)).toBe("Развернуть на весь экран");
+    expect(fullscreenLabel(true)).toBe("Свернуть");
   });
 });

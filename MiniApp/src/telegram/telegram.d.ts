@@ -7,6 +7,7 @@ declare global {
     initData: string; initDataUnsafe: { start_param?: string }; colorScheme: "light" | "dark";
     themeParams?: { bg_color?: string };
     ready(): void; expand(): void; requestFullscreen?(): void; exitFullscreen?(): void;
+    openLink?(url: string): void;
     isFullscreen?: boolean; viewportStableHeight?: number;
     onEvent(event: string, callback: (payload?: unknown) => void): void; offEvent(event: string, callback: (payload?: unknown) => void): void;
     requestChat(preparedButtonId: string, callback?: (sent: boolean) => void): void;

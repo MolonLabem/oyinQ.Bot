@@ -55,6 +55,7 @@ input[type="date"], input[type="datetime-local"] { color-scheme: light; }
 /* Spacious responsive shell and dense catalog */
 .context-actions { display: flex; align-items: center; gap: 8px; }
 .fullscreen-action { min-height: 34px; padding: 5px 10px; font-size: .78rem; }
+.display-tools { display: flex; justify-content: flex-end; max-width: 1180px; margin: 0 auto; padding: 8px 14px 0; }
 .catalog-toolbar { position: sticky; z-index: 8; top: calc(58px + var(--tg-safe-area-inset-top, env(safe-area-inset-top))); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; padding: 4px 0 10px; margin-bottom: 10px; background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(14px); }
 .catalog-toolbar .field { margin: 0; }
 .filter-button { min-width: 105px; }
@@ -104,10 +105,10 @@ input[type="date"], input[type="datetime-local"] { color-scheme: light; }
 }
 @media (min-width: 1260px) { .catalog-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
-  .fullscreen-action { display: none; }
   .filter-panel { grid-template-columns: 1fr; gap: 15px; }
   .catalog-grid { grid-template-columns: 1fr; }
   .catalog-card { grid-template-columns: 60px minmax(0, 1fr); }.catalog-card > .cover { width: 60px; height: 72px; }
   .game-detail-hero { grid-template-columns: 110px minmax(0, 1fr); gap: 14px; }
   .provider-list li { display: grid; gap: 3px; }.provider-list li span:last-child { text-align: left; }
 }
+.privacy-link { display: block; min-height: 32px; margin: 26px auto 4px; padding: 4px 8px; border: 0; background: transparent; box-shadow: none; color: var(--muted); font-size: .78rem; text-decoration: underline; text-underline-offset: 3px; }

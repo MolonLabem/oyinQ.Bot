@@ -93,25 +93,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             return new(gathering);
         }
 
-        var shouldPromote = membership.Status == GatheringParticipationStatus.Confirmed;
-        membership.Status = GatheringParticipationStatus.Withdrawn;
-        membership.WithdrawnAt = now.ToUniversalTime();
-        membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
-        GameGatheringParticipant? promoted = null;
-        if (shouldPromote)
-        {
-            promoted = gathering.Participants
-                .Where(value => value.Status == GatheringParticipationStatus.Waitlisted)
-                .OrderBy(value => value.JoinedAt)
-                .ThenBy(value => value.Id)
-                .FirstOrDefault();
-            if (promoted is not null)
-            {
-                promoted.Status = GatheringParticipationStatus.Confirmed;
-            }
-        }
-
-        UpdateStatus(gathering, now);
+        var promoted = GatheringRules.WithdrawParticipant(gathering, membership, now);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(gathering, promoted is null ? null : new GatheringPromotion(
@@ -141,11 +123,16 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             ?? throw new UnauthorizedAccessException("Участник не найден.");
         var context = await dbContext.OyinQCommunities.AsNoTracking()
             .Where(value => value.Key == gathering.CommunityKey)
-            .Select(value => new { value.Mode, CampId = value.Camp == null ? (long?)null : value.Camp.Id })
+            .Select(value => new { value.Mode, value.TimeZoneId,
+                CampId = value.Camp == null ? (long?)null : value.Camp.Id })
             .SingleAsync(cancellationToken);
         if (GatheringAccessPolicy.RequiresRegistration(context.Mode))
+        {
+            var localDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
+                TimeZoneInfo.FindSystemTimeZoneById(context.TimeZoneId)).DateTime);
             await participationPolicy.RequireCompleteRegistrationAsync(context.CampId!.Value, participant.Id,
-                cancellationToken);
+                cancellationToken, localDate);
+        }
 
         return participant;
     }

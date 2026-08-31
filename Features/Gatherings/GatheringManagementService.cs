@@ -119,11 +119,12 @@ public sealed class GatheringManagementService(
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
         if (participantId is null)
             throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
-        await participationPolicy.RequireCompleteRegistrationAsync(camp.Id, participantId.Value, cancellationToken);
-        if (camp.StartDate is not { } start || camp.EndDate is not { } end)
-            throw new InvalidOperationException("Для кэмпа ещё не настроены даты.");
         var local = TimeZoneInfo.ConvertTime(startsAt, TimeZoneInfo.FindSystemTimeZoneById(community.TimeZoneId));
         var localDate = DateOnly.FromDateTime(local.DateTime);
+        await participationPolicy.RequireCompleteRegistrationAsync(camp.Id, participantId.Value,
+            cancellationToken, localDate);
+        if (camp.StartDate is not { } start || camp.EndDate is not { } end)
+            throw new InvalidOperationException("Для кэмпа ещё не настроены даты.");
         if (localDate < start || localDate > end)
             throw new InvalidOperationException("Сбор должен проходить в пределах дат кэмпа.");
     }

@@ -19,6 +19,20 @@ public static class CampRules
                 $"Количество дней должно быть от 1 до {duration}.");
     }
 
+    public static IReadOnlyList<DateOnly> ValidateSelectedDates(IReadOnlyCollection<DateOnly> values,
+        DateOnly startDate, DateOnly endDate)
+    {
+        if (values.Count == 0)
+            throw new ArgumentException("Выберите хотя бы один день кэмпа.", nameof(values));
+        var distinct = values.Distinct().Order().ToArray();
+        if (distinct.Length != values.Count)
+            throw new ArgumentException("Даты участия не должны повторяться.", nameof(values));
+        if (distinct.Any(x => x < startDate || x > endDate))
+            throw new ArgumentOutOfRangeException(nameof(values),
+                "Все выбранные даты должны входить в диапазон кэмпа.");
+        return distinct;
+    }
+
     public static string NormalizeCity(string? value)
     {
         var city = value?.Trim();

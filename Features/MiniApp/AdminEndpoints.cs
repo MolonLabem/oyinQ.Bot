@@ -148,6 +148,7 @@ internal static class AdminEndpoints
     private static async Task<IResult> CreateClubAsync(HttpRequest request, CreateClubRequest body,
         TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
         TelegramPeerSelectionService selections, ManagedCommunityService communities,
+        ITelegramCommunityOnboardingService onboarding,
         CancellationToken cancellationToken)
     {
         var identity = await AdminIdentityAsync(request, authenticator, administrators, cancellationToken);
@@ -160,7 +161,13 @@ internal static class AdminEndpoints
             var club = await communities.CreateClubAsync(new(
                 string.IsNullOrWhiteSpace(body.Name) ? chat.Title ?? "Новый клуб" : body.Name.Trim(),
                 chat.TelegramChatId, body.TimeZoneId, identity.TelegramUserId), cancellationToken);
-            return Results.Created($"/api/miniapp/admin/clubs/{club.Id}", new { club.Id });
+            var delivery = await onboarding.SendAsync(chat.TelegramChatId, cancellationToken);
+            return Results.Created($"/api/miniapp/admin/clubs/{club.Id}", new
+            {
+                club.Id,
+                TelegramOnboardingSent = delivery.Sent,
+                delivery.Warning
+            });
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
@@ -194,6 +201,7 @@ internal static class AdminEndpoints
     private static async Task<IResult> CreateCampAsync(HttpRequest request, CreateCampRequest body,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
         TelegramPeerSelectionService selections, ManagedCommunityService communities,
+        ITelegramCommunityOnboardingService onboarding,
         CancellationToken cancellationToken)
     {
         var identity = await AdminIdentityAsync(request, authenticator, administrators, cancellationToken);
@@ -212,7 +220,14 @@ internal static class AdminEndpoints
                 string.IsNullOrWhiteSpace(body.Name) ? chat.Title ?? "Новый кэмп" : body.Name.Trim(),
                 chat.TelegramChatId, timeZone, identity.TelegramUserId, body.SourceClubId,
                 body.StartDate, body.EndDate), cancellationToken);
-            return Results.Created($"/api/miniapp/admin/camps/{camp.Id}", new { camp.Id, Status = camp.Status.ToString() });
+            var delivery = await onboarding.SendAsync(chat.TelegramChatId, cancellationToken);
+            return Results.Created($"/api/miniapp/admin/camps/{camp.Id}", new
+            {
+                camp.Id,
+                Status = camp.Status.ToString(),
+                TelegramOnboardingSent = delivery.Sent,
+                delivery.Warning
+            });
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }

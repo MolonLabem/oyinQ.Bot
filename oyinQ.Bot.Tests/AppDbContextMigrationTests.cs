@@ -139,6 +139,18 @@ public sealed class AppDbContextMigrationTests
         Assert.NotNull(dbContext.Model.FindEntityType(typeof(ClubMetadataRefresh)));
     }
 
+    [Fact]
+    public void ExactCampAttendanceMigration_MapsCompositeDaysWithoutLegacyInference()
+    {
+        using var dbContext = CreateDbContext();
+        var day = dbContext.Model.FindEntityType(typeof(CampRegistrationDay));
+
+        Assert.Contains("20260831002206_ExactCampAttendanceDates", dbContext.Database.GetMigrations());
+        Assert.Equal([nameof(CampRegistrationDay.CampRegistrationId), nameof(CampRegistrationDay.Date)],
+            day!.FindPrimaryKey()!.Properties.Select(x => x.Name));
+        Assert.Equal(DeleteBehavior.Cascade, day.GetForeignKeys().Single().DeleteBehavior);
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

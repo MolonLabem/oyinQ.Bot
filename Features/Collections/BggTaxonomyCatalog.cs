@@ -2,6 +2,8 @@ namespace oyinQ.Bot.Features.Collections;
 
 public static class BggTaxonomyCatalog
 {
+    public sealed record Presentation(string TypeName, IReadOnlyList<string> CategoryNames,
+        IReadOnlyList<string> MechanicNames);
     private static readonly IReadOnlyDictionary<long, string> Categories = new Dictionary<long, string>
     {
         [1001] = "Политика", [1002] = "Карточная", [1008] = "Морская", [1009] = "Абстрактная стратегия",
@@ -67,6 +69,32 @@ public static class BggTaxonomyCatalog
         var mapped = subdomains.Select(item => SubdomainTypes.GetValueOrDefault(item.BggId, GameType.Other)).ToHashSet();
         return Priority.FirstOrDefault(mapped.Contains, GameType.Other);
     }
+
+    public static GameType InferLegacyType(IReadOnlyCollection<string>? types)
+    {
+        var normalized = (types ?? []).Select(x => x.Trim().ToLowerInvariant()).ToArray();
+        if (normalized.Any(x => x.Contains("children") || x.Contains("детск"))) return GameType.Children;
+        if (normalized.Any(x => x.Contains("party") || x.Contains("вечерин"))) return GameType.Party;
+        if (normalized.Any(x => x.Contains("family") || x.Contains("семейн"))) return GameType.Family;
+        if (normalized.Any(x => x.Contains("abstract") || x.Contains("абстракт"))) return GameType.Abstract;
+        if (normalized.Any(x => x.Contains("strategy") || x.Contains("стратег"))) return GameType.Strategy;
+        if (normalized.Any(x => x.Contains("thematic") || x.Contains("темат"))) return GameType.Thematic;
+        if (normalized.Any(x => x.Contains("war") || x.Contains("военн") || x.Contains("варгейм"))) return GameType.War;
+        if (normalized.Any(x => x.Contains("customizable") || x.Contains("collectible") || x.Contains("коллекцион"))) return GameType.Customizable;
+        return GameType.Other;
+    }
+
+    public static Presentation Present(ClubCollectionGame game) => new(
+        DisplayName(game.Type),
+        (game.CategoryItems?.Count > 0
+            ? game.CategoryItems.Select(LocalizeCategory)
+            : game.Categories ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+        (game.Mechanics ?? []).Select(LocalizeMechanic).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+
+    public static Presentation Present(Gatherings.GatheringGameSnapshot game) => new(
+        DisplayName(game.Type),
+        (game.Categories ?? []).Select(LocalizeCategory).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+        (game.Mechanics ?? []).Select(LocalizeMechanic).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 
     public static string DisplayName(GameType type) => type switch
     {

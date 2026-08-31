@@ -81,19 +81,19 @@ public static class ClubCollectionSerializer
         return Upgrade(document);
     }
 
-    private static ClubCollectionDocument Upgrade(ClubCollectionDocument document) => document.Version == 1
-            ? document with
-            {
-                Version = ClubCollectionDocument.CurrentVersion,
-                Games = document.Games.Select(game => game with
-                {
-                    Type = BggTaxonomyCatalog.MapGameType(game.Subdomains ?? []),
-                    Subdomains = game.Subdomains ?? [],
-                    CategoryItems = game.CategoryItems ?? [],
-                    Mechanics = game.Mechanics ?? []
-                }).ToArray()
-            }
-            : document;
+    private static ClubCollectionDocument Upgrade(ClubCollectionDocument document) => document with
+    {
+        Version = ClubCollectionDocument.CurrentVersion,
+        Games = document.Games.Select(game => game with
+        {
+            Type = game.Subdomains?.Count > 0
+                ? BggTaxonomyCatalog.MapGameType(game.Subdomains)
+                : game.Type != GameType.Other ? game.Type : BggTaxonomyCatalog.InferLegacyType(game.Types),
+            Subdomains = game.Subdomains ?? [],
+            CategoryItems = game.CategoryItems ?? [],
+            Mechanics = game.Mechanics ?? []
+        }).ToArray()
+    };
 
     public static void Validate(ClubCollectionDocument document)
     {

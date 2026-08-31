@@ -37,7 +37,7 @@ public sealed class BoardGameGeekClient(
             $"/xmlapi2/search?query={Uri.EscapeDataString(normalizedQuery)}&type=boardgame",
             cancellationToken);
 
-        return document.Root?
+        var results = document.Root?
             .Elements("item")
             .Select(item =>
             {
@@ -56,10 +56,34 @@ public sealed class BoardGameGeekClient(
             })
             .Where(result => result is not null)
             .Cast<ExternalGameSearchResult>()
-            .Take(5)
             .ToArray()
             ?? [];
+        return RankSearchResults(results, normalizedQuery).Take(25).ToArray();
     }
+
+    public static IReadOnlyList<ExternalGameSearchResult> RankSearchResults(
+        IEnumerable<ExternalGameSearchResult> results, string query)
+    {
+        var normalized = NormalizeSearch(query);
+        return results.OrderBy(result => SearchRank(NormalizeSearch(result.Name), normalized))
+            .ThenBy(result => result.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenByDescending(result => result.YearPublished)
+            .ToArray();
+    }
+
+    private static (int Tier, int Position) SearchRank(string name, string query)
+    {
+        if (name == query) return (0, 0);
+        if (name.StartsWith(query, StringComparison.Ordinal)) return (1, 0);
+        var words = Regex.Split(name, @"[^\p{L}\p{N}]+").Where(x => x.Length > 0).ToArray();
+        if (words.Any(word => word == query)) return (2, 0);
+        var wordPrefix = Array.FindIndex(words, word => word.StartsWith(query, StringComparison.Ordinal));
+        if (wordPrefix >= 0) return (3, wordPrefix);
+        var position = name.IndexOf(query, StringComparison.Ordinal);
+        return position >= 0 ? (4, position) : (5, int.MaxValue);
+    }
+
+    private static string NormalizeSearch(string value) => value.Trim().ToLowerInvariant();
 
     public async Task<ExternalGame?> GetGameAsync(
         long bggId,

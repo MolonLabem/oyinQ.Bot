@@ -17,6 +17,18 @@ public sealed class CampRulesTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CampRules.ValidateRegistrationDays(
             4, new(2026, 8, 29), new(2026, 8, 31)));
 
+    [Fact]
+    public void SelectedDates_AreDistinctOrderedAndInsideCamp()
+    {
+        Assert.Equal([new DateOnly(2026, 8, 29), new DateOnly(2026, 8, 31)],
+            CampRules.ValidateSelectedDates([new(2026, 8, 31), new(2026, 8, 29)],
+                new(2026, 8, 29), new(2026, 8, 31)));
+        Assert.Throws<ArgumentException>(() => CampRules.ValidateSelectedDates(
+            [new(2026, 8, 29), new(2026, 8, 29)], new(2026, 8, 29), new(2026, 8, 31)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CampRules.ValidateSelectedDates(
+            [new(2026, 9, 1)], new(2026, 8, 29), new(2026, 8, 31)));
+    }
+
     [Theory]
     [InlineData(CampStatus.Draft, CampStatus.Active)]
     [InlineData(CampStatus.Draft, CampStatus.Cancelled)]

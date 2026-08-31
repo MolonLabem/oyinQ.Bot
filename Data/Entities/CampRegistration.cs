@@ -13,4 +13,5 @@ public sealed class CampRegistration
 
     public Camp Camp { get; set; } = null!;
     public Participant Participant { get; set; } = null!;
+    public ICollection<CampRegistrationDay> SelectedDays { get; set; } = [];
 }

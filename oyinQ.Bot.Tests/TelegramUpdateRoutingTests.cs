@@ -12,13 +12,15 @@ public sealed class TelegramUpdateRoutingTests
         Assert.Equal(expected, TelegramUpdateRouting.GetCommand(text));
 
     [Theory]
-    [InlineData("/start", true)]
-    [InlineData("/menu", true)]
-    [InlineData("/admin", true)]
+    [InlineData("/oyinq", true)]
+    [InlineData("/OYINQ@CurrentBot", true)]
+    [InlineData("/start", false)]
+    [InlineData("/menu", false)]
+    [InlineData("/admin", false)]
     [InlineData("/games", false)]
     [InlineData("/addgame", false)]
     [InlineData("/wanted", false)]
     [InlineData("/mygames", false)]
-    public void GroupEntry_OnlyKeepsCurrentNativeCommands(string text, bool expected) =>
+    public void GroupEntry_OnlyKeepsOyinQCommand(string text, bool expected) =>
         Assert.Equal(expected, TelegramUpdateRouting.IsGroupEntryRequest(text, TelegramUpdateRouting.GetCommand(text)));
 }

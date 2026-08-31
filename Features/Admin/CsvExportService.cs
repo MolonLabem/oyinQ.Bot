@@ -15,7 +15,7 @@ public sealed class CsvExportService(
 {
     public static readonly string[] CampRegistrationHeaders =
         ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "display_name", "city",
-            "days_staying", "needs_accommodation", "created_at", "updated_at"];
+            "days_staying", "selected_dates", "needs_accommodation", "created_at", "updated_at"];
     public static readonly string[] CampContributionHeaders =
         ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "bgg_id", "item_type",
             "source", "commitment", "parent_bgg_id", "parent_bgg_ids", "created_at", "updated_at"];
@@ -48,16 +48,22 @@ public sealed class CsvExportService(
 
     private async Task<CsvExportFile> CreateCampRegistrationsAsync(CancellationToken cancellationToken)
     {
-        var rows = await dbContext.CampRegistrations.AsNoTracking()
+        var registrations = await dbContext.CampRegistrations.AsNoTracking().Include(value => value.SelectedDays)
             .OrderBy(value => value.CampId).ThenBy(value => value.ParticipantId)
-            .Select(value => new object?[]
+            .Select(value => new
             {
-                value.Id, value.CampId, value.Camp.Name, value.ParticipantId,
-                value.Participant.TelegramUserId,
-                value.Participant.PreferredDisplayName ?? value.Participant.DisplayName,
-                value.City, value.DaysStaying, value.NeedsAccommodation, value.CreatedAt, value.UpdatedAt
+                Registration = value, CampName = value.Camp.Name, value.Participant.TelegramUserId,
+                DisplayName = value.Participant.PreferredDisplayName ?? value.Participant.DisplayName
             })
             .ToListAsync(cancellationToken);
+        var rows = registrations.Select(value => new object?[]
+        {
+            value.Registration.Id, value.Registration.CampId, value.CampName,
+            value.Registration.ParticipantId, value.TelegramUserId, value.DisplayName,
+            value.Registration.City, value.Registration.DaysStaying,
+            string.Join(";", value.Registration.SelectedDays.OrderBy(x => x.Date).Select(x => x.Date.ToString("yyyy-MM-dd"))),
+            value.Registration.NeedsAccommodation, value.Registration.CreatedAt, value.Registration.UpdatedAt
+        });
         return File("camp-registrations.csv", CampRegistrationHeaders, rows);
     }
 

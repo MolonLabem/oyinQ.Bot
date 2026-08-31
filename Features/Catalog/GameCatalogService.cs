@@ -11,7 +11,8 @@ public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollect
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
 public sealed record GameListItemResponse(long BggId, string Name, string? ThumbnailImageUrl,
     GameType Type, string TypeName, int? MinPlayers, int? MaxPlayers, string? BestPlayers,
-    string AvailabilitySummary, bool IsDefinitelyAvailable, bool NeedsProviderCoordination);
+    IReadOnlyList<string> CategoryNames, string AvailabilitySummary, bool IsDefinitelyAvailable,
+    bool NeedsProviderCoordination);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider);
 public sealed record GameDetailsResponse(long BggId, string Name, string? ImageUrl, string? Description,
@@ -93,7 +94,9 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             : coordination ? "Нужно решить, кто привезёт" : value.Providers.Count > 0 ? "Можно привезти" : string.Empty;
         return new GameListItemResponse(value.Game.BggId, value.Game.Name, value.Game.ThumbnailImageUrl,
             value.Game.Type, BggTaxonomyCatalog.DisplayName(value.Game.Type), value.Game.MinPlayers,
-            value.Game.MaxPlayers, value.Game.BestPlayers, summary, value.IsInBaseCollection || committed, coordination);
+            value.Game.MaxPlayers, value.Game.BestPlayers,
+            BggTaxonomyCatalog.Present(value.Game).CategoryNames.Take(2).ToArray(), summary,
+            value.IsInBaseCollection || committed, coordination);
     }
 
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)

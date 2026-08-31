@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -16,7 +17,9 @@ public sealed record GatheringCardPresentation(
     int ConfirmedPlayers,
     int DesiredPlayers,
     int MaximumPlayers,
-    string StatusText);
+    string StatusText,
+    string TypeName,
+    IReadOnlyList<string> CategoryNames);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -45,6 +48,7 @@ public sealed class GatheringPresentationService
     public GatheringCardPresentation BuildCard(GameGathering gathering, BotCommunity community)
     {
         var game = ResolveSnapshot(gathering);
+        var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
         return new(
             gathering.PublicId,
             game.Name,
@@ -55,7 +59,9 @@ public sealed class GatheringPresentationService
             ConfirmedPlayers(gathering),
             gathering.DesiredPlayers,
             gathering.MaximumPlayers,
-            StatusText(gathering.Status));
+            StatusText(gathering.Status),
+            metadata.TypeName,
+            metadata.CategoryNames.Take(2).ToArray());
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
@@ -87,7 +93,7 @@ public sealed class GatheringPresentationService
         text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(game.Name)}</b>");
         text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
         text.AppendLine($"👥 {ConfirmedPlayers(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
-        text.AppendLine($"Организатор: {WebUtility.HtmlEncode(DisplayName(gathering.OrganizerParticipant))}");
+        text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant)}");
         text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
 
         if (gathering.Expansions.Count > 0)
@@ -98,6 +104,17 @@ public sealed class GatheringPresentationService
             {
                 text.AppendLine($"• {WebUtility.HtmlEncode(expansion.Name)}");
             }
+        }
+
+        var confirmed = gathering.Participants.Where(value => value.Status == GatheringParticipationStatus.Confirmed
+                && value.Participant is not null)
+            .OrderBy(value => value.JoinedAt).ThenBy(value => value.Id).ToArray();
+        if (confirmed.Length > 0)
+        {
+            text.AppendLine();
+            text.AppendLine("Участники:");
+            foreach (var participant in confirmed)
+                text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant)}");
         }
 
         var description = Truncate(gathering.Description, AnnouncementDescriptionLength);

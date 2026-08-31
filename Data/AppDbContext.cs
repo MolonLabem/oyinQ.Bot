@@ -12,6 +12,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<Camp> Camps => Set<Camp>();
     public DbSet<CampRegistration> CampRegistrations => Set<CampRegistration>();
+    public DbSet<CampRegistrationDay> CampRegistrationDays => Set<CampRegistrationDay>();
     public DbSet<CampGameContribution> CampGameContributions => Set<CampGameContribution>();
     public DbSet<Game> Games => Set<Game>();
     public DbSet<GameCopy> GameCopies => Set<GameCopy>();
@@ -111,6 +112,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(x => x.CampRegistrations)
                 .HasForeignKey(x => x.ParticipantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CampRegistrationDay>(entity =>
+        {
+            entity.ToTable("CampRegistrationDays");
+            entity.HasKey(x => new { x.CampRegistrationId, x.Date });
+            entity.HasOne(x => x.CampRegistration)
+                .WithMany(x => x.SelectedDays)
+                .HasForeignKey(x => x.CampRegistrationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<CampGameContribution>(entity =>

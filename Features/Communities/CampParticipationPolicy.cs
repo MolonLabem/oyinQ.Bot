@@ -9,11 +9,12 @@ public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider
     public static bool IsRegistrationComplete(CampRegistration? registration, Camp camp)
     {
         if (registration is null || camp.StartDate is not { } start || camp.EndDate is not { } end
-            || registration.DaysStaying is not { } days || registration.NeedsAccommodation is null)
+            || registration.NeedsAccommodation is null)
             return false;
         try
         {
-            CampRules.ValidateRegistrationDays(days, start, end);
+            _ = CampRules.ValidateSelectedDates(registration.SelectedDays.Select(x => x.Date).ToArray(),
+                start, end);
             _ = CampRules.NormalizeCity(registration.City);
             return true;
         }
@@ -40,17 +41,21 @@ public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider
     }
 
     public async Task<(Camp Camp, CampRegistration Registration)> RequireCompleteRegistrationAsync(
-        long campId, long participantId, CancellationToken cancellationToken)
+        long campId, long participantId, CancellationToken cancellationToken,
+        DateOnly? requiredDate = null)
     {
         var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat)
             .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
         EnsureAcceptsMutations(camp, camp.BotChat.TimeZoneId, timeProvider.GetUtcNow());
-        var registration = await dbContext.CampRegistrations.AsNoTracking()
+        var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.CampId == campId && x.ParticipantId == participantId,
                 cancellationToken);
         if (!IsRegistrationComplete(registration, camp))
             throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
+        if (requiredDate is { } date && registration!.SelectedDays.All(x => x.Date != date))
+            throw new InvalidOperationException(
+                $"Вы не отметили {date:dd.MM.yyyy} в своей регистрации на кэмп. Сначала измените регистрацию.");
         return (camp, registration!);
     }
 }

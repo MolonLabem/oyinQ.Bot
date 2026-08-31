@@ -24,6 +24,7 @@ export function GamePicker({
   const [searching, setSearching] = useState(false);
   const [loadingGame, setLoadingGame] = useState(false);
   const [open, setOpen] = useState(false);
+  const [remoteLimit, setRemoteLimit] = useState(9);
   const [error, setError] = useState<string>();
   const requestVersion = useRef(0);
   const container = useRef<HTMLDivElement>(null);
@@ -67,6 +68,7 @@ export function GamePicker({
 
   function changeInput(value: string) {
     setInput(value);
+    setRemoteLimit(9);
     setOpen(true);
     setError(undefined);
     if (selected && value.trim() !== selected.name) onClear?.();
@@ -146,10 +148,11 @@ export function GamePicker({
           <Cover src={game.thumbnailImageUrl} name={game.name} /><span><strong>{game.name}</strong><GameMeta game={game} compact /></span><span aria-hidden>›</span>
         </button>)}</section>}
       {bggAvailable && (remoteResults.length > 0 || searching) && <section><strong className="result-group-title">BoardGameGeek</strong>
-        {remoteResults.map(game => <button type="button" role="option" aria-selected="false" className="game-search-result"
+        {remoteResults.slice(0, remoteLimit).map(game => <button type="button" role="option" aria-selected="false" className="game-search-result"
           key={`bgg-${game.bggId}`} onClick={() => void chooseBgg(String(game.bggId))}>
           <span className="result-icon" aria-hidden>BGG</span><span><strong>{game.name}</strong><small>{game.yearPublished ? `${game.yearPublished} год` : "Год не указан"}</small></span><span aria-hidden>›</span>
         </button>)}
+        {remoteResults.length > remoteLimit && <button type="button" className="ghost" onClick={() => setRemoteLimit(limit => limit + 9)}>Показать ещё ({remoteResults.length - remoteLimit})</button>}
         {searching && <p className="picker-status">Ищем в BGG…</p>}
       </section>}
     </div>}
@@ -161,19 +164,12 @@ export function GamePicker({
 
 export function GameMeta({ game, compact = false }: { game: ClubGame; compact?: boolean }) {
   const players = game.minPlayers && game.maxPlayers ? `${game.minPlayers}–${game.maxPlayers} игроков` : undefined;
-  const tags = [...(game.types ?? []), ...(game.categories ?? [])];
+  const tags = [game.typeName, ...(game.categoryNames ?? [])].filter((value): value is string => Boolean(value)).slice(0, compact ? 3 : 6);
   if (!players && !tags.length) return compact ? <small>Метаданные появятся после выбора</small> : null;
   return <span className={`game-meta ${compact ? "compact" : ""}`}>
     {players && <small>{players}{game.bestPlayers ? ` · лучше: ${game.bestPlayers}` : ""}</small>}
     {tags.length > 0 && <span className="tag-list">{tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}</span>}
   </span>;
-}
-
-export function gameTagDescription(game: ClubGame): string {
-  const lines: string[] = [];
-  if (game.types?.length) lines.push(`Тип: ${game.types.join(", ")}`);
-  if (game.categories?.length) lines.push(`Категории: ${game.categories.join(", ")}`);
-  return lines.join("\n");
 }
 
 export function normalizeGameSearch(value: string) {

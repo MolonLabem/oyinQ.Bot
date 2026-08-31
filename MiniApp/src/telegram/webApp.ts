@@ -11,6 +11,7 @@ export const telegram = {
   get startParam() { return app?.initDataUnsafe.start_param; },
   initialize() { applyTheme(); app?.onEvent("themeChanged", applyTheme); app?.ready(); app?.expand(); },
   get canFullscreen() { return Boolean(app?.requestFullscreen); },
+  get isFullscreen() { return Boolean(app?.isFullscreen); },
   requestFullscreen(): Promise<boolean> {
     if (!app?.requestFullscreen) return Promise.resolve(false);
     return new Promise(resolve => {
@@ -21,9 +22,20 @@ export const telegram = {
       app.onEvent("fullscreenChanged", changed); app.onEvent("fullscreenFailed", failed); app.requestFullscreen!();
     });
   },
+  exitFullscreen() { app?.exitFullscreen?.(); },
+  onFullscreenChanged(handler: (fullscreen: boolean) => void) {
+    if (!app) return () => undefined;
+    const changed = () => handler(Boolean(app.isFullscreen));
+    app.onEvent("fullscreenChanged", changed);
+    return () => app.offEvent("fullscreenChanged", changed);
+  },
   requestPeer(preparedId: string): Promise<boolean> {
     if (!app?.requestChat) return Promise.resolve(false);
     return new Promise(resolve => app.requestChat(preparedId, resolve));
+  },
+  openLink(url: string) {
+    if (app?.openLink) app.openLink(url);
+    else window.open(url, "_blank", "noopener,noreferrer");
   },
   back(show: boolean, handler: () => void) {
     if (!app?.BackButton) return () => undefined;

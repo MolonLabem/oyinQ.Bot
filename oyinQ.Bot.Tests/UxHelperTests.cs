@@ -19,6 +19,9 @@ public sealed class UxHelperTests
         Assert.Equal(
             "<a href=\"tg://user?id=123456\">Camp Name</a>",
             ParticipantPresentation.ToHtmlLink(participant));
+        Assert.Null(ParticipantPresentation.GetPublicProfileUrl(participant));
+        participant.TelegramUsername = "test_user";
+        Assert.Equal("https://t.me/test_user?profile", ParticipantPresentation.GetPublicProfileUrl(participant));
     }
 
 }

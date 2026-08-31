@@ -4,6 +4,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
@@ -94,13 +95,14 @@ internal static class GatheringEndpoints
             CanJoin = GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
             CanLeave = GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
             WaitlistPosition = waitPosition,
-            ConfirmedParticipants = new[] { new { Name = gathering.OrganizerParticipant.PreferredDisplayName
-                    ?? gathering.OrganizerParticipant.DisplayName, IsOrganizer = true } }
+            ConfirmedParticipants = new[] { new { Name = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant), IsOrganizer = true,
+                    ContactUrl = ParticipantPresentation.GetPublicProfileUrl(gathering.OrganizerParticipant) } }
                 .Concat(gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed)
-                    .Select(x => new { Name = x.Participant.PreferredDisplayName ?? x.Participant.DisplayName,
-                        IsOrganizer = false })),
+                    .Select(x => new { Name = ParticipantPresentation.GetDisplayName(x.Participant),
+                        IsOrganizer = false, ContactUrl = ParticipantPresentation.GetPublicProfileUrl(x.Participant) })),
             WaitlistedParticipants = waitlisted.Select((x, index) => new
-            { Name = x.Participant.PreferredDisplayName ?? x.Participant.DisplayName, Position = index + 1 }),
+            { Name = ParticipantPresentation.GetDisplayName(x.Participant), Position = index + 1,
+                ContactUrl = ParticipantPresentation.GetPublicProfileUrl(x.Participant) }),
             PublicationStatus = gathering.PublicationStatus.ToString(),
             gathering.PublicationError,
             CanRetryPublication = manages && gathering.PublicationStatus == GatheringPublicationStatus.Failed

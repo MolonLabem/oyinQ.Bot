@@ -10,7 +10,20 @@ namespace oyinQ.Bot.Tests;
 public sealed class BoardGameGeekClientTests
 {
     [Fact]
-    public async Task SearchAsync_EncodesQuery_AndReturnsAtMostFivePrimaryNames()
+    public void SearchRanking_PrefersExactPrefixWholeWordAndContains()
+    {
+        var ranked = BoardGameGeekClient.RankSearchResults([
+            new(1, "Nightmars", 2020),
+            new(2, "Mars Colony", 2023),
+            new(3, "Terraforming Mars", 2019),
+            new(4, "Mars", 2016),
+            new(5, "Red Marshlands", 2022)], "Mars");
+
+        Assert.Equal([4L, 2L, 3L, 5L, 1L], ranked.Select(x => x.BggId));
+    }
+
+    [Fact]
+    public async Task SearchAsync_EncodesQuery_AndReturnsUpToTwentyFivePrimaryNames()
     {
         var handler = new StubHttpMessageHandler(request =>
         {
@@ -31,8 +44,8 @@ public sealed class BoardGameGeekClientTests
 
         var games = await CreateClient(handler).SearchAsync("  Terraforming Mars  ", default);
 
-        Assert.Equal(5, games.Count);
-        Assert.Equal(new[] { "Game 1", "Game 2", "Game 3", "Game 4", "Game 5" },
+        Assert.Equal(6, games.Count);
+        Assert.Equal(new[] { "Game 1", "Game 2", "Game 3", "Game 4", "Game 5", "Game 6" },
             games.Select(game => game.Name));
         Assert.Equal(2020, games[0].YearPublished);
     }

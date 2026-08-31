@@ -2,12 +2,12 @@
 
 OyinQ is a .NET 10 ASP.NET Core backend, React Telegram Mini App, and one Telegram bot serving multiple board-game communities. PostgreSQL is the source of truth. A community is either a `Club` or a `Camp`.
 
-The Mini App owns registration, collections, contributions, game discovery, gathering lifecycle, and all administration. Telegram is deliberately thin: `/start`, `/admin` entry, contextual deep links, native prepared user/chat selection, group announcements, and notifications.
+The Mini App owns registration, collections, contributions, game discovery, gathering lifecycle, and all administration. Telegram is deliberately thin: private `/start`, `/menu`, `/help`, `/privacy`, `/admin`, group `/oyinq`, contextual deep links, native prepared user/chat selection, group announcements, and notifications.
 
 ## Current model
 
 - Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`.
-- Camps have inclusive local dates, lifecycle status, scoped `CampRegistration`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`.
+- Camps have inclusive local dates, lifecycle status, scoped `CampRegistration` with exact `CampRegistrationDays`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`. `DaysStaying` is derived compatibility data, not attendance authority.
 - Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL.
 - Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.
 - BGG is the only external board-game provider. Missing BGG credentials visibly disable search/add/import without disabling stored collections, contributions, or gatherings.
@@ -136,6 +136,14 @@ Migration `20260829000852_StabilizeClubCampMiniApp` is additive. It adds Club re
 
 The additive migrations after it are `20260830193242_GatheringHistoryAndCleanup`, `20260830200452_CatalogMetadataCampAvailability`, `20260830201423_CampImportSkipResolution`, `20260830201708_ClubMetadataRefreshJobs`, and `20260830210951_FinalConsistencyAndReliability`. The final migration adds persisted import confirmations, Club-refresh leases, worker indexes, and partial unique active-job invariants. Its deterministic pre-index reconciliation ends duplicate active jobs without deleting application data. Validate this full batch and its generated SQL against a production backup before deployment; do not apply it as part of this repository review.
 
+Migration `20260831002206_ExactCampAttendanceDates` only adds the exact-date table and its cascading registration foreign key. It deliberately does not turn legacy `DaysStaying` counts into guessed dates; existing participants must confirm their actual dates in the Mini App before new Camp mutations.
+
 ## Manual verification
 
 Use [docs/manual-verification.md](docs/manual-verification.md) after deployment. Live Telegram and BGG behavior must not be inferred from mocked tests.
+
+The public privacy policy is served at `{Telegram:PublicBaseUrl}/privacy`; the Main Mini App root is
+`{Telegram:PublicBaseUrl}/app/`. Command scopes, Telegram profile copy, and the private Mini App menu
+button are configured by application startup in webhook and long-polling modes. Main Mini App
+enablement, previews, artwork, privacy URL, splash settings, and the immutable current username are
+manual BotFather settings documented in [docs/botfather-setup.md](docs/botfather-setup.md).

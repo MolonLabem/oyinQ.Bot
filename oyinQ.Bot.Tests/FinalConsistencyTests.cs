@@ -29,9 +29,16 @@ public sealed class FinalConsistencyTests
     {
         var camp = Camp();
         Assert.True(CampParticipationPolicy.IsRegistrationComplete(
-            new CampRegistration { DaysStaying = 2, NeedsAccommodation = false, City = " Астана " }, camp));
+            Registration([new(2026, 8, 29), new(2026, 8, 30)]), camp));
         Assert.False(CampParticipationPolicy.IsRegistrationComplete(
             new CampRegistration { DaysStaying = 4, NeedsAccommodation = false, City = "Астана" }, camp));
+    }
+
+    private static CampRegistration Registration(IReadOnlyCollection<DateOnly> days)
+    {
+        var registration = new CampRegistration { DaysStaying = days.Count, NeedsAccommodation = false, City = " Астана " };
+        foreach (var date in days) registration.SelectedDays.Add(new CampRegistrationDay { Date = date });
+        return registration;
     }
 
     [Fact]
@@ -218,6 +225,7 @@ public sealed class FinalConsistencyTests
     public void CurrentCampExports_IncludeRegistrationAndContributionFields()
     {
         Assert.Contains("city", CsvExportService.CampRegistrationHeaders);
+        Assert.Contains("selected_dates", CsvExportService.CampRegistrationHeaders);
         Assert.Contains("source", CsvExportService.CampContributionHeaders);
         Assert.Contains("commitment", CsvExportService.CampContributionHeaders);
         Assert.Contains("parent_bgg_ids", CsvExportService.CampContributionHeaders);

@@ -8,15 +8,18 @@ import { CampRegistrationGate, MyGamesPage } from "../pages/camp/MyGamesPage";
 import { GamesPage } from "../pages/games/GamesPage";
 import { GatheringsPage } from "../pages/gatherings/GatheringsPage";
 import { telegram } from "../telegram/webApp";
+import { fullscreenLabel } from "../pages/camp/registrationLogic";
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
   const [communityKey, setCommunityKey] = useState(() => initialCommunity()); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
   const [initialGatheringId, setInitialGatheringId] = useState(() => new URLSearchParams(location.search).get("gathering") ?? undefined);
+  const [fullscreen, setFullscreen] = useState(telegram.isFullscreen);
   useEffect(() => { Promise.all([api<Bootstrap>("/communities"), api<Capabilities>("/capabilities")]).then(([b, c]) => { setBootstrap(b); setCapabilities(c); if (!communityKey && b.communities.length === 1) setCommunityKey(b.communities[0].key); }).catch(e => setError(e instanceof Error ? e.message : String(e))); }, []);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
   useEffect(() => { if (!new URLSearchParams(location.search).get("tab")) setTab("gatherings"); }, [communityKey]);
+  useEffect(() => telegram.onFullscreenChanged(setFullscreen), []);
   const community = useMemo(() => bootstrap?.communities.find(x => x.key === communityKey), [bootstrap, communityKey]);
   if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
@@ -24,12 +27,17 @@ export function App() {
   if (!community) return <CommunityPicker communities={bootstrap.communities} choose={setCommunityKey} admin={bootstrap.isAdministrator} />;
   const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }];
   const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";
+  const fullscreenActionLabel = fullscreenLabel(fullscreen);
   const content = activeTab === "gatherings" ? <GatheringsPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} /> : activeTab === "games" ? <GamesPage community={community} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} />;
-  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}{telegram.canFullscreen && <button className="fullscreen-action" onClick={() => void telegram.requestFullscreen()}>Развернуть</button>}</div></header><div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community} isAdministrator={bootstrap.isAdministrator}>{content}</CampRegistrationGate> : content}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
+  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</div></header>{telegram.canFullscreen && <div className="display-tools"><button className="fullscreen-action" aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}>{fullscreenActionLabel}</button></div>}<div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community} isAdministrator={bootstrap.isAdministrator}>{content}</CampRegistrationGate> : content}<PrivacyLink /></div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
 }
 
 function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {
-  return <Page title="Выберите сообщество" subtitle="Ваш контекст сохраняется при переходах">{communities.length === 0 ? <Notice kind="warning">Не удалось подтвердить членство ни в одном активном сообществе.{admin && <> Откройте <a href="?admin=1">администрирование</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><span className={`mode-icon ${c.mode.toLowerCase()}`}>{c.mode === "Club" ? "♣" : "⛺"}</span><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}</Page>;
+  return <Page title="Выберите сообщество" subtitle="Ваш контекст сохраняется при переходах">{communities.length === 0 ? <Notice kind="warning">Не удалось подтвердить членство ни в одном активном сообществе.{admin && <> Откройте <a href="?admin=1">администрирование</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><span className={`mode-icon ${c.mode.toLowerCase()}`}>{c.mode === "Club" ? "♣" : "⛺"}</span><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}<PrivacyLink /></Page>;
+}
+
+function PrivacyLink() {
+  return <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>Политика конфиденциальности</button>;
 }
 
 function initialCommunity() {

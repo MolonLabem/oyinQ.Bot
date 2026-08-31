@@ -166,6 +166,25 @@ public static class GatheringRules
         return normalized;
     }
 
+    public static GameGatheringParticipant? WithdrawParticipant(GameGathering gathering,
+        GameGatheringParticipant membership, DateTimeOffset now)
+    {
+        if (membership.Status == GatheringParticipationStatus.Withdrawn) return null;
+        var shouldPromote = membership.Status == GatheringParticipationStatus.Confirmed;
+        membership.Status = GatheringParticipationStatus.Withdrawn;
+        membership.WithdrawnAt = now.ToUniversalTime();
+        membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
+        var promoted = shouldPromote
+            ? gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
+                .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).FirstOrDefault()
+            : null;
+        if (promoted is not null) promoted.Status = GatheringParticipationStatus.Confirmed;
+        RecalculateStatus(gathering);
+        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+        gathering.UpdatedAt = now.ToUniversalTime();
+        return promoted;
+    }
+
     private static void EnsureEditable(GameGathering gathering, DateTimeOffset now)
     {
         if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)

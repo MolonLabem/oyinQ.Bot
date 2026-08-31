@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Collections;
 
@@ -31,7 +32,7 @@ public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemTy
 
 public sealed record CampCatalogProvider(long? ParticipantId, string DisplayName, string? City,
     CampContributionSource? Source, CampBringCommitment Commitment = CampBringCommitment.Available,
-    bool IsCurrentUser = false);
+    bool IsCurrentUser = false, string? ContactUrl = null);
 
 public sealed class CampContributionSelectionService(AppDbContext dbContext, CampParticipationPolicy participationPolicy)
 {
@@ -142,6 +143,13 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
         DateTimeOffset now, CancellationToken cancellationToken)
     {
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
+        if (itemType == CampContributionItemType.BaseGame)
+        {
+            var baseCollectionJson = await dbContext.Camps.AsNoTracking()
+                .Where(x => x.Id == campId).Select(x => x.BaseCollectionJson).SingleAsync(cancellationToken);
+            if (ClubCollectionSerializer.Deserialize(baseCollectionJson).Games.Any(x => x.BggId == bggId))
+                throw new InvalidOperationException("Эта игра уже есть в базовой коллекции кэмпа. Личную копию можно добавить только явно при разборе импорта BGG.");
+        }
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
             cancellationToken);
@@ -194,6 +202,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
         var values = await dbContext.CampGameContributions.AsNoTracking()
             .Where(x => x.CampId == campId)
             .Select(x => new { Contribution = x, x.Participant.DisplayName, x.Participant.PreferredDisplayName,
+                x.Participant.TelegramUsername,
                 City = x.Participant.CampRegistrations.Where(r => r.CampId == campId).Select(r => r.City).SingleOrDefault() })
             .ToArrayAsync(cancellationToken);
         return values.GroupBy(x => new { x.Contribution.BggId, x.Contribution.ItemType })
@@ -203,7 +212,8 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
                 group.Select(x => x.Contribution.ParticipantId).Distinct().Count(),
                 group.Select(x => new CampCatalogProvider(x.Contribution.ParticipantId,
                     x.PreferredDisplayName ?? x.DisplayName, x.City, x.Contribution.Source,
-                    x.Contribution.Commitment, x.Contribution.ParticipantId == currentParticipantId)).ToArray()))
+                    x.Contribution.Commitment, x.Contribution.ParticipantId == currentParticipantId,
+                    string.IsNullOrWhiteSpace(x.TelegramUsername) ? null : $"https://t.me/{Uri.EscapeDataString(x.TelegramUsername.Trim().TrimStart('@'))}?profile")).ToArray()))
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

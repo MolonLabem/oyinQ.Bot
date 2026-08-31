@@ -58,12 +58,22 @@ internal static class CommunityEndpoints
         {
             var json = await dbContext.Clubs.AsNoTracking().Where(x => x.BotChatKey == community)
                 .Select(x => x.CollectionJson).SingleAsync(cancellationToken);
-            return Results.Ok(ClubCollectionSerializer.Deserialize(json).Games);
+            return Results.Ok(ClubCollectionSerializer.Deserialize(json).Games.Select(PresentGame));
         }
         var participantId = await dbContext.Participants.AsNoTracking()
             .Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
         return Results.Ok((await campCatalog.LoadAsync(community, participantId, cancellationToken))
-            .Select(x => x.Game));
+            .Select(x => PresentGame(x.Game)));
+    }
+
+    private static object PresentGame(ClubCollectionGame game)
+    {
+        var metadata = BggTaxonomyCatalog.Present(game);
+        return new { game.BggId, game.Name, game.ThumbnailImageUrl, game.ImageUrl, game.Description,
+            game.YearPublished, game.MinPlayers, game.MaxPlayers, game.BestPlayers,
+            game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
+            metadata.TypeName, metadata.CategoryNames, metadata.MechanicNames,
+            game.CategoryItems, game.Mechanics, game.Expansions };
     }
 }

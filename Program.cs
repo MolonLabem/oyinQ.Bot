@@ -10,6 +10,7 @@ using oyinQ.Bot.Features.Catalog;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Features.MiniApp;
+using oyinQ.Bot.Features.PublicSite;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
@@ -61,6 +62,7 @@ builder.Services.AddScoped<IAdministratorStore, AdministratorStore>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<ManagedCommunityService>();
 builder.Services.AddScoped<CampParticipationPolicy>();
+builder.Services.AddScoped<CampRegistrationService>();
 builder.Services.AddScoped<ClubCollectionService>();
 builder.Services.AddScoped<ClubMetadataRefreshService>();
 builder.Services.AddScoped<CampContributionSelectionService>();
@@ -70,6 +72,7 @@ builder.Services.AddScoped<CampBggImportService>();
 builder.Services.AddScoped<CampBggImportCoordinator>();
 builder.Services.AddScoped<CampImportNotificationService>();
 builder.Services.AddScoped<TelegramPeerSelectionService>();
+builder.Services.AddSingleton<ITelegramCommunityOnboardingService, TelegramCommunityOnboardingService>();
 builder.Services.AddScoped<GatheringGameSelectionService>();
 builder.Services.AddScoped<GatheringService>();
 builder.Services.AddScoped<GatheringManagementService>();
@@ -88,6 +91,7 @@ builder.Services.AddHostedService<CampLifecycleWorker>();
 builder.Services.AddHostedService<ClubMetadataRefreshWorker>();
 builder.Services.AddHostedService<GatheringLifecycleWorker>();
 builder.Services.AddHostedService<TelegramMessageCleanupWorker>();
+builder.Services.AddHostedService<TelegramBotProfileSetupService>();
 
 if (botOptions.UseLongPolling)
 {
@@ -216,6 +220,7 @@ app.MapGet("/ready", async (AppDbContext dbContext, CancellationToken cancellati
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 });
+app.MapGet(PrivacyPolicyPage.Path, PrivacyPolicyPage.HandleAsync);
 
 app.MapPost(
     "/telegram/webhook/{secret}",
