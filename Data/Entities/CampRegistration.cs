@@ -7,6 +7,7 @@ public sealed class CampRegistration
     public long ParticipantId { get; set; }
     public int? DaysStaying { get; set; }
     public bool? NeedsAccommodation { get; set; }
+    public string? DisplayName { get; set; }
     public string? City { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

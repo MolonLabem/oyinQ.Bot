@@ -53,7 +53,7 @@ public sealed class CsvExportService(
             .Select(value => new
             {
                 Registration = value, CampName = value.Camp.Name, value.Participant.TelegramUserId,
-                DisplayName = value.Participant.PreferredDisplayName ?? value.Participant.DisplayName
+                DisplayName = value.DisplayName ?? value.Participant.PreferredDisplayName ?? value.Participant.DisplayName
             })
             .ToListAsync(cancellationToken);
         var rows = registrations.Select(value => new object?[]

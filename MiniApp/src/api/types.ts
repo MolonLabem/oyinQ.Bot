@@ -2,6 +2,7 @@ export type CommunityMode = "Club" | "Camp";
 export type Community = { key: string; name: string; mode: CommunityMode; timeZoneId: string };
 export type Bootstrap = { isAdministrator: boolean; communities: Community[] };
 export type Capabilities = { boardGameGeekAvailable: boolean; boardGameGeekUnavailableReason?: string; preparedPeerSelection: boolean };
+export type Profile = { displayName: string; preferredDisplayName?: string; telegramDisplayName: string; telegramUsername?: string };
 export type ApiErrorBody = { code?: string; message?: string; currentRevision?: number; requiredDate?: string; affectedGatherings?: { publicId: string; gameName: string; startsAtUtc: string }[] };
 export type Expansion = { bggId: number; name: string };
 export type GameType = "Strategy" | "Family" | "Party" | "Thematic" | "Abstract" | "War" | "Children" | "Customizable" | "Other";

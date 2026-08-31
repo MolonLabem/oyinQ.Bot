@@ -11,6 +11,8 @@ public sealed class CampRulesTests
     {
         Assert.Equal("Sardar", CampParticipantPresentation.RegistrationDisplayName(null, null, " Sardar "));
         Assert.Equal("Игровое имя", CampParticipantPresentation.RegistrationDisplayName(null, "Игровое имя", "Sardar"));
+        Assert.Equal("Имя на кэмпе", CampParticipantPresentation.RegistrationDisplayName(
+            " Имя на кэмпе ", "Глобальное имя", "Sardar"));
     }
 
     [Fact]

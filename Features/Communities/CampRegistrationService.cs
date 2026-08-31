@@ -25,7 +25,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         [GatheringStatus.Recruiting, GatheringStatus.Ready, GatheringStatus.Full, GatheringStatus.Closed];
 
     public async Task<CampRegistrationMutationResult> SaveAsync(long campId, long participantId,
-        IReadOnlyCollection<DateOnly> selectedDates, bool needsAccommodation, string city,
+        IReadOnlyCollection<DateOnly> selectedDates, bool needsAccommodation, string? displayName, string city,
         bool confirmAttendanceChanges, CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
@@ -39,6 +39,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             throw new InvalidOperationException("Для кэмпа ещё не настроены даты.");
         var normalizedDates = CampRules.ValidateSelectedDates(selectedDates, start, end);
         var normalizedCity = CampRules.NormalizeCity(city);
+        var normalizedDisplayName = NormalizeDisplayName(displayName);
         var registration = await dbContext.CampRegistrations
             .Include(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.CampId == campId && x.ParticipantId == participantId,
@@ -62,6 +63,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             CampId = campId, ParticipantId = participantId, CreatedAt = now
         };
         if (registration.Id == 0) dbContext.CampRegistrations.Add(registration);
+        registration.DisplayName = normalizedDisplayName;
         registration.City = normalizedCity;
         registration.NeedsAccommodation = needsAccommodation;
         registration.DaysStaying = normalizedDates.Count;
@@ -82,6 +84,15 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(changed.Distinct().ToArray(), promotions);
+    }
+
+    private static string? NormalizeDisplayName(string? displayName)
+    {
+        var normalized = displayName?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        if (normalized.Length > 128)
+            throw new ArgumentException("Имя участника кэмпа не может быть длиннее 128 символов.");
+        return normalized;
     }
 
     public async Task<CampRegistrationMutationResult> UnregisterAsync(long campId, long participantId,

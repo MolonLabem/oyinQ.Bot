@@ -62,8 +62,7 @@ internal static class CampEndpoints
         var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == community, cancellationToken);
         var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
             .Where(x => x.CampId == camp.Id && x.Participant.TelegramUserId == access.Identity.TelegramUserId)
-            .Select(x => new { Row = x, DisplayName = x.Participant.PreferredDisplayName
-                ?? x.Participant.DisplayName }).SingleOrDefaultAsync(cancellationToken);
+            .Select(x => new { Row = x, x.DisplayName }).SingleOrDefaultAsync(cancellationToken);
         var storedParticipantDisplayName = await dbContext.Participants.AsNoTracking()
             .Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => x.PreferredDisplayName ?? x.DisplayName)
@@ -112,10 +111,9 @@ internal static class CampEndpoints
             body.CommunityKey, cancellationToken);
         try
         {
-            if (!string.IsNullOrWhiteSpace(body.DisplayName))
-                participant.PreferredDisplayName = body.DisplayName.Trim();
             var result = await registrations.SaveAsync(camp.Id, participant.Id, body.SelectedDates,
-                body.NeedsAccommodation, body.City, body.ConfirmAttendanceChanges, cancellationToken);
+                body.NeedsAccommodation, body.DisplayName, body.City, body.ConfirmAttendanceChanges,
+                cancellationToken);
             await PublishRegistrationChangesAsync(result, publication, cancellationToken);
             return Results.NoContent();
         }

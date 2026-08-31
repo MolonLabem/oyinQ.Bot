@@ -152,6 +152,20 @@ public sealed class AppDbContextMigrationTests
     }
 
     [Fact]
+    public void CampRegistrationDisplayName_IsCampScoped()
+    {
+        using var dbContext = CreateDbContext();
+        var property = dbContext.Model.FindEntityType(typeof(CampRegistration))?
+            .FindProperty(nameof(CampRegistration.DisplayName));
+
+        Assert.NotNull(property);
+        Assert.True(property.IsNullable);
+        Assert.Equal(128, property.GetMaxLength());
+        Assert.Contains("20260831184750_SeparateCampAndParticipantDisplayNames",
+            dbContext.Database.GetMigrations());
+    }
+
+    [Fact]
     public void ClubBggImports_ArePersistentAndHaveOneActiveJobPerClub()
     {
         using var dbContext = CreateDbContext();
