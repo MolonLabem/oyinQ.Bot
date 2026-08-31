@@ -15,6 +15,7 @@ export function App() {
   const [communityKey, setCommunityKey] = useState(() => initialCommunity()); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
   const [initialGatheringId, setInitialGatheringId] = useState(() => new URLSearchParams(location.search).get("gathering") ?? undefined);
+  const [registrationEditRequest, setRegistrationEditRequest] = useState(0);
   const [fullscreen, setFullscreen] = useState(telegram.isFullscreen);
   useEffect(() => { Promise.all([api<Bootstrap>("/communities"), api<Capabilities>("/capabilities")]).then(([b, c]) => { setBootstrap(b); setCapabilities(c); if (!communityKey && b.communities.length === 1) setCommunityKey(b.communities[0].key); }).catch(e => setError(e instanceof Error ? e.message : String(e))); }, []);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
@@ -28,7 +29,8 @@ export function App() {
   const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }];
   const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";
   const fullscreenActionLabel = fullscreenLabel(fullscreen);
-  const content = activeTab === "gatherings" ? <GatheringsPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} /> : activeTab === "games" ? <GamesPage community={community} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} />;
+  const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("mine"); };
+  const content = activeTab === "gatherings" ? <GatheringsPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} /> : activeTab === "games" ? <GamesPage community={community} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} />;
   return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</div></header>{telegram.canFullscreen && <div className="display-tools"><button className="fullscreen-action" aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}>{fullscreenActionLabel}</button></div>}<div className="content">{community.mode === "Camp" ? <CampRegistrationGate community={community} isAdministrator={bootstrap.isAdministrator}>{content}</CampRegistrationGate> : content}<PrivacyLink /></div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
 }
 

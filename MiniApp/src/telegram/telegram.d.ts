@@ -13,6 +13,7 @@ declare global {
     requestChat(preparedButtonId: string, callback?: (sent: boolean) => void): void;
     BackButton: TelegramBackButton; MainButton: TelegramMainButton; HapticFeedback?: TelegramHaptic;
     showConfirm?(message: string, callback: (confirmed: boolean) => void): void;
+    openTelegramLink?(url: string): void;
   }
   interface Window { Telegram?: { WebApp: TelegramWebApp } }
 }

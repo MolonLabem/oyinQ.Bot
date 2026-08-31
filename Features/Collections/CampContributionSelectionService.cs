@@ -202,7 +202,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
         var values = await dbContext.CampGameContributions.AsNoTracking()
             .Where(x => x.CampId == campId)
             .Select(x => new { Contribution = x, x.Participant.DisplayName, x.Participant.PreferredDisplayName,
-                x.Participant.TelegramUsername,
+                x.Participant.TelegramUserId, x.Participant.TelegramUsername,
                 City = x.Participant.CampRegistrations.Where(r => r.CampId == campId).Select(r => r.City).SingleOrDefault() })
             .ToArrayAsync(cancellationToken);
         return values.GroupBy(x => new { x.Contribution.BggId, x.Contribution.ItemType })
@@ -213,7 +213,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
                 group.Select(x => new CampCatalogProvider(x.Contribution.ParticipantId,
                     x.PreferredDisplayName ?? x.DisplayName, x.City, x.Contribution.Source,
                     x.Contribution.Commitment, x.Contribution.ParticipantId == currentParticipantId,
-                    string.IsNullOrWhiteSpace(x.TelegramUsername) ? null : $"https://t.me/{Uri.EscapeDataString(x.TelegramUsername.Trim().TrimStart('@'))}?profile")).ToArray()))
+                    ParticipantPresentation.GetContactUrl(x.TelegramUserId, x.TelegramUsername))).ToArray()))
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

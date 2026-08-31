@@ -2,7 +2,7 @@ import type { ApiErrorBody } from "./types";
 import { telegram } from "../telegram/webApp";
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public code?: string, public currentRevision?: number, public affectedGatherings?: ApiErrorBody["affectedGatherings"]) { super(message); }
+  constructor(message: string, public status: number, public code?: string, public currentRevision?: number, public affectedGatherings?: ApiErrorBody["affectedGatherings"], public requiredDate?: string) { super(message); }
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -12,7 +12,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const response = await fetch(`/api/miniapp${path}`, { ...options, headers });
   if (!response.ok) {
     const body = await response.json().catch(() => ({} as ApiErrorBody)) as ApiErrorBody;
-    throw new ApiError(body.message ?? "Не удалось выполнить запрос.", response.status, body.code, body.currentRevision, body.affectedGatherings);
+    throw new ApiError(body.message ?? "Не удалось выполнить запрос.", response.status, body.code, body.currentRevision, body.affectedGatherings, body.requiredDate);
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }

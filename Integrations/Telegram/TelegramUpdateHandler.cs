@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
@@ -22,7 +21,7 @@ public sealed class TelegramUpdateHandler(
     IAdministratorStore administratorStore,
     TelegramPeerSelectionService peerSelectionService,
     CampBggImportCoordinator campImports,
-    IOptions<BotOptions> botOptions,
+    MiniAppLinkBuilder links,
     ILogger<TelegramUpdateHandler> logger)
 {
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
@@ -206,8 +205,7 @@ public sealed class TelegramUpdateHandler(
     private Task SendPrivacyAsync(long privateChatId, CancellationToken cancellationToken) =>
         botClient.SendMessage(privateChatId, TelegramEntryText.Privacy,
             replyMarkup: new InlineKeyboardMarkup([[
-                InlineKeyboardButton.WithUrl("Открыть",
-                    $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/privacy")
+                InlineKeyboardButton.WithUrl("Открыть", links.Privacy())
             ]]), cancellationToken: cancellationToken);
 
     private async Task SendMiniAppEntryAsync(
@@ -250,20 +248,21 @@ public sealed class TelegramUpdateHandler(
         var rows = communities.Select(community => (IEnumerable<InlineKeyboardButton>)[
             InlineKeyboardButton.WithWebApp(
                 communities.Count == 1 ? "Открыть OyinQ" : community.Name,
-                new WebAppInfo { Url = BuildMiniAppUrl(community, startContext?.GatheringPublicId) })
+                new WebAppInfo { Url = startContext?.GatheringPublicId is { } gatheringId
+                    ? links.Gathering(community.Key, gatheringId) : links.Community(community.Key) })
         ]).ToList();
         if (overrideText is not null && rows.Count == 0)
         {
             rows.Add([
                 InlineKeyboardButton.WithWebApp("Открыть OyinQ",
-                    new WebAppInfo { Url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/" })
+                    new WebAppInfo { Url = links.App() })
             ]);
         }
         if (isAdministrator)
         {
             rows.Add([
                 InlineKeyboardButton.WithWebApp("Админ-панель",
-                    new WebAppInfo { Url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?admin=1" })
+                    new WebAppInfo { Url = links.Admin() })
             ]);
         }
         var text = overrideText ?? (includeWelcome
@@ -285,7 +284,7 @@ public sealed class TelegramUpdateHandler(
                 new MenuButtonWebApp
                 {
                     Text = "Открыть OyinQ",
-                    WebApp = new WebAppInfo { Url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/" }
+                    WebApp = new WebAppInfo { Url = links.App() }
                 },
                 cancellationToken);
         }
@@ -315,12 +314,6 @@ public sealed class TelegramUpdateHandler(
             {destination}
             Кнопка «Открыть OyinQ» также останется рядом с полем ввода в этом чате.
             """;
-    }
-
-    private string BuildMiniAppUrl(BotCommunity community, Guid? gatheringPublicId)
-    {
-        var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(community.Key)}";
-        return gatheringPublicId is null ? url : $"{url}&gathering={gatheringPublicId}";
     }
 
     private static string BuildDisplayName(User user)

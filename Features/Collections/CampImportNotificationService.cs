@@ -1,6 +1,5 @@
-using Microsoft.Extensions.Options;
-using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -31,7 +30,7 @@ public static class CampImportCallbackData
     }
 }
 
-public sealed class CampImportNotificationService(ITelegramBotClient botClient, IOptions<BotOptions> botOptions,
+public sealed class CampImportNotificationService(ITelegramBotClient botClient, MiniAppLinkBuilder links,
     ILogger<CampImportNotificationService> logger)
 {
     public async Task NotifyAsync(long telegramUserId, string communityKey, Guid importId,
@@ -53,7 +52,7 @@ public sealed class CampImportNotificationService(ITelegramBotClient botClient, 
             InlineKeyboardMarkup? keyboard = null;
             if (result.HasOverridableItems)
             {
-                var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(communityKey)}&tab=mine&import={importId}";
+                var url = links.CampImport(communityKey, importId);
                 keyboard = new InlineKeyboardMarkup([
                     [InlineKeyboardButton.WithCallbackData("Оставить как есть",
                         CampImportCallbackData.Create(importId, Data.Entities.CampImportOverrideResolution.KeepBaseCollection))],

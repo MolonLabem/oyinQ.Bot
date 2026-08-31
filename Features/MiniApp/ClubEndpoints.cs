@@ -78,7 +78,7 @@ internal static class ClubEndpoints
     private static async Task<IResult> AddAsync(HttpRequest request, long clubId, AddClubGameRequest body,
         TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
         ClubCollectionService service, IBoardGameGeekClient bggClient, IOptions<BggOptions> bggOptions,
-        CancellationToken cancellationToken)
+        ILogger<BoardGameGeekClient> logger, CancellationToken cancellationToken)
     {
         if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
         if (!bggOptions.Value.IsAvailable)
@@ -117,7 +117,9 @@ internal static class ClubEndpoints
         }
         catch (HttpRequestException exception)
         {
-            return MiniAppEndpointSupport.Problem("bgg_unavailable", exception.Message, 503);
+            logger.LogWarning(exception, "BGG failed while adding game {BggId} to club {ClubId}.", bggId, clubId);
+            return MiniAppEndpointSupport.Problem("bgg_unavailable",
+                "Не удалось загрузить данные BGG. Коллекция клуба не изменена; попробуйте ещё раз позже.", 503);
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }

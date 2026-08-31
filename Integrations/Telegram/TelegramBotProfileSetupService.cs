@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-using oyinQ.Bot.Common.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
@@ -7,12 +5,12 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public sealed class TelegramBotProfileSetupService(
     ITelegramBotClient botClient,
-    IOptions<BotOptions> options,
+    MiniAppLinkBuilder links,
     ILogger<TelegramBotProfileSetupService> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var miniAppUrl = $"{options.Value.PublicBaseUrl.TrimEnd('/')}/app/";
+        var miniAppUrl = links.App();
         await botClient.SetChatMenuButton(
             menuButton: new MenuButtonWebApp
             {

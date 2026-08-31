@@ -4,6 +4,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.MiniApp;
@@ -96,13 +97,13 @@ internal static class GatheringEndpoints
             CanLeave = GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
             WaitlistPosition = waitPosition,
             ConfirmedParticipants = new[] { new { Name = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant), IsOrganizer = true,
-                    ContactUrl = ParticipantPresentation.GetPublicProfileUrl(gathering.OrganizerParticipant) } }
+                    ContactUrl = ParticipantPresentation.GetContactUrl(gathering.OrganizerParticipant) } }
                 .Concat(gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed)
                     .Select(x => new { Name = ParticipantPresentation.GetDisplayName(x.Participant),
-                        IsOrganizer = false, ContactUrl = ParticipantPresentation.GetPublicProfileUrl(x.Participant) })),
+                        IsOrganizer = false, ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) })),
             WaitlistedParticipants = waitlisted.Select((x, index) => new
             { Name = ParticipantPresentation.GetDisplayName(x.Participant), Position = index + 1,
-                ContactUrl = ParticipantPresentation.GetPublicProfileUrl(x.Participant) }),
+                ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) }),
             PublicationStatus = gathering.PublicationStatus.ToString(),
             gathering.PublicationError,
             CanRetryPublication = manages && gathering.PublicationStatus == GatheringPublicationStatus.Failed
@@ -122,7 +123,7 @@ internal static class GatheringEndpoints
     private static async Task<IResult> CreateAsync(HttpRequest request, CreateGatheringRequest body,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         GatheringManagementService management, GatheringPublicationService publication,
-        CancellationToken cancellationToken)
+        ILogger<BoardGameGeekClient> logger, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
             authenticator, resolver, cancellationToken);
@@ -139,7 +140,11 @@ internal static class GatheringEndpoints
                 new { gathering.PublicId, AnnouncementPublished = published });
         }
         catch (HttpRequestException exception)
-        { return MiniAppEndpointSupport.Problem("bgg_unavailable", exception.Message, 503); }
+        {
+            logger.LogWarning(exception, "BGG failed while creating gathering from external game {BggId}.", body.BggId);
+            return MiniAppEndpointSupport.Problem("bgg_unavailable",
+                "BGG временно недоступен. Выберите сохранённую игру из каталога или попробуйте позже.", 503);
+        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 

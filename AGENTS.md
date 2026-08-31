@@ -9,7 +9,7 @@ Bot profile setup runs in both webhook and long-polling modes. Private command s
 
 Runtime community resolution uses PostgreSQL through `ICommunityStore` and `CommunityContextResolver`. `CommunityBootstrap:CommunitiesJson` is optional one-time bootstrap input that only inserts missing rows. A fresh installation may use it; an existing installation must start without it. Never restore a single-chat fallback. Community modes in new configuration are only `Club` and `Camp`.
 
-Telegram identity is global. `Participant.ActiveCommunityKey` is the last selected context, not authorization. Group links use `community-{key}`. Plain `/start` discovers authorized communities with `getChatMember`; contextual starts and Mini App APIs recheck membership. Mini App identity comes only from validated `Telegram.WebApp.initData`.
+Telegram identity is global. `Participant.ActiveCommunityKey` is the last selected context, not authorization. Group links use `community-{key}`. Plain `/start` discovers authorized communities with `getChatMember`; contextual starts and Mini App APIs recheck membership. Mini App identity comes only from validated `Telegram.WebApp.initData`. Participant names, Camp cities, and Telegram contact targets use shared presentation rules; prefer a public username link and fall back to the Telegram user-ID mention target, while keeping Telegram user ID as authorization authority.
 
 ## Club, Camp, and gatherings
 
@@ -31,7 +31,7 @@ Gathering lists expose Upcoming and History. Due gatherings that meet minimum at
 
 ## Integrations and background work
 
-BGG is the only external board-game provider. `BoardGameGeek:ApiToken` is server-only and optional; missing credentials must degrade gracefully. Tests use fake HTTP and never call live BGG. Expansion relationships come only from inbound BGG `boardgameexpansion` links.
+BGG is the only external board-game provider. `BoardGameGeek:ApiToken` is server-only and optional; missing credentials must degrade gracefully. BGG failures disable only operations that require new provider data, return concise local copy, and log technical details server-side; stored catalogs, contributions, and gatherings remain usable. Tests use fake HTTP and never call live BGG. Expansion relationships come only from inbound BGG `boardgameexpansion` links.
 Rich collection metadata stores BGG taxonomy IDs and canonical labels. Russian presentation uses an ID-based translation catalog with canonical English fallback. Club metadata refresh is a persisted leased job; it preserves current membership and selected expansions and locks the current Club document before applying one item.
 BGG name search is explicitly user-triggered, returns at most 25 lightweight ranked results, and fetches full game details only after selection. Do not add background search polling or recurring catalog synchronization.
 

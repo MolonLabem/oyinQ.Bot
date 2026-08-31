@@ -256,7 +256,8 @@ internal static class CampEndpoints
     private static async Task<IResult> AddManualAsync(HttpRequest request, AddManualContributionRequest body,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         CampContributionSelectionService contributions, IBoardGameGeekClient bggClient,
-        IOptions<BggOptions> bggOptions, CancellationToken cancellationToken)
+        IOptions<BggOptions> bggOptions, ILogger<BoardGameGeekClient> logger,
+        CancellationToken cancellationToken)
     {
         if (!bggOptions.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         var owned = await OwnedCampAsync(request, body.CommunityKey, dbContext, authenticator, resolver, cancellationToken);
@@ -288,7 +289,11 @@ internal static class CampEndpoints
         catch (Exception exception) when (exception is not HttpRequestException)
         { return MiniAppEndpointSupport.FromException(exception); }
         catch (HttpRequestException exception)
-        { return MiniAppEndpointSupport.Problem("bgg_unavailable", exception.Message, 503); }
+        {
+            logger.LogWarning(exception, "BGG failed while adding Camp contribution {BggId}.", bggId);
+            return MiniAppEndpointSupport.Problem("bgg_unavailable",
+                "Не удалось загрузить данные BGG. Ваши сохранённые игры не изменены.", 503);
+        }
     }
 
     private static async Task<IResult> RemoveContributionAsync(HttpRequest request, string itemType,

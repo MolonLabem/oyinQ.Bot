@@ -38,4 +38,15 @@ public static class ParticipantPresentation
         var username = participant.TelegramUsername?.Trim().TrimStart('@');
         return string.IsNullOrWhiteSpace(username) ? null : $"https://t.me/{Uri.EscapeDataString(username)}?profile";
     }
+
+    public static string? GetContactUrl(Participant participant) =>
+        GetContactUrl(participant.TelegramUserId, participant.TelegramUsername);
+
+    public static string? GetContactUrl(long telegramUserId, string? telegramUsername)
+    {
+        var username = telegramUsername?.Trim().TrimStart('@');
+        if (!string.IsNullOrWhiteSpace(username))
+            return $"https://t.me/{Uri.EscapeDataString(username)}?profile";
+        return telegramUserId > 0 ? $"tg://user?id={telegramUserId}" : null;
+    }
 }

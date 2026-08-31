@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
@@ -16,7 +14,7 @@ public sealed class GatheringPublicationService(
     ICommunityStore communityStore,
     GatheringTelegramPublisher publisher,
     ITelegramBotClient botClient,
-    IOptions<BotOptions> botOptions,
+    MiniAppLinkBuilder links,
     TimeProvider timeProvider,
     ILogger<GatheringPublicationService> logger)
 {
@@ -71,7 +69,7 @@ public sealed class GatheringPublicationService(
                 .Where(x => x.PublicId == gatheringPublicId)
                 .Select(x => x.CommunityKey)
                 .SingleAsync(cancellationToken);
-            var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(communityKey)}&gathering={gatheringPublicId}";
+            var url = links.Gathering(communityKey, gatheringPublicId);
             await botClient.SendMessage(promotion.TelegramUserId,
                 $"{promotion.DisplayName}, для вас освободилось место в сборе.",
                 replyMarkup: new InlineKeyboardMarkup([[

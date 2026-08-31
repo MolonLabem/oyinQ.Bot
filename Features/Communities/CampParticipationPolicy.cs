@@ -4,6 +4,12 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Communities;
 
+public sealed class CampAttendanceDateRequiredException(DateOnly date)
+    : InvalidOperationException($"Вы не отметили {date:dd.MM.yyyy} в своей регистрации на кэмп.")
+{
+    public DateOnly Date { get; } = date;
+}
+
 public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider timeProvider)
 {
     public static bool IsRegistrationComplete(CampRegistration? registration, Camp camp)
@@ -54,8 +60,7 @@ public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider
         if (!IsRegistrationComplete(registration, camp))
             throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
         if (requiredDate is { } date && registration!.SelectedDays.All(x => x.Date != date))
-            throw new InvalidOperationException(
-                $"Вы не отметили {date:dd.MM.yyyy} в своей регистрации на кэмп. Сначала измените регистрацию.");
+            throw new CampAttendanceDateRequiredException(date);
         return (camp, registration!);
     }
 }

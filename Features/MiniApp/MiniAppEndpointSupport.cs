@@ -67,6 +67,12 @@ internal static class MiniAppEndpointSupport
 
     public static IResult FromException(Exception exception) => exception switch
     {
+        CampAttendanceDateRequiredException attendance => Results.Json(new
+        {
+            code = "camp_attendance_date_required",
+            message = attendance.Message,
+            requiredDate = attendance.Date
+        }, statusCode: StatusCodes.Status409Conflict),
         KeyNotFoundException => Problem("not_found", exception.Message, StatusCodes.Status404NotFound),
         UnauthorizedAccessException => Problem("forbidden", exception.Message, StatusCodes.Status403Forbidden),
         InvalidOperationException => Problem("invalid_operation", exception.Message),

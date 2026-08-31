@@ -55,6 +55,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
 builder.Services.AddSingleton<GatheringPresentationService>();
+builder.Services.AddSingleton<MiniAppLinkBuilder>();
 builder.Services.AddSingleton<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
 builder.Services.AddSingleton<IManagedChatValidator, TelegramManagedChatValidator>();
 builder.Services.AddScoped<ICommunityStore, CommunityStore>();

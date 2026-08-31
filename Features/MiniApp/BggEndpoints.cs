@@ -15,17 +15,24 @@ internal static class BggEndpoints
 
     private static async Task<IResult> SearchAsync(HttpRequest request, string query,
         TelegramMiniAppAuthenticator authenticator, IBoardGameGeekClient client,
-        IOptions<BggOptions> options, CancellationToken cancellationToken)
+        IOptions<BggOptions> options, ILogger<BoardGameGeekClient> logger,
+        CancellationToken cancellationToken)
     {
         if (MiniAppEndpointSupport.Authenticate(request, authenticator) is null) return Results.Unauthorized();
         if (!options.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         try { return Results.Ok(await client.SearchAsync(query, cancellationToken)); }
-        catch (HttpRequestException exception) { return MiniAppEndpointSupport.Problem("bgg_unavailable", exception.Message, 503); }
+        catch (HttpRequestException exception)
+        {
+            logger.LogWarning(exception, "BGG search failed for query length {QueryLength}.", query.Length);
+            return MiniAppEndpointSupport.Problem("bgg_unavailable",
+                "BGG временно недоступен. Сохранённые игры и сборы продолжают работать.", 503);
+        }
     }
 
     private static async Task<IResult> GetGameAsync(HttpRequest request, string input,
         TelegramMiniAppAuthenticator authenticator, IBoardGameGeekClient client,
-        IOptions<BggOptions> options, CancellationToken cancellationToken)
+        IOptions<BggOptions> options, ILogger<BoardGameGeekClient> logger,
+        CancellationToken cancellationToken)
     {
         if (MiniAppEndpointSupport.Authenticate(request, authenticator) is null) return Results.Unauthorized();
         if (!options.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
@@ -36,6 +43,11 @@ internal static class BggEndpoints
             var details = await client.GetGameDetailsAsync(id.Value, cancellationToken);
             return details is null ? Results.NotFound() : Results.Ok(details);
         }
-        catch (HttpRequestException exception) { return MiniAppEndpointSupport.Problem("bgg_unavailable", exception.Message, 503); }
+        catch (HttpRequestException exception)
+        {
+            logger.LogWarning(exception, "BGG game detail fetch failed for game {BggId}.", id.Value);
+            return MiniAppEndpointSupport.Problem("bgg_unavailable",
+                "Не удалось загрузить данные BGG. Попробуйте ещё раз позже.", 503);
+        }
     }
 }

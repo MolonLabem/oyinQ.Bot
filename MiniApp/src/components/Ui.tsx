@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { successEventName } from "../telegram/webApp";
+import { telegram } from "../telegram/webApp";
 
 export function Page({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [title]);
@@ -13,6 +14,10 @@ export function Cover({ src, name }: { src?: string; name: string }) { return sr
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) { return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>; }
 export function Notice({ children, kind = "info" }: { children: ReactNode; kind?: "info" | "warning" | "danger" | "success" }) { return <div className={`notice ${kind}`} role="status">{children}</div>; }
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: string }) { return <span className={`badge ${tone}`}>{children}</span>; }
+export function ContactLink({ url, children }: { url?: string; children: ReactNode }) {
+  return url ? <a href={url} onClick={event => { event.preventDefault(); telegram.openContact(url); }}>{children}</a>
+    : <span title="Telegram не разрешает открыть профиль этого пользователя">{children}</span>;
+}
 export function ToastViewport() {
   const [message, setMessage] = useState<string>();
   useEffect(() => {

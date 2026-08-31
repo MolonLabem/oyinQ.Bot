@@ -1,8 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -15,7 +14,7 @@ public sealed record UnderfilledGatheringNotification(string GameName, int Minim
 public sealed class GatheringNotificationService(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
-    IOptions<BotOptions> botOptions,
+    MiniAppLinkBuilder links,
     ILogger<GatheringNotificationService> logger)
 {
     public static UnderfilledGatheringNotification CaptureUnderfilled(GameGathering gathering)
@@ -79,7 +78,7 @@ public sealed class GatheringNotificationService(
         InlineKeyboardMarkup? markup = null;
         if (communityKey is not null && gatheringPublicId is { } publicId)
         {
-            var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?community={Uri.EscapeDataString(communityKey)}&gathering={publicId}";
+            var url = links.Gathering(communityKey, publicId);
             markup = new InlineKeyboardMarkup([[
                 InlineKeyboardButton.WithWebApp("Открыть сбор", new WebAppInfo { Url = url })
             ]]);

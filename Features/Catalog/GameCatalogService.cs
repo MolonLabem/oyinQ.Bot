@@ -90,7 +90,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
     {
         var committed = value.Providers.Any(x => x.Commitment == CampBringCommitment.Bringing);
         var coordination = !value.IsInBaseCollection && value.Providers.Count > 1 && !committed;
-        var summary = value.IsInBaseCollection ? "Коллекция клуба" : committed ? "Точно будет"
+        var summary = value.IsInBaseCollection ? "Есть в коллекции клуба" : committed ? "Точно будет"
             : coordination ? "Нужно решить, кто привезёт" : value.Providers.Count > 0 ? "Можно привезти" : string.Empty;
         return new GameListItemResponse(value.Game.BggId, value.Game.Name, value.Game.ThumbnailImageUrl,
             value.Game.Type, BggTaxonomyCatalog.DisplayName(value.Game.Type), value.Game.MinPlayers,

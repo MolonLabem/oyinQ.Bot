@@ -1,5 +1,4 @@
-using Microsoft.Extensions.Options;
-using oyinQ.Bot.Common.Options;
+using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -9,7 +8,7 @@ namespace oyinQ.Bot.Features.Admin;
 public sealed class AdminHandler(
     ITelegramBotClient botClient,
     IAdministratorStore administratorStore,
-    IOptions<BotOptions> botOptions)
+    MiniAppLinkBuilder links)
 {
     public async Task HandleCommandAsync(Message message, long telegramUserId,
         CancellationToken cancellationToken)
@@ -20,7 +19,7 @@ public sealed class AdminHandler(
             return;
         }
 
-        var url = $"{botOptions.Value.PublicBaseUrl.TrimEnd('/')}/app/?admin=1";
+        var url = links.Admin();
         await botClient.SendMessage(telegramUserId,
             "Администрирование OyinQ доступно в Mini App.",
             replyMarkup: new InlineKeyboardMarkup([[

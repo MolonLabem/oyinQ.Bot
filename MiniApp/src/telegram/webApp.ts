@@ -37,6 +37,11 @@ export const telegram = {
     if (app?.openLink) app.openLink(url);
     else window.open(url, "_blank", "noopener,noreferrer");
   },
+  openContact(url: string) {
+    if (url.startsWith("https://t.me/") && app?.openTelegramLink) app.openTelegramLink(url);
+    else if (url.startsWith("tg://")) window.location.href = url;
+    else this.openLink(url);
+  },
   back(show: boolean, handler: () => void) {
     if (!app?.BackButton) return () => undefined;
     if (show) { app.BackButton.show(); app.BackButton.onClick(handler); } else app.BackButton.hide();
