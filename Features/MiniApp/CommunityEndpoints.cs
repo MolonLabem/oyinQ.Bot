@@ -73,7 +73,7 @@ internal static class CommunityEndpoints
         return new { game.BggId, game.Name, game.ThumbnailImageUrl, game.ImageUrl, game.Description,
             game.YearPublished, game.MinPlayers, game.MaxPlayers, game.BestPlayers,
             game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
-            metadata.TypeName, metadata.CategoryNames, metadata.MechanicNames,
+            metadata.TypeName, metadata.TypeNames, metadata.CategoryNames, metadata.MechanicNames,
             game.CategoryItems, game.Mechanics, game.Expansions };
     }
 }

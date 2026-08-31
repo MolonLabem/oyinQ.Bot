@@ -2,8 +2,11 @@ namespace oyinQ.Bot.Features.Collections;
 
 public static class BggTaxonomyCatalog
 {
-    public sealed record Presentation(string TypeName, IReadOnlyList<string> CategoryNames,
-        IReadOnlyList<string> MechanicNames);
+    public sealed record Presentation(IReadOnlyList<string> TypeNames, IReadOnlyList<string> CategoryNames,
+        IReadOnlyList<string> MechanicNames)
+    {
+        public string TypeName => TypeNames.FirstOrDefault() ?? DisplayName(GameType.Other);
+    }
     private static readonly IReadOnlyDictionary<long, string> Categories = new Dictionary<long, string>
     {
         [1001] = "Политика", [1002] = "Карточная", [1008] = "Морская", [1009] = "Абстрактная стратегия",
@@ -65,23 +68,60 @@ public static class BggTaxonomyCatalog
     public static string LocalizeMechanic(GameTaxonomyItem item) => Mechanics.GetValueOrDefault(item.BggId, item.Name);
 
     public static GameType MapGameType(IReadOnlyCollection<GameTaxonomyItem> subdomains)
+        => MapGameTypes(subdomains).FirstOrDefault(GameType.Other);
+
+    public static IReadOnlyList<GameType> MapGameTypes(IReadOnlyCollection<GameTaxonomyItem> subdomains)
     {
         var mapped = subdomains.Select(item => SubdomainTypes.GetValueOrDefault(item.BggId, GameType.Other)).ToHashSet();
-        return Priority.FirstOrDefault(mapped.Contains, GameType.Other);
+        return Priority.Where(mapped.Contains).ToArray();
     }
 
+    public static bool IsKnownSubdomain(long bggId) => SubdomainTypes.ContainsKey(bggId);
+
+    public static string SubdomainName(long bggId) => SubdomainTypes.GetValueOrDefault(bggId, GameType.Other) switch
+    {
+        GameType.Strategy => "Strategy Games", GameType.Family => "Family Games", GameType.Party => "Party Games",
+        GameType.Thematic => "Thematic Games", GameType.Abstract => "Abstract Games", GameType.War => "Wargames",
+        GameType.Children => "Children's Games", GameType.Customizable => "Customizable Games", _ => "Other"
+    };
+
     public static GameType InferLegacyType(IReadOnlyCollection<string>? types)
+        => InferLegacyTypes(types).FirstOrDefault(GameType.Other);
+
+    public static IReadOnlyList<GameType> InferLegacyTypes(IReadOnlyCollection<string>? types)
     {
         var normalized = (types ?? []).Select(x => x.Trim().ToLowerInvariant()).ToArray();
-        if (normalized.Any(x => x.Contains("children") || x.Contains("детск"))) return GameType.Children;
-        if (normalized.Any(x => x.Contains("party") || x.Contains("вечерин"))) return GameType.Party;
-        if (normalized.Any(x => x.Contains("family") || x.Contains("семейн"))) return GameType.Family;
-        if (normalized.Any(x => x.Contains("abstract") || x.Contains("абстракт"))) return GameType.Abstract;
-        if (normalized.Any(x => x.Contains("strategy") || x.Contains("стратег"))) return GameType.Strategy;
-        if (normalized.Any(x => x.Contains("thematic") || x.Contains("темат"))) return GameType.Thematic;
-        if (normalized.Any(x => x.Contains("war") || x.Contains("военн") || x.Contains("варгейм"))) return GameType.War;
-        if (normalized.Any(x => x.Contains("customizable") || x.Contains("collectible") || x.Contains("коллекцион"))) return GameType.Customizable;
-        return GameType.Other;
+        return Priority.Where(type => type switch
+        {
+            GameType.Children => normalized.Any(x => x.Contains("children") || x.Contains("детск")),
+            GameType.Party => normalized.Any(x => x.Contains("party") || x.Contains("вечерин")),
+            GameType.Family => normalized.Any(x => x.Contains("family") || x.Contains("семейн")),
+            GameType.Abstract => normalized.Any(x => x.Contains("abstract") || x.Contains("абстракт")),
+            GameType.Strategy => normalized.Any(x => x.Contains("strategy") || x.Contains("стратег")),
+            GameType.Thematic => normalized.Any(x => x.Contains("thematic") || x.Contains("темат")),
+            GameType.War => normalized.Any(x => x.Contains("war") || x.Contains("военн") || x.Contains("варгейм")),
+            GameType.Customizable => normalized.Any(x => x.Contains("customizable") || x.Contains("collectible") || x.Contains("коллекцион")),
+            _ => false
+        }).ToArray();
+    }
+
+    public static IReadOnlyList<GameType> ResolveTypes(GameType declaredType,
+        IReadOnlyCollection<GameTaxonomyItem>? subdomains,
+        IReadOnlyCollection<string>? legacyTypes = null,
+        IReadOnlyCollection<GameTaxonomyItem>? categories = null,
+        IReadOnlyCollection<string>? legacyCategories = null)
+    {
+        var mapped = subdomains is { Count: > 0 } ? MapGameTypes(subdomains) : [];
+        if (mapped.Count > 0) return mapped;
+        var legacy = InferLegacyTypes(legacyTypes);
+        if (legacy.Count > 0) return legacy;
+        if (declaredType != GameType.Other) return [declaredType];
+        if (categories?.Any(item => item.BggId == 1019) == true) return [GameType.War];
+        return (legacyCategories ?? []).Any(value =>
+            string.Equals(value.Trim(), "Wargame", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value.Trim(), "Варгейм", StringComparison.OrdinalIgnoreCase))
+            ? [GameType.War]
+            : [GameType.Other];
     }
 
     public static GameType ResolveType(GameType declaredType,
@@ -90,28 +130,19 @@ public static class BggTaxonomyCatalog
         IReadOnlyCollection<GameTaxonomyItem>? categories = null,
         IReadOnlyCollection<string>? legacyCategories = null)
     {
-        var mapped = subdomains is { Count: > 0 } ? MapGameType(subdomains) : GameType.Other;
-        if (mapped != GameType.Other) return mapped;
-        if (declaredType != GameType.Other) return declaredType;
-        var legacyType = InferLegacyType(legacyTypes);
-        if (legacyType != GameType.Other) return legacyType;
-        if (categories?.Any(item => item.BggId == 1019) == true) return GameType.War;
-        return (legacyCategories ?? []).Any(value =>
-            string.Equals(value.Trim(), "Wargame", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value.Trim(), "Варгейм", StringComparison.OrdinalIgnoreCase))
-            ? GameType.War
-            : GameType.Other;
+        return ResolveTypes(declaredType, subdomains, legacyTypes, categories, legacyCategories)[0];
     }
 
     public static Presentation Present(ClubCollectionGame game) => new(
-        DisplayName(ResolveType(game.Type, game.Subdomains, game.Types, game.CategoryItems, game.Categories)),
+        ResolveTypes(game.Type, game.Subdomains, game.Types, game.CategoryItems, game.Categories)
+            .Select(DisplayName).Distinct().ToArray(),
         (game.CategoryItems?.Count > 0
             ? game.CategoryItems.Select(LocalizeCategory)
             : game.Categories ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
         (game.Mechanics ?? []).Select(LocalizeMechanic).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 
     public static Presentation Present(Gatherings.GatheringGameSnapshot game) => new(
-        DisplayName(game.Type),
+        [DisplayName(game.Type)],
         (game.Categories ?? []).Select(LocalizeCategory).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
         (game.Mechanics ?? []).Select(LocalizeMechanic).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
+using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Tests;
@@ -188,6 +189,31 @@ public sealed class BoardGameGeekClientTests
             details.Expansions,
             expansion => Assert.Equal(231965, expansion.BggId),
             expansion => Assert.Equal(247030, expansion.BggId));
+    }
+
+    [Fact]
+    public async Task GetGameDetailsAsync_ReadsSubdomainsFromCurrentRankPayload()
+    {
+        var handler = new StubHttpMessageHandler(_ => XmlResponse(HttpStatusCode.OK, """
+            <items><item type="boardgame" id="170561">
+              <name type="primary" value="Valeria: Card Kingdoms" />
+              <link type="boardgamecategory" id="1002" value="Card Game" />
+              <statistics><ratings><ranks>
+                <rank type="subtype" id="1" name="boardgame" friendlyname="Board Game Rank" value="672" />
+                <rank type="family" id="5497" name="strategygames" friendlyname="Strategy Game Rank" value="437" />
+                <rank type="family" id="5499" name="familygames" friendlyname="Family Game Rank" value="152" />
+              </ranks></ratings></statistics>
+            </item></items>
+            """));
+        var client = CreateClient(handler);
+
+        var details = await client.GetGameDetailsAsync(170561, CancellationToken.None);
+
+        Assert.NotNull(details);
+        Assert.Equal([5499L, 5497L], details.Game.Subdomains!.Select(value => value.BggId));
+        Assert.Equal([GameType.Family, GameType.Strategy],
+            BggTaxonomyCatalog.MapGameTypes(details.Game.Subdomains!));
+        Assert.Equal(GameType.Family, details.Game.Type);
     }
 
     [Fact]

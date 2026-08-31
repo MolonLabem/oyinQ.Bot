@@ -45,6 +45,8 @@ public sealed class CatalogMetadataTests
         Assert.Equal("Скрытые роли", BggTaxonomyCatalog.LocalizeMechanic(new(2891, "Hidden Roles")));
         Assert.Equal("Unknown category", BggTaxonomyCatalog.LocalizeCategory(new(999999, "Unknown category")));
         Assert.Equal(GameType.Strategy, BggTaxonomyCatalog.MapGameType([new(5497, "Strategy Games")]));
+        Assert.Equal([GameType.Family, GameType.Strategy], BggTaxonomyCatalog.MapGameTypes(
+            [new(5497, "Strategy Games"), new(5499, "Family Games")]));
         Assert.Equal(GameType.Thematic, BggTaxonomyCatalog.ResolveType(
             GameType.Other,
             [new(5496, "Thematic Games")],
@@ -63,8 +65,10 @@ public sealed class CatalogMetadataTests
     public void SharedFilter_CombinesPlayerTypeAndCategory()
     {
         var game = Game() with { MinPlayers = 2, MaxPlayers = 4, Type = GameType.Strategy,
+            Subdomains = [new(5499, "Family Games"), new(5497, "Strategy Games")],
             CategoryItems = [new(1021, "Economic")] };
         Assert.True(GameCatalogService.Matches(game, new CatalogQuery(null, 3, [GameType.Strategy], [1021], null)));
+        Assert.True(GameCatalogService.Matches(game, new CatalogQuery(null, 3, [GameType.Family], [1021], null)));
         Assert.False(GameCatalogService.Matches(game, new CatalogQuery(null, 5, [GameType.Strategy], [1021], null)));
         Assert.False(GameCatalogService.Matches(game, new CatalogQuery(null, 3, [GameType.Party], [1021], null)));
         Assert.False(GameCatalogService.Matches(game, new CatalogQuery(null, 3, [GameType.Strategy], [999], null)));

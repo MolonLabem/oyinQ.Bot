@@ -164,7 +164,7 @@ export function GamePicker({
 
 export function GameMeta({ game, compact = false }: { game: ClubGame; compact?: boolean }) {
   const players = game.minPlayers && game.maxPlayers ? `${game.minPlayers}–${game.maxPlayers} игроков` : undefined;
-  const tags = [game.typeName, ...(game.categoryNames ?? [])].filter((value): value is string => Boolean(value)).slice(0, compact ? 3 : 6);
+  const tags = (game.typeNames?.length ? game.typeNames : [game.typeName]).filter((value): value is string => Boolean(value));
   if (!players && !tags.length) return compact ? <small>Метаданные появятся после выбора</small> : null;
   return <span className={`game-meta ${compact ? "compact" : ""}`}>
     {players && <small>{players}{game.bestPlayers ? ` · лучше: ${game.bestPlayers}` : ""}</small>}

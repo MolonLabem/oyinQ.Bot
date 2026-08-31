@@ -23,7 +23,8 @@ internal sealed record AddManualContributionRequest(string CommunityKey, string 
     IReadOnlyCollection<long>? ExpansionBggIds);
 internal sealed record CampCatalogResponse(long BggId, string ItemType, long? ParentBggId,
     string Name, string? ThumbnailImageUrl, string? ImageUrl, int? MinPlayers, int? MaxPlayers,
-    string? BestPlayers, GameType Type, string TypeName, IReadOnlyList<string> CategoryNames,
+    string? BestPlayers, GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
+    IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames, int CopyCount,
     IReadOnlyList<CampCatalogProvider> Providers, IReadOnlyList<ClubCollectionExpansion> Expansions,
     bool IsInBaseCollection, bool HasCommittedProvider, bool NeedsProviderCoordination);
@@ -346,7 +347,8 @@ internal static class CampEndpoints
         return Results.Ok(effective.Select(x => { var metadata = BggTaxonomyCatalog.Present(x.Game); return new CampCatalogResponse(
             x.Game.BggId, CampContributionItemType.BaseGame.ToString(), null, x.Game.Name,
             x.Game.ThumbnailImageUrl, x.Game.ImageUrl, x.Game.MinPlayers, x.Game.MaxPlayers,
-            x.Game.BestPlayers, x.Game.Type, metadata.TypeName, metadata.CategoryNames, metadata.MechanicNames,
+            x.Game.BestPlayers, x.Game.Type, metadata.TypeName, metadata.TypeNames,
+            metadata.CategoryNames, metadata.MechanicNames,
             (x.IsInBaseCollection ? 1 : 0) + x.Providers.Count, x.Providers,
             x.Game.Expansions, x.IsInBaseCollection,
             x.Providers.Any(p => p.Commitment == CampBringCommitment.Bringing),

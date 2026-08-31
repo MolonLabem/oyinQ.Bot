@@ -10,13 +10,15 @@ public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollect
     IReadOnlyCollection<long> CategoryIds, string? Sort);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
 public sealed record GameListItemResponse(long BggId, string Name, string? ThumbnailImageUrl,
-    GameType Type, string TypeName, int? MinPlayers, int? MaxPlayers, string? BestPlayers,
-    IReadOnlyList<string> CategoryNames, string AvailabilitySummary, bool IsDefinitelyAvailable,
+    GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
+    int? MinPlayers, int? MaxPlayers, string? BestPlayers,
+    string AvailabilitySummary, bool IsDefinitelyAvailable,
     bool NeedsProviderCoordination);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider);
 public sealed record GameDetailsResponse(long BggId, string Name, string? ImageUrl, string? Description,
-    int? YearPublished, GameType Type, string TypeName, int? MinPlayers, int? MaxPlayers, string? BestPlayers,
+    int? YearPublished, GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
+    int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     int? MinPlayTimeMinutes, int? MaxPlayTimeMinutes, int? MinAge,
     IReadOnlyList<LocalizedTaxonomyItem> Categories, IReadOnlyList<LocalizedTaxonomyItem> Mechanics,
     IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability);
@@ -47,7 +49,9 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         var categories = effective.SelectMany(value => value.Game.CategoryItems ?? [])
             .DistinctBy(value => value.BggId).OrderBy(value => BggTaxonomyCatalog.LocalizeCategory(value))
             .Select(value => new LocalizedTaxonomyItem(value.BggId, BggTaxonomyCatalog.LocalizeCategory(value))).ToArray();
-        var types = effective.Select(value => value.Game.Type).Distinct().Order()
+        var types = effective.SelectMany(value => BggTaxonomyCatalog.ResolveTypes(value.Game.Type,
+                value.Game.Subdomains, value.Game.Types, value.Game.CategoryItems, value.Game.Categories))
+            .Distinct().Order()
             .Select(value => new KeyValuePair<GameType, string>(value, BggTaxonomyCatalog.DisplayName(value))).ToArray();
         return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types));
     }
@@ -58,8 +62,9 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         var value = (await LoadAsync(communityKey, mode, telegramUserId, cancellationToken))
             .SingleOrDefault(x => x.Game.BggId == bggId) ?? throw new KeyNotFoundException("Игра отсутствует в каталоге.");
         var game = value.Game;
+        var presentation = BggTaxonomyCatalog.Present(game);
         return new GameDetailsResponse(game.BggId, game.Name, game.ImageUrl ?? game.ThumbnailImageUrl,
-            game.Description, game.YearPublished, game.Type, BggTaxonomyCatalog.DisplayName(game.Type),
+            game.Description, game.YearPublished, game.Type, presentation.TypeName, presentation.TypeNames,
             game.MinPlayers, game.MaxPlayers, game.BestPlayers, game.MinPlayTimeMinutes,
             game.MaxPlayTimeMinutes, game.MinAge,
             (game.CategoryItems ?? []).Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeCategory(x))).ToArray(),
@@ -92,17 +97,18 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         var coordination = !value.IsInBaseCollection && value.Providers.Count > 1 && !committed;
         var summary = value.IsInBaseCollection ? "Есть в коллекции клуба" : committed ? "Точно будет"
             : coordination ? "Нужно решить, кто привезёт" : value.Providers.Count > 0 ? "Можно привезти" : string.Empty;
+        var presentation = BggTaxonomyCatalog.Present(value.Game);
         return new GameListItemResponse(value.Game.BggId, value.Game.Name, value.Game.ThumbnailImageUrl,
-            value.Game.Type, BggTaxonomyCatalog.DisplayName(value.Game.Type), value.Game.MinPlayers,
-            value.Game.MaxPlayers, value.Game.BestPlayers,
-            BggTaxonomyCatalog.Present(value.Game).CategoryNames.Take(2).ToArray(), summary,
+            value.Game.Type, presentation.TypeName, presentation.TypeNames, value.Game.MinPlayers,
+            value.Game.MaxPlayers, value.Game.BestPlayers, summary,
             value.IsInBaseCollection || committed, coordination);
     }
 
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)
     {
         if (query.Players is { } players && !(game.MinPlayers <= players && game.MaxPlayers >= players)) return false;
-        if (query.Types.Count > 0 && !query.Types.Contains(game.Type)) return false;
+        if (query.Types.Count > 0 && !BggTaxonomyCatalog.ResolveTypes(game.Type, game.Subdomains,
+                game.Types, game.CategoryItems, game.Categories).Any(query.Types.Contains)) return false;
         return query.CategoryIds.Count == 0
             || query.CategoryIds.All(id => game.CategoryItems?.Any(x => x.BggId == id) == true);
     }

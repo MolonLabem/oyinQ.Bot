@@ -373,7 +373,7 @@ public sealed class BoardGameGeekClient(
             return null;
         }
 
-        var subdomains = ReadTaxonomy(item, "boardgamesubdomain");
+        var subdomains = ReadSubdomains(item);
         var categories = ReadTaxonomy(item, "boardgamecategory");
         var mechanics = ReadTaxonomy(item, "boardgamemechanic");
         return new ExternalGame(
@@ -418,6 +418,18 @@ public sealed class BoardGameGeekClient(
         .DistinctBy(value => value.BggId)
         .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
         .ToArray();
+
+    private static IReadOnlyList<GameTaxonomyItem> ReadSubdomains(XElement item)
+    {
+        var direct = ReadTaxonomy(item, "boardgamesubdomain");
+        var ranked = item.Descendants("rank")
+            .Where(rank => string.Equals((string?)rank.Attribute("type"), "family", StringComparison.OrdinalIgnoreCase))
+            .Select(rank => ReadLongAttribute(rank, "id"))
+            .Where(id => id is > 0 && BggTaxonomyCatalog.IsKnownSubdomain(id.Value))
+            .Select(id => new GameTaxonomyItem(id!.Value, BggTaxonomyCatalog.SubdomainName(id.Value)));
+        return direct.Concat(ranked).DistinctBy(value => value.BggId)
+            .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
 
     internal static string? NormalizeDescription(string? value)
     {

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
+using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.MiniApp;
@@ -41,7 +42,24 @@ internal static class BggEndpoints
         try
         {
             var details = await client.GetGameDetailsAsync(id.Value, cancellationToken);
-            return details is null ? Results.NotFound() : Results.Ok(details);
+            if (details is null) return Results.NotFound();
+            var game = details.Game;
+            var collectionGame = new ClubCollectionGame(game.BggId!.Value, game.Name, game.ThumbnailImageUrl,
+                game.ImageUrl, game.MinPlayers, game.MaxPlayers, game.BestPlayers, [], game.Types,
+                game.Categories, game.Description, game.YearPublished, game.MinPlayTimeMinutes,
+                game.MaxPlayTimeMinutes, game.MinAge, game.Type, game.Subdomains, game.CategoryItems,
+                game.Mechanics);
+            var metadata = BggTaxonomyCatalog.Present(collectionGame);
+            return Results.Ok(new
+            {
+                Game = new { collectionGame.BggId, collectionGame.Name, collectionGame.ThumbnailImageUrl,
+                    collectionGame.ImageUrl, collectionGame.MinPlayers, collectionGame.MaxPlayers,
+                    collectionGame.BestPlayers, collectionGame.Description, collectionGame.YearPublished,
+                    collectionGame.MinPlayTimeMinutes, collectionGame.MaxPlayTimeMinutes, collectionGame.MinAge,
+                    collectionGame.Type, metadata.TypeName, metadata.TypeNames, metadata.CategoryNames,
+                    metadata.MechanicNames, collectionGame.CategoryItems, collectionGame.Mechanics },
+                details.Expansions
+            });
         }
         catch (HttpRequestException exception)
         {
