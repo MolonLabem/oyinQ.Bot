@@ -22,13 +22,13 @@ export function GatheringsPage({ community, bggAvailable, initialGatheringId, on
   useEffect(() => telegram.back(screen !== "list", () => { setScreen("list"); setSelected(undefined); }), [screen]);
   useEffect(() => { if (initialGatheringId) onInitialConsumed(); }, []);
   if (screen === "create") return <CreateGathering community={community} bggAvailable={bggAvailable} onDone={() => setScreen("list")} editRegistration={editRegistration} />;
-  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => setScreen("list")} editRegistration={editRegistration} />;
+  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => setScreen("list")} onCancelled={() => { setView("history"); setHistoryFilter("cancelled"); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} />;
   return <GatheringList community={community} view={view} setView={setView} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} open={id => { setSelected(id); setScreen("detail"); }} create={() => setScreen("create")} />;
 }
 
 function GatheringList({ community, view, setView, historyFilter, setHistoryFilter, open, create }: { community: Community; view: "upcoming" | "history"; setView: (view: "upcoming" | "history") => void; historyFilter: "all" | "completed" | "cancelled"; setHistoryFilter: (filter: "all" | "completed" | "cancelled") => void; open: (id: string) => void; create: () => void }) {
   const filterQuery = view === "history" && historyFilter !== "all" ? `&status=${historyFilter}` : "";
-  const state = useAsync(() => api<GatheringListItem[]>(`/gatherings?community=${encodeURIComponent(community.key)}&view=${view}${filterQuery}`), [community.key, view, historyFilter]);
+  const state = useAsync(() => api<GatheringListItem[]>(`/gatherings?community=${encodeURIComponent(community.key)}&view=${view}${filterQuery}`, { cache: "no-store" }), [community.key, view, historyFilter]);
   return <Page title="Сборы" subtitle={community.name} actions={<button className="primary" onClick={create}>Создать сбор</button>}>
     <div className="segmented"><button className={view === "upcoming" ? "active" : ""} onClick={() => setView("upcoming")}>Предстоящие</button><button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>История</button></div>
     {view === "history" && <div className="segmented"><button className={historyFilter === "all" ? "active" : ""} onClick={() => setHistoryFilter("all")}>Все</button><button className={historyFilter === "completed" ? "active" : ""} onClick={() => setHistoryFilter("completed")}>Сыграны</button><button className={historyFilter === "cancelled" ? "active" : ""} onClick={() => setHistoryFilter("cancelled")}>Отменены</button></div>}
@@ -80,10 +80,10 @@ function CreateGathering({ community, bggAvailable, onDone, editRegistration }: 
   </Page>;
 }
 
-function GatheringDetails({ community, id, onBack, editRegistration }: { community: Community; id: string; onBack: () => void; editRegistration: () => void }) {
+function GatheringDetails({ community, id, onBack, onCancelled, editRegistration }: { community: Community; id: string; onBack: () => void; onCancelled: () => void; editRegistration: () => void }) {
   const state = useAsync(() => api<GatheringDetail>(`/gatherings/${id}?community=${encodeURIComponent(community.key)}`), [community.key, id]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [attendanceRequired, setAttendanceRequired] = useState(false); const [editing, setEditing] = useState(false); const [cancelling, setCancelling] = useState(false); const [cancellationReason, setCancellationReason] = useState("");
-  async function action(path: string, reason?: string) { setBusy(true); setError(undefined); setAttendanceRequired(false); try { await api(`/gatherings/${id}/${path}`, json("POST", { communityKey: community.key, reason })); telegram.success(({ join: "Вы присоединились", leave: "Вы покинули сбор", close: "Запись закрыта", reopen: "Запись открыта", cancel: "Сбор отменён", "publication/retry": "Объявление опубликовано" } as Record<string, string>)[path] ?? "Изменения сохранены"); setCancelling(false); state.reload(); } catch (e) { setAttendanceRequired(e instanceof ApiError && e.code === "camp_attendance_date_required"); setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  async function action(path: string, reason?: string) { setBusy(true); setError(undefined); setAttendanceRequired(false); try { await api(`/gatherings/${id}/${path}`, json("POST", { communityKey: community.key, reason })); telegram.success(({ join: "Вы присоединились", leave: "Вы покинули сбор", close: "Запись закрыта", reopen: "Запись открыта", cancel: "Сбор отменён", "publication/retry": "Объявление опубликовано" } as Record<string, string>)[path] ?? "Изменения сохранены"); setCancelling(false); if (path === "cancel") onCancelled(); else state.reload(); } catch (e) { setAttendanceRequired(e instanceof ApiError && e.code === "camp_attendance_date_required"); setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
   if (state.loading) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<button onClick={onBack}>Назад</button>}><ErrorState message={state.error ?? "Сбор не найден"} /></Page>;
   const value = state.data;
   const canChangeLifecycle = value.canManage && !value.hasStarted && value.status !== "Completed" && value.status !== "Cancelled";

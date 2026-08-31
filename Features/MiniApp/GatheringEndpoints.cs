@@ -49,6 +49,7 @@ internal static class GatheringEndpoints
         if (!GatheringListQuery.TryParse(view, status, out var parsedView, out var parsedFilter))
             return MiniAppEndpointSupport.Problem("invalid_gathering_view",
                 "Поддерживаются view=upcoming или view=history; фильтры истории: completed, cancelled.", 400);
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
         var query = dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
             .Include(x => x.Participants).Include(x => x.OrganizerParticipant);
         var values = await GatheringListQuery.Apply(query, parsedView, parsedFilter, timeProvider.GetUtcNow())
