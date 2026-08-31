@@ -21,11 +21,21 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal("https://images.example/thumb.jpg", card.ImageUrl);
         Assert.Equal("https://images.example/large.jpg", detail.ImageUrl);
         Assert.Equal("Могу объяснить правила", card.RulesText);
+        Assert.Equal("✅ Есть места", card.StatusText);
         Assert.Equal("Sardar", card.OrganizerName);
         Assert.True(card.CanTeachRules);
         Assert.True(detail.CanTeachRules);
         Assert.Equal(2, detail.ConfirmedPlayers);
         Assert.Equal(["Hellas & Elysium", "Prelude"], detail.Expansions);
+    }
+
+    [Fact]
+    public void RecruitingStatusUsesConciseProductCopy()
+    {
+        var gathering = CreateGathering(canTeachRules: true);
+        gathering.Status = GatheringStatus.Recruiting;
+
+        Assert.Equal("🟡 Идёт набор", new GatheringPresentationService().BuildCard(gathering, Community).StatusText);
     }
 
     [Fact]

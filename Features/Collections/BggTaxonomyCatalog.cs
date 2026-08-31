@@ -84,8 +84,18 @@ public static class BggTaxonomyCatalog
         return GameType.Other;
     }
 
+    public static GameType ResolveType(GameType declaredType,
+        IReadOnlyCollection<GameTaxonomyItem>? subdomains,
+        IReadOnlyCollection<string>? legacyTypes = null)
+    {
+        var mapped = subdomains is { Count: > 0 } ? MapGameType(subdomains) : GameType.Other;
+        if (mapped != GameType.Other) return mapped;
+        if (declaredType != GameType.Other) return declaredType;
+        return InferLegacyType(legacyTypes);
+    }
+
     public static Presentation Present(ClubCollectionGame game) => new(
-        DisplayName(game.Type),
+        DisplayName(ResolveType(game.Type, game.Subdomains, game.Types)),
         (game.CategoryItems?.Count > 0
             ? game.CategoryItems.Select(LocalizeCategory)
             : game.Categories ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),

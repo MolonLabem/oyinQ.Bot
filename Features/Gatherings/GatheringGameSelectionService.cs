@@ -51,7 +51,15 @@ public sealed class GatheringGameSelectionService(
             game.BestPlayers,
             expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
             "bgg",
-            expansions);
+            expansions,
+            game.Description,
+            game.YearPublished,
+            game.MinPlayTimeMinutes,
+            game.MaxPlayTimeMinutes,
+            game.MinAge,
+            BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types),
+            game.CategoryItems,
+            game.Mechanics);
     }
 
     public async Task<GatheringGameSnapshot> FromCampCatalogAsync(

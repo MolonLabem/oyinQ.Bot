@@ -173,8 +173,8 @@ public sealed class GatheringPresentationService
 
     private static string StatusText(GatheringStatus status) => status switch
     {
-        GatheringStatus.Recruiting => "🟡 Пока не хватает игроков",
-        GatheringStatus.Ready => "✅ Мест достаточно",
+        GatheringStatus.Recruiting => "🟡 Идёт набор",
+        GatheringStatus.Ready => "✅ Есть места",
         GatheringStatus.Full => "🔒 Свободных мест нет",
         GatheringStatus.Closed => "🔒 Запись закрыта",
         GatheringStatus.Completed => "✅ Сбор завершён",

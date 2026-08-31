@@ -46,7 +46,7 @@ public sealed record GatheringGameSnapshot(
             game.MinPlayTimeMinutes,
             game.MaxPlayTimeMinutes,
             game.MinAge,
-            game.Type,
+            BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types),
             game.CategoryItems,
             game.Mechanics);
 }

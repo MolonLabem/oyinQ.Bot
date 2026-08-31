@@ -10,10 +10,10 @@ import { defaultImportSelection, importItemKey, isImportItemSelectable } from ".
 
 type RegistrationState = { campStatus: string; startDate?: string; endDate?: string; availableDates: string[]; baseGameIds: number[]; registration?: { registered: boolean; daysStaying: number; selectedDates: string[]; suggestedDates: string[]; needsAccommodation: boolean; city?: string; displayName?: string } };
 
-export function MyGamesPage({ community, bggAvailable, editRequest = 0 }: { community: Community; bggAvailable: boolean; editRequest?: number }) {
+export function MyGamesPage({ community, bggAvailable, editRequest = 0, onEditRequestConsumed }: { community: Community; bggAvailable: boolean; editRequest?: number; onEditRequestConsumed?: () => void }) {
   const [editingRegistration, setEditingRegistration] = useState(false);
   const registration = useAsync(() => api<RegistrationState>(`/camp/registration?community=${encodeURIComponent(community.key)}`), [community.key]);
-  useEffect(() => { if (editRequest > 0) setEditingRegistration(true); }, [editRequest]);
+  useEffect(() => { if (editRequest > 0) { setEditingRegistration(true); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
   if (editingRegistration) return registration.error ? <Page title="Регистрация на кэмп" actions={<button onClick={() => setEditingRegistration(false)}>Назад</button>}><ErrorState message={registration.error} retry={registration.reload} /></Page> : registration.data ? <Registration community={community} state={registration.data} done={() => { registration.reload(); setEditingRegistration(false); }} cancel={() => setEditingRegistration(false)} /> : <Page title="Регистрация на кэмп"><Loading /></Page>;
   return <Contributions community={community} bggAvailable={bggAvailable} registration={registration.data} editRegistration={() => setEditingRegistration(true)} />;
 }

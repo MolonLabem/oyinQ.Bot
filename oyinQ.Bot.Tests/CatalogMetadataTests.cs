@@ -45,6 +45,10 @@ public sealed class CatalogMetadataTests
         Assert.Equal("Скрытые роли", BggTaxonomyCatalog.LocalizeMechanic(new(2891, "Hidden Roles")));
         Assert.Equal("Unknown category", BggTaxonomyCatalog.LocalizeCategory(new(999999, "Unknown category")));
         Assert.Equal(GameType.Strategy, BggTaxonomyCatalog.MapGameType([new(5497, "Strategy Games")]));
+        Assert.Equal(GameType.Thematic, BggTaxonomyCatalog.ResolveType(
+            GameType.Other,
+            [new(5496, "Thematic Games")],
+            ["Other"]));
         Assert.Equal(GameType.Family, BggTaxonomyCatalog.InferLegacyType(["Family Games"]));
         Assert.Equal(GameType.War, BggTaxonomyCatalog.InferLegacyType(["Wargames"]));
     }

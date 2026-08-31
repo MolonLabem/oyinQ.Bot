@@ -85,6 +85,9 @@ public sealed class ClubCampDomainTests
 
         Assert.Equal(42, snapshot.BggId);
         Assert.Equal(99, Assert.Single(snapshot.SelectedExpansions).BggId);
+        Assert.Equal(GameType.Thematic, snapshot.Type);
+        Assert.Equal("Adventure", Assert.Single(snapshot.Categories!).Name);
+        Assert.Equal("Cooperative Game", Assert.Single(snapshot.Mechanics!).Name);
         Assert.Empty(dbContext.ChangeTracker.Entries());
     }
 
@@ -168,7 +171,12 @@ public sealed class ClubCampDomainTests
     {
         public Task<BggGameDetails?> GetGameDetailsAsync(long bggId, CancellationToken cancellationToken) =>
             Task.FromResult<BggGameDetails?>(new(
-                new ExternalGame(bggId, "Transient", 2, 4, "3", null, "https://example/thumb", "https://example/image"),
+                new ExternalGame(bggId, "Transient", 2, 4, "3", null,
+                    "https://example/thumb", "https://example/image",
+                    Types: ["Thematic"], Categories: ["Adventure"], Description: "Description",
+                    Subdomains: [new(5496, "Thematic Games")],
+                    CategoryItems: [new(1022, "Adventure")],
+                    Mechanics: [new(2023, "Cooperative Game")], Type: GameType.Thematic),
                 [new BggExpansion(99, "Expansion")]));
 
         public Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(string query, CancellationToken cancellationToken) => throw new NotSupportedException();
