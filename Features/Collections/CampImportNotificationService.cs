@@ -42,7 +42,7 @@ public sealed class CampImportNotificationService(ITelegramBotClient botClient, 
         foreach (var pair in result.Skipped.OrderBy(x => x.Key))
             lines.Add(pair.Key switch
             {
-                Data.Entities.CampImportSkipReason.AlreadyInBaseCollection => $"{pair.Value} уже есть в базовой коллекции кэмпа.",
+                Data.Entities.CampImportSkipReason.AlreadyInBaseCollection => $"{pair.Value} уже есть в общей коллекции кэмпа.",
                 Data.Entities.CampImportSkipReason.AlreadyAddedManually => $"{pair.Value} вы уже добавили вручную.",
                 Data.Entities.CampImportSkipReason.InvalidOrUnsupportedItem => $"{pair.Value} не поддерживаются.",
                 _ => $"Для {pair.Value} недостаточно данных BGG."

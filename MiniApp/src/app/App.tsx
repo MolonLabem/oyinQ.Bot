@@ -37,7 +37,7 @@ export function App() {
 }
 
 function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {
-  return <Page title="Выберите сообщество" subtitle="Ваш контекст сохраняется при переходах">{communities.length === 0 ? <Notice kind="warning">Не удалось подтвердить членство ни в одном активном сообществе.{admin && <> Откройте <a href="?admin=1">администрирование</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><span className={`mode-icon ${c.mode.toLowerCase()}`}>{c.mode === "Club" ? "♣" : "⛺"}</span><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}<PrivacyLink /></Page>;
+  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><span className={`mode-icon ${c.mode.toLowerCase()}`}>{c.mode === "Club" ? "♣" : "⛺"}</span><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}<PrivacyLink /></Page>;
 }
 
 function PrivacyLink() {

@@ -148,7 +148,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
             var baseCollectionJson = await dbContext.Camps.AsNoTracking()
                 .Where(x => x.Id == campId).Select(x => x.BaseCollectionJson).SingleAsync(cancellationToken);
             if (ClubCollectionSerializer.Deserialize(baseCollectionJson).Games.Any(x => x.BggId == bggId))
-                throw new InvalidOperationException("Эта игра уже есть в базовой коллекции кэмпа. Личную копию можно добавить только явно при разборе импорта BGG.");
+                throw new InvalidOperationException("Эта игра уже есть в общей коллекции кэмпа. Добавить её как личную можно при импорте коллекции BGG.");
         }
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,

@@ -39,7 +39,7 @@ internal static class ProfileEndpoints
             body.CommunityKey, cancellationToken);
         var displayName = body.DisplayName?.Trim();
         if (displayName?.Length > 128)
-            return MiniAppEndpointSupport.Problem("validation", "Имя в профиле не может быть длиннее 128 символов.");
+            return MiniAppEndpointSupport.Problem("validation", "Имя не должно быть длиннее 128 символов.");
         participant.PreferredDisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName;
         participant.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);

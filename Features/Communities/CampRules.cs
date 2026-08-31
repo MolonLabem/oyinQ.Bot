@@ -60,7 +60,7 @@ public static class CampRules
     {
         if (status != CampStatus.Draft)
             throw new InvalidOperationException(
-                "Базовую коллекцию можно менять только пока кэмп является черновиком.");
+                "Общую коллекцию кэмпа можно менять только пока он в черновике.");
     }
 
     public static void EnsureCanClose(int futureActiveGatheringCount)

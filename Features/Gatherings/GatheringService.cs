@@ -110,7 +110,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             .Include(value => value.OrganizerParticipant)
             .Include(value => value.Participants).ThenInclude(value => value.Participant)
             .SingleOrDefaultAsync(cancellationToken)
-        ?? throw new KeyNotFoundException("Сбор не найден в выбранном контексте.");
+        ?? throw new KeyNotFoundException("Сбор не найден в этом сообществе.");
 
     private async Task<Participant> RequireContextParticipantAsync(
         GameGathering gathering,

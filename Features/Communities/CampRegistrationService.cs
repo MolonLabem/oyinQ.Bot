@@ -91,7 +91,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         var normalized = displayName?.Trim();
         if (string.IsNullOrWhiteSpace(normalized)) return null;
         if (normalized.Length > 128)
-            throw new ArgumentException("Имя участника кэмпа не может быть длиннее 128 символов.");
+            throw new ArgumentException("Имя не должно быть длиннее 128 символов.");
         return normalized;
     }
 

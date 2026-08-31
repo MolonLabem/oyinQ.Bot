@@ -25,12 +25,12 @@ export function ProfilePage({ community }: { community: Community }) {
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
   if (profile.error) return <Page title="Профиль"><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
-  return <Page title="Профиль" subtitle="Единый профиль OyinQ">
+  return <Page title="Профиль" subtitle="Ваше имя для всех сообществ">
     <Card className="form-grid">
-      <Field label="Имя в OyinQ" hint="Используется в сборах, уведомлениях и во всех сообществах. Оставьте пустым, чтобы использовать имя из Telegram.">
+      <Field label="Имя" hint="Так вас будут видеть в сборах, уведомлениях и других сообществах. Если оставить поле пустым, возьмём имя из Telegram.">
         <input maxLength={128} value={name} onChange={event => setName(event.target.value)} placeholder={profile.data.telegramDisplayName} />
       </Field>
-      <div><span className="muted">Имя в Telegram</span><p>{profile.data.telegramDisplayName}{profile.data.telegramUsername ? ` · @${profile.data.telegramUsername}` : ""}</p></div>
+      <div><span className="muted">В Telegram</span><p>{profile.data.telegramDisplayName}{profile.data.telegramUsername ? ` · @${profile.data.telegramUsername}` : ""}</p></div>
       {error && <Notice kind="danger">{error}</Notice>}
       <button className="primary" disabled={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить профиль"}</button>
     </Card>
