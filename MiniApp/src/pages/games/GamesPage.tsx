@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import type { CatalogResponse, Community, GameDetails, GameListItem, GameType } from "../../api/types";
 import { Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
-import { useAsync } from "../../hooks/useAsync";
+import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { buildCatalogQuery, toggleValue } from "../../app/catalogQuery";
 
@@ -10,8 +10,9 @@ export function GamesPage({ community }: { community: Community }) {
   const [query, setQuery] = useState(""); const [players, setPlayers] = useState<number>();
   const [types, setTypes] = useState<GameType[]>([]); const [categories, setCategories] = useState<number[]>([]);
   const [sort, setSort] = useState("name"); const [filtersOpen, setFiltersOpen] = useState(false); const [selected, setSelected] = useState<number>();
-  const params = useMemo(() => buildCatalogQuery({ communityKey: community.key, search: query,
-    players, types, categories, sort }), [community.key, query, players, types, categories, sort]);
+  const debouncedQuery = useDebouncedValue(query, 400);
+  const params = useMemo(() => buildCatalogQuery({ communityKey: community.key, search: debouncedQuery,
+    players, types, categories, sort }), [community.key, debouncedQuery, players, types, categories, sort]);
   const state = useAsync(() => api<CatalogResponse>(`/catalog?${params}`), [params]);
   const activeFilters = (players ? 1 : 0) + types.length + categories.length;
   if (selected) return <GameDetail community={community} bggId={selected} back={() => setSelected(undefined)} />;
