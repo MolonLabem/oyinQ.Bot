@@ -12,28 +12,21 @@ public static class RollMoveRecoveryGenerator
         var options = BggOptions.FromConfiguration(configuration);
         if (!options.IsAvailable)
             throw new InvalidOperationException("BoardGameGeek__ApiToken is required to generate the recovery snapshot.");
-        var input = Argument(args, "--input=") ?? Path.Combine("Data", "Imports", "RollMove",
-            "club-collection.v1.json");
+        var username = Argument(args, "--username=") ?? "RollMoveClub";
         var output = Argument(args, "--output=") ?? Path.Combine("Data", "Imports", "RollMove",
             "club-collection.v2.json");
-        var original = ClubCollectionSerializer.Deserialize(await File.ReadAllTextAsync(input, cancellationToken));
         using var httpClient = new HttpClient { BaseAddress = new Uri("https://boardgamegeek.com"),
             Timeout = TimeSpan.FromSeconds(60) };
         var client = new BoardGameGeekClient(httpClient, Options.Create(options));
-        var enriched = new List<ClubCollectionGame>(original.Games.Count);
-        for (var index = 0; index < original.Games.Count; index++)
-        {
-            var current = original.Games[index];
-            var details = await client.GetGameDetailsAsync(current.BggId, cancellationToken)
-                ?? throw new InvalidOperationException($"BGG did not return reviewed game {current.BggId}.");
-            enriched.Add(ClubMetadataRefreshService.EnrichPreservingMembership(current, details));
-            if (index + 1 < original.Games.Count)
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-        }
-        var document = new ClubCollectionDocument(ClubCollectionDocument.CurrentVersion, enriched);
-        EnsureMembershipUnchanged(original, document);
+        var selection = await new CampBggImportService(client).LoadSelectionAsync(username, cancellationToken);
+        var merged = ClubBggImportService.Merge(ClubCollectionDocument.Empty, selection);
+        var document = merged.Document;
+        if (merged.OrphanExpansions > 0)
+            Console.WriteLine($"Excluded orphan expansions without an owned base game: {merged.OrphanExpansions}.");
         await File.WriteAllTextAsync(output, ClubCollectionSerializer.Serialize(document) + Environment.NewLine,
             cancellationToken);
+        Console.WriteLine($"Wrote {document.Games.Count} base games and "
+            + $"{document.Games.SelectMany(game => game.Expansions).Count()} expansion links from {username}.");
         return 0;
     }
 

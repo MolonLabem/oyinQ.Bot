@@ -112,6 +112,14 @@ public enum ClubMetadataRefreshStatus
     Failed = 3
 }
 
+public enum ClubBggImportStatus
+{
+    Queued = 0,
+    Running = 1,
+    Completed = 2,
+    Failed = 3
+}
+
 public enum CampBggImportStatus
 {
     Queued = 0,

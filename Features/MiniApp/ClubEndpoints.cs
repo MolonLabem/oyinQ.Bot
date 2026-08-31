@@ -10,6 +10,7 @@ namespace oyinQ.Bot.Features.MiniApp;
 internal sealed record ReplaceClubCollectionRequest(long ExpectedRevision, ClubCollectionDocument Document);
 internal sealed record AddClubGameRequest(long ExpectedRevision, string BggInput,
     IReadOnlyCollection<long>? ExpansionBggIds);
+internal sealed record QueueClubBggImportRequest(string BggInput);
 
 internal static class ClubEndpoints
 {
@@ -23,6 +24,8 @@ internal static class ClubEndpoints
         clubs.MapDelete("/{clubId:long}/games/{bggId:long}", RemoveAsync);
         clubs.MapPost("/{clubId:long}/metadata-refresh", QueueMetadataRefreshAsync);
         clubs.MapGet("/{clubId:long}/metadata-refresh/{publicId:guid}", GetMetadataRefreshAsync);
+        clubs.MapPost("/{clubId:long}/bgg-imports", QueueBggImportAsync);
+        clubs.MapGet("/{clubId:long}/bgg-imports/{publicId:guid}", GetBggImportAsync);
         return group;
     }
 
@@ -157,6 +160,26 @@ internal static class ClubEndpoints
     private static async Task<IResult> GetMetadataRefreshAsync(HttpRequest request, long clubId, Guid publicId,
         TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
         ClubMetadataRefreshService service, CancellationToken cancellationToken)
+    {
+        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        try { return Results.Ok(await service.GetAsync(publicId, clubId, cancellationToken)); }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> QueueBggImportAsync(HttpRequest request, long clubId,
+        QueueClubBggImportRequest body, TelegramMiniAppAuthenticator authenticator,
+        IAdministratorStore administrators, ClubBggImportService service, IOptions<BggOptions> bggOptions,
+        CancellationToken cancellationToken)
+    {
+        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (!bggOptions.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
+        try { return Results.Accepted(value: await service.QueueAsync(clubId, body.BggInput, cancellationToken)); }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> GetBggImportAsync(HttpRequest request, long clubId, Guid publicId,
+        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        ClubBggImportService service, CancellationToken cancellationToken)
     {
         if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
         try { return Results.Ok(await service.GetAsync(publicId, clubId, cancellationToken)); }

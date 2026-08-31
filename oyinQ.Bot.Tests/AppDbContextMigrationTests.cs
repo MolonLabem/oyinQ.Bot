@@ -151,6 +151,20 @@ public sealed class AppDbContextMigrationTests
         Assert.Equal(DeleteBehavior.Cascade, day.GetForeignKeys().Single().DeleteBehavior);
     }
 
+    [Fact]
+    public void ClubBggImports_ArePersistentAndHaveOneActiveJobPerClub()
+    {
+        using var dbContext = CreateDbContext();
+        var entity = dbContext.Model.FindEntityType(typeof(ClubBggImport));
+
+        Assert.NotNull(entity);
+        Assert.Contains("20260831174110_ClubBggUsernameImports", dbContext.Database.GetMigrations());
+        Assert.Equal(100, entity.FindProperty(nameof(ClubBggImport.BggUsername))?.GetMaxLength());
+        Assert.Contains(entity.GetIndexes(), index => index.IsUnique
+            && index.GetFilter() == "\"Status\" IN (0, 1)"
+            && index.Properties.Select(property => property.Name).SequenceEqual([nameof(ClubBggImport.ClubId)]));
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

@@ -6,7 +6,7 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 
 ## Current model
 
-- Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`.
+- Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`. Administrators can add a whole BGG Owned collection by username through a persisted additive job; it never removes existing games or selected expansions.
 - Camps have inclusive local dates, lifecycle status, scoped `CampRegistration` with exact `CampRegistrationDays`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`. `DaysStaying` is derived compatibility data, not attendance authority.
 - Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL.
 - Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.

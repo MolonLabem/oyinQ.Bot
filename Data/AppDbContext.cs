@@ -24,6 +24,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GameGatheringParticipant> GameGatheringParticipants => Set<GameGatheringParticipant>();
     public DbSet<CampBggImport> CampBggImports => Set<CampBggImport>();
     public DbSet<ClubMetadataRefresh> ClubMetadataRefreshes => Set<ClubMetadataRefresh>();
+    public DbSet<ClubBggImport> ClubBggImports => Set<ClubBggImport>();
     public DbSet<PendingTelegramPeerSelection> PendingTelegramPeerSelections => Set<PendingTelegramPeerSelection>();
     public DbSet<TelegramMessageCleanup> TelegramMessageCleanups => Set<TelegramMessageCleanup>();
     public DbSet<CollectionImport> CollectionImports => Set<CollectionImport>();
@@ -175,6 +176,20 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .HasDatabaseName("IX_ClubMetadataRefreshes_ActiveClub")
                 .HasFilter("\"Status\" IN (0, 1)");
             entity.Property(x => x.BggIdsJson).HasColumnType("jsonb");
+            entity.Property(x => x.Error).HasMaxLength(2000);
+            entity.HasOne(x => x.Club).WithMany().HasForeignKey(x => x.ClubId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ClubBggImport>(entity =>
+        {
+            entity.ToTable("ClubBggImports");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.PublicId).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.LeaseExpiresAt, x.CreatedAt });
+            entity.HasIndex(x => x.ClubId).IsUnique()
+                .HasDatabaseName("IX_ClubBggImports_ActiveClub")
+                .HasFilter("\"Status\" IN (0, 1)");
+            entity.Property(x => x.BggUsername).HasMaxLength(100);
             entity.Property(x => x.Error).HasMaxLength(2000);
             entity.HasOne(x => x.Club).WithMany().HasForeignKey(x => x.ClubId).OnDelete(DeleteBehavior.Cascade);
         });

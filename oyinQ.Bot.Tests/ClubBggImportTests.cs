@@ -1,0 +1,61 @@
+using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Collections;
+
+namespace oyinQ.Bot.Tests;
+
+public sealed class ClubBggImportTests
+{
+    [Fact]
+    public void Merge_IsAdditive_AndPreservesExistingExpansionSelections()
+    {
+        var current = new ClubCollectionDocument(2,
+        [
+            new ClubCollectionGame(10, "Old title", null, null, 1, 4, null,
+                [new ClubCollectionExpansion(100, "Kept")]),
+            new ClubCollectionGame(20, "Club only", null, null, 2, 4, null, [])
+        ]);
+        CampImportSelectionItem[] imported =
+        [
+            new(10, CampContributionItemType.BaseGame, null, "Fresh title", true,
+                Description: "Fresh metadata", Type: GameType.Strategy),
+            new(30, CampContributionItemType.BaseGame, null, "New game", true),
+            new(101, CampContributionItemType.Expansion, 10, "New expansion", true,
+                ParentBggIds: [10]),
+            new(102, CampContributionItemType.Expansion, 30, "Shared expansion", true,
+                ParentBggIds: [10, 30]),
+            new(103, CampContributionItemType.Expansion, 999, "Orphan", true,
+                ParentBggIds: [999])
+        ];
+
+        var result = ClubBggImportService.Merge(current, imported);
+
+        Assert.Equal(1, result.AddedGames);
+        Assert.Equal(3, result.AddedExpansions);
+        Assert.Equal(1, result.OrphanExpansions);
+        Assert.Contains(result.Document.Games, game => game.BggId == 20);
+        var refreshed = Assert.Single(result.Document.Games, game => game.BggId == 10);
+        Assert.Equal("Fresh title", refreshed.Name);
+        Assert.Equal("Fresh metadata", refreshed.Description);
+        Assert.Equal([100L, 101L, 102L], refreshed.Expansions.Select(x => x.BggId).Order());
+        Assert.Equal([102L], Assert.Single(result.Document.Games, game => game.BggId == 30)
+            .Expansions.Select(x => x.BggId));
+    }
+
+    [Fact]
+    public void Merge_NormalizesInvalidProviderMetadata()
+    {
+        var imported = new CampImportSelectionItem(10, CampContributionItemType.BaseGame, null,
+            "Omerta", true, Description: new string('x', 20_001), YearPublished: 0,
+            MinPlayTimeMinutes: 60, MaxPlayTimeMinutes: 30, MinAge: 200);
+
+        var game = Assert.Single(ClubBggImportService.Merge(ClubCollectionDocument.Empty, [imported])
+            .Document.Games);
+
+        Assert.Equal(20_000, game.Description?.Length);
+        Assert.Null(game.YearPublished);
+        Assert.Equal(30, game.MinPlayTimeMinutes);
+        Assert.Equal(60, game.MaxPlayTimeMinutes);
+        Assert.Null(game.MinAge);
+        ClubCollectionSerializer.Validate(new ClubCollectionDocument(2, [game]));
+    }
+}

@@ -26,7 +26,7 @@ The BGG-backed enrichment resolved 219 base games and 121 expansions. Twelve exp
 
 1. Resolve the remaining 22 review-only rows separately; do not infer IDs from translated names alone.
 2. Keep the server-side `BGG_API_TOKEN` outside source control. The BGG account password is never used or stored by OyinQ.
-3. Preview the `RollMoveClub` collection in Mini App administration. Review removals, metadata changes, and orphan expansions before applying it.
+3. Use the explicit BGG username import in Mini App administration when adding the account to a Club. It is additive: current games and selected expansions are retained.
 4. Generate the current-version recovery snapshot with a server-side BGG token:
 
    ```powershell
@@ -35,7 +35,7 @@ The BGG-backed enrichment resolved 219 base games and 121 expansions. Twelve exp
    Remove-Item Env:BoardGameGeek__ApiToken
    ```
 
-   The command enriches only the reviewed IDs, preserves every reviewed game/expansion membership relation, and fails if BGG omits a reviewed game. Audit `club-collection.v2.json` before making it the preferred recovery artifact.
+   The command reads the current Owned collection of `RollMoveClub`, writes current v2 metadata, links owned expansions through official BGG parent relationships, and reports excluded orphan expansions. Audit `club-collection.v2.json` before making it the preferred recovery artifact. Pass `--username=<name>` only when intentionally generating a snapshot for another BGG account.
 5. Normal metadata refresh updates PostgreSQL only and does not rewrite recovery files automatically.
 
 Do not commit the BGG password, email address, application token, browser profile, or uploader logs.
