@@ -58,13 +58,17 @@ public static class GatheringListQuery
                 .OrderBy(x => x.StartsAtUtc).ThenBy(x => x.Id);
         }
 
-        query = query.Where(x => x.Status == GatheringStatus.Completed
-            || x.Status == GatheringStatus.Cancelled);
         query = filter switch
         {
             GatheringHistoryFilter.Completed => query.Where(x => x.Status == GatheringStatus.Completed),
             GatheringHistoryFilter.Cancelled => query.Where(x => x.Status == GatheringStatus.Cancelled),
-            _ => query
+            _ => query.Where(x => x.Status == GatheringStatus.Completed
+                || x.Status == GatheringStatus.Cancelled
+                || (x.StartsAtUtc <= now
+                    && (x.Status == GatheringStatus.Recruiting
+                        || x.Status == GatheringStatus.Ready
+                        || x.Status == GatheringStatus.Full
+                        || x.Status == GatheringStatus.Closed)))
         };
         return query.OrderByDescending(x => x.StartsAtUtc).ThenByDescending(x => x.Id);
     }

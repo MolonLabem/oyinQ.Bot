@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { ApiError, api, json } from "../../api/client";
-import type { ClubGame, Community, GatheringDetail, GatheringListItem } from "../../api/types";
+import type { ClubGame, Community, GatheringDetail, GatheringListPage } from "../../api/types";
 import { Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker } from "../../components/GamePicker";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
+import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, initialGatheringListState, type GatheringHistoryFilter, type GatheringListState, type GatheringListView } from "./gatheringListState";
 
 function currentLocalMinute() {
   const now = new Date();
@@ -17,25 +18,26 @@ function isFutureLocal(value: string) { return Boolean(value) && new Date(value)
 export function GatheringsPage({ community, bggAvailable, initialGatheringId, onInitialConsumed, editRegistration }: { community: Community; bggAvailable: boolean; initialGatheringId?: string; onInitialConsumed: () => void; editRegistration: () => void }) {
   const [screen, setScreen] = useState<"list" | "create" | "detail">(initialGatheringId ? "detail" : "list");
   const [selected, setSelected] = useState<string | undefined>(initialGatheringId);
-  const [view, setView] = useState<"upcoming" | "history">("upcoming");
-  const [historyFilter, setHistoryFilter] = useState<"all" | "completed" | "cancelled">("all");
+  const [listState, setListState] = useState<GatheringListState>(initialGatheringListState);
   useEffect(() => telegram.back(screen !== "list", () => { setScreen("list"); setSelected(undefined); }), [screen]);
   useEffect(() => { if (initialGatheringId) onInitialConsumed(); }, []);
   if (screen === "create") return <CreateGathering community={community} bggAvailable={bggAvailable} onDone={() => setScreen("list")} editRegistration={editRegistration} />;
-  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => setScreen("list")} onCancelled={() => { setView("history"); setHistoryFilter("cancelled"); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} />;
-  return <GatheringList community={community} view={view} setView={setView} historyFilter={historyFilter} setHistoryFilter={setHistoryFilter} open={id => { setSelected(id); setScreen("detail"); }} create={() => setScreen("create")} />;
+  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => setScreen("list")} onCancelled={() => { setListState({ view: "history", historyFilter: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} />;
+  return <GatheringList community={community} listState={listState} setListState={setListState} open={id => { setSelected(id); setScreen("detail"); }} create={() => setScreen("create")} />;
 }
 
-function GatheringList({ community, view, setView, historyFilter, setHistoryFilter, open, create }: { community: Community; view: "upcoming" | "history"; setView: (view: "upcoming" | "history") => void; historyFilter: "all" | "completed" | "cancelled"; setHistoryFilter: (filter: "all" | "completed" | "cancelled") => void; open: (id: string) => void; create: () => void }) {
-  const filterQuery = view === "history" && historyFilter !== "all" ? `&status=${historyFilter}` : "";
-  const state = useAsync(() => api<GatheringListItem[]>(`/gatherings?community=${encodeURIComponent(community.key)}&view=${view}${filterQuery}`, { cache: "no-store" }), [community.key, view, historyFilter]);
+function GatheringList({ community, listState, setListState, open, create }: { community: Community; listState: GatheringListState; setListState: (state: GatheringListState) => void; open: (id: string) => void; create: () => void }) {
+  const { view, historyFilter, page } = listState;
+  const state = useAsync(() => api<GatheringListPage>(`/gatherings?${buildGatheringListQuery(community.key, listState)}`, { cache: "no-store" }), [community.key, view, historyFilter, page]);
+  const selectView = (next: GatheringListView) => setListState(changeGatheringView(listState, next));
+  const selectHistoryFilter = (next: GatheringHistoryFilter) => setListState(changeGatheringHistoryFilter(listState, next));
   return <Page title="Сборы" subtitle={community.name} actions={<button className="primary" onClick={create}>Создать сбор</button>}>
-    <div className="segmented"><button className={view === "upcoming" ? "active" : ""} onClick={() => setView("upcoming")}>Предстоящие</button><button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>История</button></div>
-    {view === "history" && <div className="segmented"><button className={historyFilter === "all" ? "active" : ""} onClick={() => setHistoryFilter("all")}>Все</button><button className={historyFilter === "completed" ? "active" : ""} onClick={() => setHistoryFilter("completed")}>Сыграны</button><button className={historyFilter === "cancelled" ? "active" : ""} onClick={() => setHistoryFilter("cancelled")}>Отменены</button></div>}
-    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.length ? view === "upcoming" ? <><Empty>Пока нет запланированных сборов.</Empty><button className="primary" onClick={create}>Создать сбор</button></> : <Empty>{historyFilter === "completed" ? "Сыгранных сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
-      <div className="stack">{state.data.map(item => <button className="card gathering-card" key={item.card.publicId} onClick={() => open(item.card.publicId)}>
+    <div className="segmented"><button className={view === "upcoming" ? "active" : ""} onClick={() => selectView("upcoming")}>Предстоящие</button><button className={view === "history" ? "active" : ""} onClick={() => selectView("history")}>История</button></div>
+    {view === "history" && <div className="segmented"><button className={historyFilter === "all" ? "active" : ""} onClick={() => selectHistoryFilter("all")}>Все</button><button className={historyFilter === "completed" ? "active" : ""} onClick={() => selectHistoryFilter("completed")}>Сыграны</button><button className={historyFilter === "cancelled" ? "active" : ""} onClick={() => selectHistoryFilter("cancelled")}>Отменены</button></div>}
+    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? view === "upcoming" ? <><Empty>Пока нет запланированных сборов.</Empty><button className="primary" onClick={create}>Создать сбор</button></> : <Empty>{historyFilter === "completed" ? "Сыгранных сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
+      <><div className="stack">{state.data.items.map(item => <button className="card gathering-card" key={item.card.publicId} onClick={() => open(item.card.publicId)}>
         <Cover src={item.card.imageUrl} name={item.card.gameName} /><div><div className="row"><h2>{item.card.gameName}</h2>{item.isOrganizer && <Badge tone="accent">Вы организатор</Badge>}</div><div className="tag-list"><Badge tone="neutral">{item.card.typeName}</Badge></div><p>{item.card.localDateTime}</p><p>{item.card.confirmedPlayers} / {item.card.maximumPlayers} игроков</p><p className="muted">{item.card.organizerName} · организатор</p>{item.card.canTeachRules && <p>Могу объяснить правила</p>}{item.card.description && <p className="gathering-note">«{item.card.description}»</p>}<span className="muted">{item.card.statusText}</span></div>
-      </button>)}</div>}
+      </button>)}</div>{(state.data.hasPrevious || state.data.hasNext) && <div className="row"><button disabled={!state.data.hasPrevious} onClick={() => setListState({ ...listState, page: page - 1 })}>Назад</button><span className="muted">Страница {page}</span><button disabled={!state.data.hasNext} onClick={() => setListState({ ...listState, page: page + 1 })}>Дальше</button></div>}</>}
   </Page>;
 }
 

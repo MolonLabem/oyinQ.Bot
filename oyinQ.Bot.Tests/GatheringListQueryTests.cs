@@ -18,12 +18,21 @@ public sealed class GatheringListQueryTests
     }
 
     [Fact]
-    public void History_ContainsOnlyCompletedAndCancelledAndSortsNewestFirst()
+    public void History_ContainsTerminalAndDueActiveStatusesAndSortsNewestFirst()
     {
         var values = Apply(GatheringListView.History, GatheringHistoryFilter.All);
 
-        Assert.Equal([6L, 4L, 3L], values.Select(x => x.Id));
-        Assert.DoesNotContain(values, x => x.Status == GatheringStatus.Ready);
+        Assert.Equal([6L, 5L, 4L, 3L], values.Select(x => x.Id));
+    }
+
+    [Fact]
+    public void FutureActiveGathering_IsUpcomingAndNotHistory()
+    {
+        var upcoming = Apply(GatheringListView.Upcoming, GatheringHistoryFilter.All);
+        var history = Apply(GatheringListView.History, GatheringHistoryFilter.All);
+
+        Assert.Contains(upcoming, x => x.Id == 1);
+        Assert.DoesNotContain(history, x => x.Id == 1);
     }
 
     [Theory]
@@ -36,6 +45,41 @@ public sealed class GatheringListQueryTests
 
         Assert.NotEmpty(values);
         Assert.All(values, x => Assert.Equal(expected, x.Status));
+    }
+
+    [Fact]
+    public void CancelledFutureGathering_IsHistoryAndNeverUpcoming()
+    {
+        var history = Apply(GatheringListView.History, GatheringHistoryFilter.Cancelled);
+        var upcoming = Apply(GatheringListView.Upcoming, GatheringHistoryFilter.All);
+
+        Assert.Contains(history, x => x.Id == 6);
+        Assert.DoesNotContain(upcoming, x => x.Id == 6);
+    }
+
+    [Fact]
+    public void PagingAfterFilteringPreservesFilterAndDeterministicOrder()
+    {
+        var values = Apply(GatheringListView.History, GatheringHistoryFilter.Cancelled)
+            .Skip(1).Take(1).ToArray();
+
+        Assert.Equal([4L], values.Select(x => x.Id));
+        Assert.All(values, x => Assert.Equal(GatheringStatus.Cancelled, x.Status));
+    }
+
+    [Theory]
+    [InlineData(GatheringStatus.Recruiting)]
+    [InlineData(GatheringStatus.Ready)]
+    [InlineData(GatheringStatus.Full)]
+    [InlineData(GatheringStatus.Closed)]
+    public void ActiveStatusAtStartBoundary_IsHistoryUntilLifecycleRuns(GatheringStatus status)
+    {
+        var item = Item(20, status, Now);
+
+        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.Upcoming, GatheringHistoryFilter.All, Now));
+        Assert.Equal([item], GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.History, GatheringHistoryFilter.All, Now));
+        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.History, GatheringHistoryFilter.Completed, Now));
+        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.History, GatheringHistoryFilter.Cancelled, Now));
     }
 
     [Theory]

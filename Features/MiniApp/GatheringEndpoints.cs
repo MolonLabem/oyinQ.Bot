@@ -21,6 +21,11 @@ internal sealed record GatheringListItemResponse(
     string Status,
     string PublicationStatus,
     bool IsOrganizer);
+internal sealed record GatheringListPageResponse(
+    IReadOnlyCollection<GatheringListItemResponse> Items,
+    int Page,
+    bool HasPrevious,
+    bool HasNext);
 
 internal static class GatheringEndpoints
 {
@@ -38,7 +43,9 @@ internal static class GatheringEndpoints
         return group;
     }
 
-    private static async Task<IResult> ListAsync(HttpRequest request, string community, string? view, string? status,
+    private const int GatheringPageSize = 20;
+
+    private static async Task<IResult> ListAsync(HttpRequest request, string community, string? view, string? status, int? page,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
         TimeProvider timeProvider,
@@ -49,16 +56,23 @@ internal static class GatheringEndpoints
         if (!GatheringListQuery.TryParse(view, status, out var parsedView, out var parsedFilter))
             return MiniAppEndpointSupport.Problem("invalid_gathering_view",
                 "Поддерживаются view=upcoming или view=history; фильтры истории: completed, cancelled.", 400);
+        var pageNumber = page ?? 1;
+        if (pageNumber < 1 || pageNumber > int.MaxValue / GatheringPageSize)
+            return MiniAppEndpointSupport.Problem("invalid_gathering_page", "Номер страницы должен быть больше нуля.", 400);
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         var query = dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
             .Include(x => x.Participants).Include(x => x.OrganizerParticipant);
         var values = await GatheringListQuery.Apply(query, parsedView, parsedFilter, timeProvider.GetUtcNow())
+            .Skip((pageNumber - 1) * GatheringPageSize)
+            .Take(GatheringPageSize + 1)
             .ToArrayAsync(cancellationToken);
-        return Results.Ok(values.Select(x => new GatheringListItemResponse(
+        var hasNext = values.Length > GatheringPageSize;
+        var items = values.Take(GatheringPageSize).Select(x => new GatheringListItemResponse(
             presentation.BuildCard(x, access.Community),
             x.Status.ToString(),
             x.PublicationStatus.ToString(),
-            x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)));
+            x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)).ToArray();
+        return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
     }
 
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
