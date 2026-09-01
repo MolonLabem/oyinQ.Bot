@@ -9,7 +9,6 @@ public sealed class Club
     public string BotChatKey { get; set; } = string.Empty;
     public BotMode BotChatMode { get; private set; } = BotMode.Club;
     public string Name { get; set; } = string.Empty;
-    public string? BggUsername { get; set; }
     public string CollectionJson { get; set; } = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty);
     public long CollectionRevision { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }

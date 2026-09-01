@@ -5,7 +5,6 @@ public sealed class GameGathering
     public long Id { get; set; }
     public Guid PublicId { get; set; }
     public string CommunityKey { get; set; } = string.Empty;
-    public long? GameId { get; set; }
     public string GameSnapshotJson { get; set; } = string.Empty;
     public long OrganizerParticipantId { get; set; }
     public DateTimeOffset StartsAtUtc { get; set; }
@@ -28,7 +27,6 @@ public sealed class GameGathering
     public DateTimeOffset? CancelledAt { get; set; }
 
     public OyinQCommunity Community { get; set; } = null!;
-    public Game? Game { get; set; }
     public Participant OrganizerParticipant { get; set; } = null!;
     public ICollection<GameGatheringExpansion> Expansions { get; set; } = [];
     public ICollection<GameGatheringParticipant> Participants { get; set; } = [];

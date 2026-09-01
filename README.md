@@ -32,7 +32,7 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 
 `appsettings.json` contains stable non-secret defaults. `appsettings.Development.json` enables long polling and contains the non-secret local Docker PostgreSQL connection. Secrets are never committed.
 
-Super Admins come only from `Administration:SuperAdminTelegramUserIds`. Normal administrators are stored per chat in `ChatAdminPermissions` and remain effective only while Telegram reports them as an administrator of that chat. Telegram administrators without an OyinQ permission see a locked entry with no sensitive data or controls. The legacy `OyinQAdministrators` table is retained for schema compatibility but no longer grants access. A single legacy bootstrap ID is treated as the original owner only when the explicit Super Admin setting is absent; multiple legacy IDs are not promoted.
+Super Admins come only from `Administration:SuperAdminTelegramUserIds`. Normal administrators are stored per chat in `ChatAdminPermissions` and remain effective only while Telegram reports them as an administrator of that chat. Telegram administrators without an OyinQ permission see a locked entry with no sensitive data or controls. A single legacy bootstrap ID is treated as the original owner only when the explicit Super Admin setting is absent; multiple legacy IDs are not promoted.
 
 Bootstrap JSON example:
 
@@ -127,19 +127,11 @@ Remove the old flat keys `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `PUBLI
 
 Do not set `Telegram__UseLongPolling` in production. Do not manually set `PORT` or `ASPNETCORE_URLS`; the platform and image handle them.
 
-## Database compatibility
+## Database baseline
 
-Migration `20260828183821_ClubCampContextsAndGatheringSnapshots` is additive and must be reviewed with a production backup. The EF model intentionally retains legacy `Games`, `GameCopies`, `GameInterests`, `CollectionImports`, `GameSessions`, `GameSessionParticipants`, `ParticipantConversationStates`, the old participant registration columns, and nullable `GameGathering.GameId`. Runtime code no longer reads or writes those paths. They remain mapped so production data is not silently dropped; retirement needs a separately reviewed data audit/migration.
+The repository contains one clean EF migration, `20260901073247_CleanBaseline`, intended for a fresh database. The retired global game/session/import/conversation entities, persistent administrator table, participant compatibility fields, `Club.BggUsername`, and `GameGathering.GameId` are not part of the model or schema.
 
-Migration `20260828230514_PersistAdministrators` created the retained legacy `OyinQAdministrators` table. It is no longer a runtime authorization source.
-
-Migrations `20260901053106_ChatScopedAdministration` and `20260901053721_TrackKnownTelegramChats` are additive. They create per-community permissions and the finite Telegram chat discovery registry; the latter backfills configured communities without deleting or rewriting application data.
-
-Migration `20260829000852_StabilizeClubCampMiniApp` is additive. It adds Club revisions, Camp dates, typed contribution source, Camp import jobs, pending Telegram peer selections, administrator presentation fields, and gathering publication state. Existing contribution JSON receives only the required version marker; existing published gatherings are marked published. Existing legacy tables and `Club.BggUsername` remain mapped and deprecated.
-
-The additive migrations after it are `20260830193242_GatheringHistoryAndCleanup`, `20260830200452_CatalogMetadataCampAvailability`, `20260830201423_CampImportSkipResolution`, `20260830201708_ClubMetadataRefreshJobs`, and `20260830210951_FinalConsistencyAndReliability`. The final migration adds persisted import confirmations, Club-refresh leases, worker indexes, and partial unique active-job invariants. Its deterministic pre-index reconciliation ends duplicate active jobs without deleting application data. Validate this full batch and its generated SQL against a production backup before deployment; do not apply it as part of this repository review.
-
-Migration `20260831002206_ExactCampAttendanceDates` only adds the exact-date table and its cascading registration foreign key. It deliberately does not turn legacy `DaysStaying` counts into guessed dates; existing participants must confirm their actual dates in the Mini App before new Camp mutations.
+This baseline deliberately replaces the earlier additive migration chain. Do not apply it over a database containing that old chain: create a backup or Neon branch, reset the target schema, and then apply the baseline. Super Admins are restored from configuration, normal administrator grants are recreated per community, and optional communities may be reinserted from `CommunityBootstrap:CommunitiesJson`.
 
 ## Manual verification
 

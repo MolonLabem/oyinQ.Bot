@@ -13,9 +13,7 @@ namespace oyinQ.Bot.Data.Migrations
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
     {
-        protected override void BuildModel(ModelBuilder modelBuilder) => BuildModelStatic(modelBuilder);
-
-        internal static void BuildModelStatic(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -336,10 +334,6 @@ namespace oyinQ.Bot.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<string>("BggUsername")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<string>("BotChatKey")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -508,169 +502,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.ToTable("ClubMetadataRefreshes", (string)null);
                 });
 
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.CollectionImport", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("AddedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("ExternalUsername")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<long?>("ParticipantId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ProgressJson")
-                        .HasColumnType("jsonb");
-
-                    b.Property<int>("Provider")
-                        .HasColumnType("integer");
-
-                    b.Property<long>("RequestedByTelegramUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("SkippedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("StartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Target")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ParticipantId");
-
-                    b.HasIndex("RequestedByTelegramUserId");
-
-                    b.HasIndex("Status", "CreatedAt");
-
-                    b.HasIndex("Provider", "ExternalUsername", "ParticipantId", "Target", "Status");
-
-                    b.ToTable("CollectionImports", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.Game", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("BestPlayers")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<long?>("BggId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ExternalUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("ImageUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<int?>("MaxPlayers")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("MinPlayers")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("NormalizedName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<string>("ThumbnailImageUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BggId")
-                        .IsUnique();
-
-                    b.HasIndex("NormalizedName");
-
-                    b.ToTable("Games", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameCopy", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("BringStatus")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("GameId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("OwnerParticipantId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Source")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_GameCopies_GameId_Club")
-                        .HasFilter("\"OwnerParticipantId\" IS NULL AND \"Source\" = 1");
-
-                    b.HasIndex("OwnerParticipantId");
-
-                    b.HasIndex("GameId", "OwnerParticipantId")
-                        .IsUnique();
-
-                    b.ToTable("GameCopies", (string)null);
-                });
-
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGathering", b =>
                 {
                     b.Property<long>("Id")
@@ -706,9 +537,6 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.Property<int>("DesiredPlayers")
                         .HasColumnType("integer");
-
-                    b.Property<long?>("GameId")
-                        .HasColumnType("bigint");
 
                     b.Property<string>("GameSnapshotJson")
                         .IsRequired()
@@ -755,8 +583,6 @@ namespace oyinQ.Bot.Data.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("GameId");
 
                     b.HasIndex("OrganizerParticipantId");
 
@@ -841,107 +667,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.ToTable("GameGatheringParticipants", (string)null);
                 });
 
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameInterest", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("GameId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("ParticipantId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId");
-
-                    b.HasIndex("ParticipantId", "GameId")
-                        .IsUnique();
-
-                    b.ToTable("GameInterests", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameSession", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTimeOffset?>("ClosedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("GameId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("HostParticipantId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<long?>("TelegramChatId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int?>("TelegramMessageId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("WantedAdditionalPlayers")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId");
-
-                    b.HasIndex("HostParticipantId");
-
-                    b.HasIndex("TelegramChatId", "TelegramMessageId")
-                        .IsUnique();
-
-                    b.ToTable("GameSessions", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameSessionParticipant", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("GameSessionId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("JoinedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("ParticipantId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ParticipantId");
-
-                    b.HasIndex("GameSessionId", "ParticipantId")
-                        .IsUnique();
-
-                    b.ToTable("GameSessionParticipants", (string)null);
-                });
-
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.KnownTelegramChat", b =>
                 {
                     b.Property<long>("TelegramChatId")
@@ -969,30 +694,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.HasIndex("IsBotPresent");
 
                     b.ToTable("KnownTelegramChats", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.OyinQAdministrator", b =>
-                {
-                    b.Property<long>("TelegramUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("AddedByTelegramUserId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DisplayName")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("TelegramUsername")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("TelegramUserId");
-
-                    b.ToTable("OyinQAdministrators", (string)null);
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.OyinQCommunity", b =>
@@ -1049,16 +750,10 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int?>("DaysStaying")
-                        .HasColumnType("integer");
-
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
-
-                    b.Property<bool?>("NeedsAccommodation")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("PreferredDisplayName")
                         .HasMaxLength(128)
@@ -1080,41 +775,6 @@ namespace oyinQ.Bot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Participants", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ParticipantConversationState", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("DataJson")
-                        .HasColumnType("jsonb");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("ParticipantId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ExpiresAt");
-
-                    b.HasIndex("ParticipantId")
-                        .IsUnique();
-
-                    b.ToTable("ParticipantConversationStates", (string)null);
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.PendingTelegramPeerSelection", b =>
@@ -1341,34 +1001,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("Club");
                 });
 
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.CollectionImport", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
-                        .WithMany("CollectionImports")
-                        .HasForeignKey("ParticipantId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Participant");
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameCopy", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.Game", "Game")
-                        .WithMany("Copies")
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "OwnerParticipant")
-                        .WithMany("GameCopies")
-                        .HasForeignKey("OwnerParticipantId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Game");
-
-                    b.Navigation("OwnerParticipant");
-                });
-
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGathering", b =>
                 {
                     b.HasOne("oyinQ.Bot.Data.Entities.OyinQCommunity", "Community")
@@ -1377,11 +1009,6 @@ namespace oyinQ.Bot.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("oyinQ.Bot.Data.Entities.Game", "Game")
-                        .WithMany("Gatherings")
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("oyinQ.Bot.Data.Entities.Participant", "OrganizerParticipant")
                         .WithMany("OrganizedGatherings")
                         .HasForeignKey("OrganizerParticipantId")
@@ -1389,8 +1016,6 @@ namespace oyinQ.Bot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Community");
-
-                    b.Navigation("Game");
 
                     b.Navigation("OrganizerParticipant");
                 });
@@ -1425,74 +1050,6 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("Participant");
                 });
 
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameInterest", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.Game", "Game")
-                        .WithMany("Interests")
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
-                        .WithMany("GameInterests")
-                        .HasForeignKey("ParticipantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Game");
-
-                    b.Navigation("Participant");
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameSession", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.Game", "Game")
-                        .WithMany("Sessions")
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "HostParticipant")
-                        .WithMany("HostedGameSessions")
-                        .HasForeignKey("HostParticipantId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Game");
-
-                    b.Navigation("HostParticipant");
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameSessionParticipant", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.GameSession", "GameSession")
-                        .WithMany("Participants")
-                        .HasForeignKey("GameSessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
-                        .WithMany("GameSessionParticipations")
-                        .HasForeignKey("ParticipantId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("GameSession");
-
-                    b.Navigation("Participant");
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ParticipantConversationState", b =>
-                {
-                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
-                        .WithOne("ConversationState")
-                        .HasForeignKey("oyinQ.Bot.Data.Entities.ParticipantConversationState", "ParticipantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Participant");
-                });
-
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.Camp", b =>
                 {
                     b.Navigation("BggImports");
@@ -1512,26 +1069,10 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("SourceCamps");
                 });
 
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.Game", b =>
-                {
-                    b.Navigation("Copies");
-
-                    b.Navigation("Gatherings");
-
-                    b.Navigation("Interests");
-
-                    b.Navigation("Sessions");
-                });
-
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGathering", b =>
                 {
                     b.Navigation("Expansions");
 
-                    b.Navigation("Participants");
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameSession", b =>
-                {
                     b.Navigation("Participants");
                 });
 
@@ -1552,19 +1093,7 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.Navigation("CampRegistrations");
 
-                    b.Navigation("CollectionImports");
-
-                    b.Navigation("ConversationState");
-
-                    b.Navigation("GameCopies");
-
-                    b.Navigation("GameInterests");
-
-                    b.Navigation("GameSessionParticipations");
-
                     b.Navigation("GatheringParticipations");
-
-                    b.Navigation("HostedGameSessions");
 
                     b.Navigation("OrganizedGatherings");
                 });

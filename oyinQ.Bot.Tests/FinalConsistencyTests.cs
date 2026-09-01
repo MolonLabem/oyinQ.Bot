@@ -194,7 +194,7 @@ public sealed class FinalConsistencyTests
             && x.GetFilter() == "\"Status\" IN (0, 1)");
         Assert.NotNull(refresh.FindProperty(nameof(ClubMetadataRefresh.LeaseId)));
         Assert.NotNull(refresh.FindProperty(nameof(ClubMetadataRefresh.LeaseExpiresAt)));
-        Assert.Contains("20260830210951_FinalConsistencyAndReliability", db.Database.GetMigrations());
+        Assert.Equal(["20260901073247_CleanBaseline"], db.Database.GetMigrations());
     }
 
     [Fact]

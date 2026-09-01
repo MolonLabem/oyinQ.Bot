@@ -6,193 +6,101 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class AppDbContextMigrationTests
 {
+    private const string CleanBaselineMigration = "20260901073247_CleanBaseline";
+
     [Fact]
-    public void Model_ConfiguresPreferredDisplayName_AsNullableMax128()
+    public void Migrations_ContainOnlyCleanBaseline()
     {
         using var dbContext = CreateDbContext();
 
-        var entityType = dbContext.Model.FindEntityType(typeof(Participant));
-        var property = entityType?.FindProperty(nameof(Participant.PreferredDisplayName));
-
-        Assert.NotNull(property);
-        Assert.True(property.IsNullable);
-        Assert.Equal(128, property.GetMaxLength());
+        Assert.Equal([CleanBaselineMigration], dbContext.Database.GetMigrations());
     }
 
     [Fact]
-    public void Migrations_IncludePreferredDisplayNameMigration()
+    public void Model_ExcludesRetiredLegacyStructures()
     {
         using var dbContext = CreateDbContext();
+        var entityNames = dbContext.Model.GetEntityTypes().Select(x => x.ClrType.Name).ToHashSet();
 
-        Assert.Contains(
-            "20260819090000_PreferredDisplayName",
-            dbContext.Database.GetMigrations());
+        Assert.DoesNotContain("Game", entityNames);
+        Assert.DoesNotContain("GameCopy", entityNames);
+        Assert.DoesNotContain("GameInterest", entityNames);
+        Assert.DoesNotContain("GameSession", entityNames);
+        Assert.DoesNotContain("GameSessionParticipant", entityNames);
+        Assert.DoesNotContain("CollectionImport", entityNames);
+        Assert.DoesNotContain("ParticipantConversationState", entityNames);
+        Assert.DoesNotContain("OyinQAdministrator", entityNames);
+
+        Assert.Null(dbContext.Model.FindEntityType(typeof(Participant))?.FindProperty("DaysStaying"));
+        Assert.Null(dbContext.Model.FindEntityType(typeof(Participant))?.FindProperty("NeedsAccommodation"));
+        Assert.Null(dbContext.Model.FindEntityType(typeof(Club))?.FindProperty("BggUsername"));
+        Assert.Null(dbContext.Model.FindEntityType(typeof(GameGathering))?.FindProperty("GameId"));
     }
 
     [Fact]
-    public void Model_ConfiguresGatheringPresentationLimitsAndGameImages()
+    public void Model_ConfiguresCurrentCollectionAndGatheringSchema()
     {
         using var dbContext = CreateDbContext();
-
+        var participant = dbContext.Model.FindEntityType(typeof(Participant));
         var gathering = dbContext.Model.FindEntityType(typeof(GameGathering));
-        var game = dbContext.Model.FindEntityType(typeof(Game));
 
-        Assert.Equal(300, gathering?.FindProperty(nameof(GameGathering.Description))?.GetMaxLength());
-        Assert.NotNull(gathering?.FindProperty(nameof(GameGathering.CanTeachRules)));
-        Assert.Equal(1000, game?.FindProperty(nameof(Game.ImageUrl))?.GetMaxLength());
-        Assert.Equal(1000, game?.FindProperty(nameof(Game.ThumbnailImageUrl))?.GetMaxLength());
-    }
-
-    [Fact]
-    public void Migrations_IncludeGatheringPresentationMigration()
-    {
-        using var dbContext = CreateDbContext();
-
-        Assert.Contains(
-            "20260828165036_AddGatheringPresentation",
-            dbContext.Database.GetMigrations());
-    }
-
-    [Fact]
-    public void Migrations_IncludeClubCampContextMigration()
-    {
-        using var dbContext = CreateDbContext();
-
-        Assert.Contains(
-            "20260828183821_ClubCampContextsAndGatheringSnapshots",
-            dbContext.Database.GetMigrations());
+        Assert.True(participant?.FindProperty(nameof(Participant.PreferredDisplayName))?.IsNullable);
+        Assert.Equal(128, participant?.FindProperty(nameof(Participant.PreferredDisplayName))?.GetMaxLength());
         Assert.Equal("jsonb", dbContext.Model.FindEntityType(typeof(Club))?
             .FindProperty(nameof(Club.CollectionJson))?.GetColumnType());
-        Assert.Equal("jsonb", dbContext.Model.FindEntityType(typeof(GameGathering))?
-            .FindProperty(nameof(GameGathering.GameSnapshotJson))?.GetColumnType());
+        Assert.Equal("jsonb", gathering?.FindProperty(nameof(GameGathering.GameSnapshotJson))?.GetColumnType());
+        Assert.Equal(300, gathering?.FindProperty(nameof(GameGathering.Description))?.GetMaxLength());
+        Assert.NotNull(gathering?.FindProperty(nameof(GameGathering.CanTeachRules)));
     }
 
     [Fact]
-    public void Model_ConfiguresClubBggUsername_AsNullableMax100()
+    public void Model_ConfiguresDurableBackgroundWork()
     {
         using var dbContext = CreateDbContext();
 
-        var property = dbContext.Model.FindEntityType(typeof(Club))?
-            .FindProperty(nameof(Club.BggUsername));
-
-        Assert.NotNull(property);
-        Assert.True(property.IsNullable);
-        Assert.Equal(100, property.GetMaxLength());
-        Assert.Contains(
-            "20260828195607_ClubBggUsername",
-            dbContext.Database.GetMigrations());
-    }
-
-    [Fact]
-    public void Model_ConfiguresPersistentAdministrators()
-    {
-        using var dbContext = CreateDbContext();
-
-        var entity = dbContext.Model.FindEntityType(typeof(OyinQAdministrator));
-
-        Assert.NotNull(entity);
-        Assert.Equal(
-            Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never,
-            entity.FindProperty(nameof(OyinQAdministrator.TelegramUserId))!.ValueGenerated);
-        Assert.Contains(
-            "20260828230514_PersistAdministrators",
-            dbContext.Database.GetMigrations());
-    }
-
-    [Fact]
-    public void StabilizationMigration_IsAdditiveAndMapsDurableWork()
-    {
-        using var dbContext = CreateDbContext();
-        Assert.Contains("20260829000852_StabilizeClubCampMiniApp", dbContext.Database.GetMigrations());
-        Assert.NotNull(dbContext.Model.FindEntityType(typeof(CampBggImport)));
-        Assert.NotNull(dbContext.Model.FindEntityType(typeof(PendingTelegramPeerSelection)));
         Assert.Equal("jsonb", dbContext.Model.FindEntityType(typeof(CampBggImport))?
             .FindProperty(nameof(CampBggImport.DraftJson))?.GetColumnType());
-        Assert.Equal(1L, dbContext.Model.FindEntityType(typeof(Club))?
-            .FindProperty(nameof(Club.CollectionRevision))?.GetDefaultValue());
-    }
-
-    [Fact]
-    public void GatheringCleanupMigration_MapsFocusedTelegramDeletionQueue()
-    {
-        using var dbContext = CreateDbContext();
-        var cleanup = dbContext.Model.FindEntityType(typeof(TelegramMessageCleanup));
-
-        Assert.NotNull(cleanup);
-        Assert.Equal(2000, cleanup.FindProperty(nameof(TelegramMessageCleanup.LastError))?.GetMaxLength());
-        Assert.Contains("20260830193242_GatheringHistoryAndCleanup", dbContext.Database.GetMigrations());
-    }
-
-    [Fact]
-    public void CatalogMetadataMigrations_AreAdditiveAndMapped()
-    {
-        using var dbContext = CreateDbContext();
-        var migrations = dbContext.Database.GetMigrations();
-
-        Assert.Contains("20260830200452_CatalogMetadataCampAvailability", migrations);
-        Assert.Contains("20260830201423_CampImportSkipResolution", migrations);
-        Assert.Contains("20260830201708_ClubMetadataRefreshJobs", migrations);
-        Assert.Equal(100, dbContext.Model.FindEntityType(typeof(CampRegistration))?
-            .FindProperty(nameof(CampRegistration.City))?.GetMaxLength());
-        Assert.NotNull(dbContext.Model.FindEntityType(typeof(CampGameContribution))?
-            .FindProperty(nameof(CampGameContribution.Commitment)));
+        Assert.Equal(2000, dbContext.Model.FindEntityType(typeof(TelegramMessageCleanup))?
+            .FindProperty(nameof(TelegramMessageCleanup.LastError))?.GetMaxLength());
+        Assert.NotNull(dbContext.Model.FindEntityType(typeof(PendingTelegramPeerSelection)));
         Assert.NotNull(dbContext.Model.FindEntityType(typeof(ClubMetadataRefresh)));
     }
 
     [Fact]
-    public void ExactCampAttendanceMigration_MapsCompositeDaysWithoutLegacyInference()
+    public void Model_ConfiguresExactCampAttendanceAndScopedAdministration()
     {
         using var dbContext = CreateDbContext();
         var day = dbContext.Model.FindEntityType(typeof(CampRegistrationDay));
+        var permission = dbContext.Model.FindEntityType(typeof(ChatAdminPermission));
+        var registrationDisplayName = dbContext.Model.FindEntityType(typeof(CampRegistration))?
+            .FindProperty(nameof(CampRegistration.DisplayName));
 
-        Assert.Contains("20260831002206_ExactCampAttendanceDates", dbContext.Database.GetMigrations());
         Assert.Equal([nameof(CampRegistrationDay.CampRegistrationId), nameof(CampRegistrationDay.Date)],
             day!.FindPrimaryKey()!.Properties.Select(x => x.Name));
         Assert.Equal(DeleteBehavior.Cascade, day.GetForeignKeys().Single().DeleteBehavior);
-    }
-
-    [Fact]
-    public void CampRegistrationDisplayName_IsCampScoped()
-    {
-        using var dbContext = CreateDbContext();
-        var property = dbContext.Model.FindEntityType(typeof(CampRegistration))?
-            .FindProperty(nameof(CampRegistration.DisplayName));
-
-        Assert.NotNull(property);
-        Assert.True(property.IsNullable);
-        Assert.Equal(128, property.GetMaxLength());
-        Assert.Contains("20260831184750_SeparateCampAndParticipantDisplayNames",
-            dbContext.Database.GetMigrations());
-    }
-
-    [Fact]
-    public void ClubBggImports_ArePersistentAndHaveOneActiveJobPerClub()
-    {
-        using var dbContext = CreateDbContext();
-        var entity = dbContext.Model.FindEntityType(typeof(ClubBggImport));
-
-        Assert.NotNull(entity);
-        Assert.Contains("20260831174110_ClubBggUsernameImports", dbContext.Database.GetMigrations());
-        Assert.Equal(100, entity.FindProperty(nameof(ClubBggImport.BggUsername))?.GetMaxLength());
-        Assert.Contains(entity.GetIndexes(), index => index.IsUnique
-            && index.GetFilter() == "\"Status\" IN (0, 1)"
-            && index.Properties.Select(property => property.Name).SequenceEqual([nameof(ClubBggImport.ClubId)]));
-    }
-
-    [Fact]
-    public void ChatScopedAdministration_IsAdditiveAndUniquelyScoped()
-    {
-        using var dbContext = CreateDbContext();
-        var permission = dbContext.Model.FindEntityType(typeof(ChatAdminPermission));
-        var knownChat = dbContext.Model.FindEntityType(typeof(KnownTelegramChat));
-
-        Assert.NotNull(permission);
-        Assert.NotNull(knownChat);
-        Assert.Contains("20260901053106_ChatScopedAdministration", dbContext.Database.GetMigrations());
-        Assert.Contains("20260901053721_TrackKnownTelegramChats", dbContext.Database.GetMigrations());
+        Assert.True(registrationDisplayName?.IsNullable);
+        Assert.Equal(128, registrationDisplayName?.GetMaxLength());
+        Assert.NotNull(dbContext.Model.FindEntityType(typeof(KnownTelegramChat)));
         Assert.Contains(permission!.GetIndexes(), index => index.IsUnique
             && index.Properties.Select(x => x.Name).SequenceEqual(
                 [nameof(ChatAdminPermission.TelegramUserId), nameof(ChatAdminPermission.CommunityKey)]));
+    }
+
+    [Fact]
+    public void Model_ConfiguresOneActiveImportJobPerOwner()
+    {
+        using var dbContext = CreateDbContext();
+        var clubImport = dbContext.Model.FindEntityType(typeof(ClubBggImport));
+        var campImport = dbContext.Model.FindEntityType(typeof(CampBggImport));
+
+        Assert.Equal(100, clubImport?.FindProperty(nameof(ClubBggImport.BggUsername))?.GetMaxLength());
+        Assert.Contains(clubImport!.GetIndexes(), index => index.IsUnique
+            && index.GetFilter() == "\"Status\" IN (0, 1)"
+            && index.Properties.Select(property => property.Name).SequenceEqual([nameof(ClubBggImport.ClubId)]));
+        Assert.Contains(campImport!.GetIndexes(), index => index.IsUnique
+            && index.GetFilter() == "\"Status\" IN (0, 1)"
+            && index.Properties.Select(property => property.Name).SequenceEqual(
+                [nameof(CampBggImport.CampId), nameof(CampBggImport.ParticipantId)]));
     }
 
     private static AppDbContext CreateDbContext()
