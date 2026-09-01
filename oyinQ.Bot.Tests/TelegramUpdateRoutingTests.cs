@@ -23,4 +23,14 @@ public sealed class TelegramUpdateRoutingTests
     [InlineData("/mygames", false)]
     public void GroupEntry_OnlyKeepsOyinQCommand(string text, bool expected) =>
         Assert.Equal(expected, TelegramUpdateRouting.IsGroupEntryRequest(text, TelegramUpdateRouting.GetCommand(text)));
+
+    [Theory]
+    [InlineData("/oyinq topic", true)]
+    [InlineData("/OYINQ@CurrentBot TOPIC", true)]
+    [InlineData("/oyinq", false)]
+    [InlineData("/oyinq other", false)]
+    [InlineData("/oyinq topic extra", false)]
+    public void PostingTopicSelection_UsesOyinQSubcommand(string text, bool expected) =>
+        Assert.Equal(expected, TelegramUpdateRouting.IsPostingTopicSelectionRequest(
+            text, TelegramUpdateRouting.GetCommand(text)));
 }

@@ -9,6 +9,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 namespace oyinQ.Bot.Integrations.Telegram;
 
 public sealed class GatheringTelegramPublisher(
+    ITelegramGroupMessageSender groupMessageSender,
     ITelegramBotClient botClient,
     GatheringPresentationService presentationService,
     ILogger<GatheringTelegramPublisher> logger)
@@ -25,13 +26,13 @@ public sealed class GatheringTelegramPublisher(
         {
             try
             {
-                return await botClient.SendPhoto(
-                    community.TelegramChatId,
+                return await groupMessageSender.SendPhotoAsync(
+                    community.Key,
                     InputFile.FromUri(announcement.ImageUrl),
-                    caption: announcement.HtmlText,
-                    parseMode: ParseMode.Html,
-                    replyMarkup: keyboard,
-                    cancellationToken: cancellationToken);
+                    announcement.HtmlText,
+                    ParseMode.Html,
+                    keyboard,
+                    cancellationToken);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -42,12 +43,12 @@ public sealed class GatheringTelegramPublisher(
             }
         }
 
-        return await botClient.SendMessage(
-            community.TelegramChatId,
+        return await groupMessageSender.SendMessageAsync(
+            community.Key,
             announcement.HtmlText,
-            parseMode: ParseMode.Html,
-            replyMarkup: keyboard,
-            cancellationToken: cancellationToken);
+            ParseMode.Html,
+            keyboard,
+            cancellationToken);
     }
 
     public async Task UpdateAsync(

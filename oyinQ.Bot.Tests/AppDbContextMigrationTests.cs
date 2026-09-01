@@ -7,13 +7,14 @@ namespace oyinQ.Bot.Tests;
 public sealed class AppDbContextMigrationTests
 {
     private const string CleanBaselineMigration = "20260901073247_CleanBaseline";
+    private const string ForumPostingTopicsMigration = "20260901125924_ForumPostingTopics";
 
     [Fact]
-    public void Migrations_ContainOnlyCleanBaseline()
+    public void Migrations_ContainCleanBaselineAndAdditiveForumTopicConfiguration()
     {
         using var dbContext = CreateDbContext();
 
-        Assert.Equal([CleanBaselineMigration], dbContext.Database.GetMigrations());
+        Assert.Equal([CleanBaselineMigration, ForumPostingTopicsMigration], dbContext.Database.GetMigrations());
     }
 
     [Fact]
@@ -81,6 +82,11 @@ public sealed class AppDbContextMigrationTests
         Assert.True(registrationDisplayName?.IsNullable);
         Assert.Equal(128, registrationDisplayName?.GetMaxLength());
         Assert.NotNull(dbContext.Model.FindEntityType(typeof(KnownTelegramChat)));
+        var topics = dbContext.Model.FindEntityType(typeof(TelegramForumTopic));
+        Assert.Equal([nameof(TelegramForumTopic.TelegramChatId), nameof(TelegramForumTopic.MessageThreadId)],
+            topics!.FindPrimaryKey()!.Properties.Select(x => x.Name));
+        Assert.True(dbContext.Model.FindEntityType(typeof(OyinQCommunity))?
+            .FindProperty(nameof(OyinQCommunity.PostingMessageThreadId))?.IsNullable);
         Assert.Contains(permission!.GetIndexes(), index => index.IsUnique
             && index.Properties.Select(x => x.Name).SequenceEqual(
                 [nameof(ChatAdminPermission.TelegramUserId), nameof(ChatAdminPermission.CommunityKey)]));

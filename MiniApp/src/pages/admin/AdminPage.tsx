@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
-import type { AdminCamp, AdminClub, AdminOverview, Administrator, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket } from "../../api/types";
+import type { AdminCamp, AdminClub, AdminOverview, Administrator, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
 import { Badge, BggAttribution, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
@@ -8,6 +8,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { campStatusLabel, formatDate, plural } from "../../app/format";
 import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
+import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
 
 type Section = "clubs" | "camps" | "administrators" | "export" | "collection";
 type CommunityCreated = {
@@ -320,6 +321,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
           {busy ? "Сохраняем…" : "Сохранить настройки"}
         </button>
       </Card>
+      <PostingTopicSetting communityKey={club.communityKey} />
       <Card className="form-grid">
         <h2>Скопировать коллекцию</h2>
         <Notice>Коллекция выбранного клуба полностью заменит текущую. Сборы, уже созданные из старой коллекции, сохранят свои снимки игр.</Notice>
@@ -411,6 +413,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
           {busy ? "Сохраняем…" : "Сохранить настройки"}
         </button>
       </Card>
+      <PostingTopicSetting communityKey={camp.communityKey} />
       <Card className="form-grid">
         <h2>Базовая коллекция</h2>
         {camp.status !== "Draft" ? (
@@ -442,6 +445,59 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
       </Card>
       {error && <Notice kind="danger">{error}</Notice>}
     </Page>
+  );
+}
+
+function PostingTopicSetting({ communityKey }: { communityKey: string }) {
+  const state = useAsync(() => api<PostingTopicSettings>(`/admin/communities/${communityKey}/posting-topic`), [communityKey]);
+  const [selected, setSelected] = useState<number | "">("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => setSelected(state.data?.messageThreadId ?? ""), [state.data?.messageThreadId]);
+  if (state.loading) return <Card><Loading /></Card>;
+  if (state.error) return <Card><ErrorState message={state.error} retry={state.reload} /></Card>;
+  if (!state.data || !shouldShowPostingTopic(state.data)) return null;
+  const topics = selectablePostingTopics(state.data);
+  async function save(messageThreadId: number | null) {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api(`/admin/communities/${communityKey}/posting-topic`, json("PUT", { messageThreadId }));
+      telegram.success(messageThreadId === null ? "Будет использоваться основная тема" : "Тема для сообщений сохранена");
+      state.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="form-grid">
+      <h2>💬 Тема для сообщений</h2>
+      {state.data.needsSelection ? (
+        <Notice kind="warning">Выбранная тема больше недоступна. Выберите другую.</Notice>
+      ) : state.data.messageThreadId === null ? (
+        <Notice>Сообщения публикуются в основной теме.</Notice>
+      ) : (
+        <Notice kind="success">Текущая тема: <strong>{postingTopicTitle(state.data)}</strong></Notice>
+      )}
+      {topics.length > 0 && (
+        <>
+          <Field label="Известные темы" hint="OyinQ узнаёт темы из сообщений, которые получает в группе">
+            <select value={selected} onChange={(event) => setSelected(event.target.value ? +event.target.value : "")}>
+              <option value="">Выберите тему</option>
+              {topics.map((topic) => <option key={topic.messageThreadId} value={topic.messageThreadId}>{topic.name}</option>)}
+            </select>
+          </Field>
+          <button className="primary" disabled={busy || selected === ""} onClick={() => selected !== "" && save(selected)}>
+            {busy ? "Сохраняем…" : "Использовать выбранную тему"}
+          </button>
+        </>
+      )}
+      <Notice>Если нужной темы нет в списке, откройте её в Telegram и отправьте там команду <code>/oyinq topic</code>.</Notice>
+      {state.data.messageThreadId !== null && <button disabled={busy} onClick={() => save(null)}>Основная тема</button>}
+      {error && <Notice kind="danger">{error}</Notice>}
+    </Card>
   );
 }
 

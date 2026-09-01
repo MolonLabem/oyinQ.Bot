@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<OyinQCommunity> OyinQCommunities => Set<OyinQCommunity>();
     public DbSet<ChatAdminPermission> ChatAdminPermissions => Set<ChatAdminPermission>();
     public DbSet<KnownTelegramChat> KnownTelegramChats => Set<KnownTelegramChat>();
+    public DbSet<TelegramForumTopic> TelegramForumTopics => Set<TelegramForumTopic>();
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<Camp> Camps => Set<Camp>();
     public DbSet<CampRegistration> CampRegistrations => Set<CampRegistration>();
@@ -60,6 +61,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Title).HasMaxLength(256);
             entity.Property(x => x.Username).HasMaxLength(64);
             entity.HasIndex(x => x.IsBotPresent);
+        });
+
+        modelBuilder.Entity<TelegramForumTopic>(entity =>
+        {
+            entity.ToTable("TelegramForumTopics");
+            entity.HasKey(x => new { x.TelegramChatId, x.MessageThreadId });
+            entity.Property(x => x.Name).HasMaxLength(128);
+            entity.HasIndex(x => new { x.TelegramChatId, x.IsDeleted, x.IsClosed });
+            entity.HasOne<KnownTelegramChat>()
+                .WithMany()
+                .HasForeignKey(x => x.TelegramChatId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Club>(entity =>

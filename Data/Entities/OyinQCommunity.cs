@@ -10,6 +10,8 @@ public sealed class OyinQCommunity
     public BotMode Mode { get; set; }
     public string TimeZoneId { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
+    public int? PostingMessageThreadId { get; set; }
+    public DateTimeOffset? PostingTopicInvalidatedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

@@ -19,6 +19,8 @@ public sealed class TelegramUpdateHandler(
     CommunityContextResolver communityContextResolver,
     ManagedCommunityService managedCommunities,
     IAdminAuthorizationService adminAuthorization,
+    PostingTopicService postingTopics,
+    ITelegramGroupMessageSender groupMessageSender,
     TelegramPeerSelectionService peerSelectionService,
     CampBggImportCoordinator campImports,
     MiniAppLinkBuilder links,
@@ -27,6 +29,8 @@ public sealed class TelegramUpdateHandler(
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
         await TrackKnownChatAsync(update, cancellationToken);
+        if (update.Message is { } observedMessage)
+            await postingTopics.ObserveAsync(observedMessage, cancellationToken);
         if (update.Message is { MigrateToChatId: { } migrateTo } toMessage)
         {
             await HandleChatMigrationAsync(toMessage.Chat.Id, migrateTo, cancellationToken);
@@ -72,7 +76,11 @@ public sealed class TelegramUpdateHandler(
         var command = TelegramUpdateRouting.GetCommand(message?.Text);
         if (message is { Chat.Type: not ChatType.Private })
         {
-            if (TelegramUpdateRouting.IsGroupEntryRequest(message.Text, command))
+            if (TelegramUpdateRouting.IsPostingTopicSelectionRequest(message.Text, command))
+            {
+                await SelectPostingTopicAsync(message, user.Id, cancellationToken);
+            }
+            else if (TelegramUpdateRouting.IsGroupEntryRequest(message.Text, command))
             {
                 await SendGroupEntryPointAsync(message.Chat.Id, user.Id, cancellationToken);
             }
@@ -205,10 +213,58 @@ public sealed class TelegramUpdateHandler(
         }
         known.Title = chat.Title;
         known.Username = chat.Username;
+        known.IsForum = chat.IsForum;
         known.IsBotPresent = update.MyChatMember is not { } membership
             || membership.NewChatMember.Status is not ChatMemberStatus.Left and not ChatMemberStatus.Kicked;
         known.UpdatedAt = now;
+        if (!known.IsForum)
+        {
+            var community = await dbContext.OyinQCommunities.SingleOrDefaultAsync(
+                x => x.TelegramChatId == chat.Id && x.PostingMessageThreadId != null, cancellationToken);
+            if (community is not null)
+            {
+                community.PostingMessageThreadId = null;
+                community.PostingTopicInvalidatedAt = null;
+                community.UpdatedAt = now;
+            }
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SelectPostingTopicAsync(Message message, long telegramUserId,
+        CancellationToken cancellationToken)
+    {
+        var threadId = message.MessageThreadId;
+        try
+        {
+            await postingTopics.SelectFromTelegramAsync(telegramUserId, message, cancellationToken);
+            await botClient.SendMessage(message.Chat.Id,
+                "Готово. Сообщения OyinQ будут публиковаться в этой теме.",
+                messageThreadId: threadId, cancellationToken: cancellationToken);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            await botClient.SendMessage(message.Chat.Id,
+                "У вас нет доступа к настройкам OyinQ для этой группы.",
+                messageThreadId: threadId, cancellationToken: cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogWarning(exception,
+                "Could not select posting topic in chat {TelegramChatId} for {TelegramUserId}.",
+                message.Chat.Id, telegramUserId);
+            await botClient.SendMessage(message.Chat.Id, exception.Message,
+                messageThreadId: threadId, cancellationToken: cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError(exception,
+                "Could not select posting topic in chat {TelegramChatId} for {TelegramUserId}.",
+                message.Chat.Id, telegramUserId);
+            await botClient.SendMessage(message.Chat.Id,
+                "Не удалось сохранить тему. Попробуйте ещё раз позже.",
+                messageThreadId: threadId, cancellationToken: cancellationToken);
+        }
     }
 
     private async Task SendGroupEntryPointAsync(long groupChatId, long telegramUserId,
@@ -235,8 +291,12 @@ public sealed class TelegramUpdateHandler(
                 InlineKeyboardButton.WithUrl(entry.ButtonText, entry.ButtonUrl)
             ]])
             : null;
-        await botClient.SendMessage(groupChatId, entry.Text, replyMarkup: keyboard,
-            cancellationToken: cancellationToken);
+        if (community is not null)
+            await groupMessageSender.SendMessageAsync(community.Key, entry.Text, ParseMode.None, keyboard,
+                cancellationToken);
+        else
+            await botClient.SendMessage(groupChatId, entry.Text, replyMarkup: keyboard,
+                cancellationToken: cancellationToken);
     }
 
     private Task SendPrivacyAsync(long privateChatId, CancellationToken cancellationToken) =>

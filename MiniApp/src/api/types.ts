@@ -31,3 +31,4 @@ export type AdminClub = { id: number; communityKey: string; name: string; telegr
 export type AdminCamp = { id: number; communityKey: string; name: string; telegramTitle: string; timeZoneId: string; isApproved: true; status: string; startDate?: string; endDate?: string; sourceClubId?: number; sourceClubName?: string; registrations: number; contributions: number; gatherings: number };
 export type Administrator = { telegramUserId: number; displayName?: string; telegramUsername?: string; grantedByTelegramUserId: number; createdAt: string };
 export type EligibleAdministrator = { telegramUserId: number; displayName?: string; telegramUsername?: string };
+export type PostingTopicSettings = { isForum: boolean; messageThreadId: number | null; topicName: string | null; needsSelection: boolean; knownTopics: { messageThreadId: number; name: string; isClosed: boolean }[] };

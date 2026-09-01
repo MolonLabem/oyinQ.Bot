@@ -23,6 +23,7 @@ internal sealed record UpdateCampRequest(string Name, string TimeZoneId, DateOnl
 internal sealed record ChangeCampStatusRequest(string Status);
 internal sealed record CopyClubCollectionRequest(long SourceClubId, long ExpectedRevision);
 internal sealed record CopyCampCollectionRequest(long SourceClubId);
+internal sealed record UpdatePostingTopicRequest(int? MessageThreadId);
 
 internal static class AdminEndpoints
 {
@@ -32,6 +33,8 @@ internal static class AdminEndpoints
         admin.MapGet("/overview", OverviewAsync);
         admin.MapGet("/communities/{communityKey}/administrators", AdministratorsAsync);
         admin.MapGet("/communities/{communityKey}/administrator-candidates", AdministratorCandidatesAsync);
+        admin.MapGet("/communities/{communityKey}/posting-topic", PostingTopicAsync);
+        admin.MapPut("/communities/{communityKey}/posting-topic", UpdatePostingTopicAsync);
         admin.MapPost("/communities/{communityKey}/administrators/{telegramUserId:long}",
             AddAdministratorCandidateAsync);
         admin.MapPost("/peer-selections", CreatePeerSelectionAsync);
@@ -48,6 +51,35 @@ internal static class AdminEndpoints
         admin.MapPost("/camps/{campId:long}/status", ChangeCampStatusAsync);
         admin.MapGet("/exports/statistics.zip", ExportAsync);
         return group;
+    }
+
+    private static async Task<IResult> PostingTopicAsync(HttpRequest request, string communityKey,
+        TelegramMiniAppAuthenticator authenticator, PostingTopicService postingTopics,
+        CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            return Results.Ok(await postingTopics.GetAsync(identity.TelegramUserId, communityKey,
+                cancellationToken));
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> UpdatePostingTopicAsync(HttpRequest request, string communityKey,
+        UpdatePostingTopicRequest body, TelegramMiniAppAuthenticator authenticator,
+        PostingTopicService postingTopics, CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            await postingTopics.SetAsync(identity.TelegramUserId, communityKey, body.MessageThreadId,
+                cancellationToken);
+            return Results.NoContent();
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> OverviewAsync(HttpRequest request, AppDbContext dbContext,
