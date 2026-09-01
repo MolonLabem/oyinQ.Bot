@@ -75,6 +75,8 @@ public static class ClubCollectionRefreshGenerator
             + $"{document.Games.SelectMany(game => game.Expansions).Count()} expansion links to {output}.");
         if (Argument(args, "--apply-club-key=") is { Length: > 0 } clubKey)
             await ApplyToClubAsync(configuration, clubKey, document, cancellationToken);
+        else if (args.Any(value => string.Equals(value, "--apply-only-club", StringComparison.OrdinalIgnoreCase)))
+            await ApplyToOnlyClubAsync(configuration, document, cancellationToken);
         return 0;
     }
 
@@ -180,6 +182,21 @@ public static class ClubCollectionRefreshGenerator
             + $"added={newIds.Except(oldIds).Count()}, retained={newIds.Intersect(oldIds).Count()}, "
             + $"removed={oldIds.Except(newIds).Count()}, expansion-links-added={newLinks.Except(oldLinks).Count()}, "
             + $"expansion-links-removed={oldLinks.Except(newLinks).Count()}, revision={club.CollectionRevision}.");
+    }
+
+    private static async Task ApplyToOnlyClubAsync(IConfiguration configuration,
+        ClubCollectionDocument document, CancellationToken cancellationToken)
+    {
+        var connectionString = configuration["Database:ConnectionString"]?.Trim();
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException("Database__ConnectionString is required with --apply-only-club.");
+        var dbOptions = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options;
+        await using var dbContext = new AppDbContext(dbOptions);
+        var clubKeys = await dbContext.Clubs.AsNoTracking().Select(club => club.BotChatKey)
+            .Take(2).ToArrayAsync(cancellationToken);
+        if (clubKeys.Length != 1)
+            throw new InvalidOperationException($"--apply-only-club requires exactly one Club, but found {clubKeys.Length}{(clubKeys.Length == 2 ? " or more" : string.Empty)}.");
+        await ApplyToClubAsync(configuration, clubKeys[0], document, cancellationToken);
     }
 
     private static HashSet<long> CollectionIds(ClubCollectionDocument document) => document.Games
