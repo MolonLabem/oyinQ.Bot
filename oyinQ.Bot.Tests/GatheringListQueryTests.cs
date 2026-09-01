@@ -1,4 +1,6 @@
 using oyinQ.Bot.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using oyinQ.Bot.Data;
 using oyinQ.Bot.Features.Gatherings;
 
 namespace oyinQ.Bot.Tests;
@@ -65,6 +67,22 @@ public sealed class GatheringListQueryTests
 
         Assert.Equal([4L], values.Select(x => x.Id));
         Assert.All(values, x => Assert.Equal(GatheringStatus.Cancelled, x.Status));
+    }
+
+    [Fact]
+    public void CancelledHistoryPaging_TranslatesForNpgsql()
+    {
+        using var dbContext = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=oyinq_translation_test;Username=test;Password=test").Options);
+
+        var sql = GatheringListQuery.Apply(dbContext.GameGatherings.AsNoTracking(),
+                GatheringListView.History, GatheringHistoryFilter.Cancelled, Now)
+            .Skip(20).Take(21).ToQueryString();
+
+        Assert.Contains("WHERE g.\"Status\" = 5", sql, StringComparison.Ordinal);
+        Assert.Contains("ORDER BY g.\"StartsAtUtc\" DESC, g.\"Id\" DESC", sql, StringComparison.Ordinal);
+        Assert.Contains("OFFSET", sql, StringComparison.Ordinal);
+        Assert.Contains("LIMIT", sql, StringComparison.Ordinal);
     }
 
     [Theory]

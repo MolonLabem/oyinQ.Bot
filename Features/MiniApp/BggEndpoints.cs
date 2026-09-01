@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.MiniApp;
@@ -50,10 +51,12 @@ internal static class BggEndpoints
                 game.MaxPlayTimeMinutes, game.MinAge, game.Type, game.Subdomains, game.CategoryItems,
                 game.Mechanics);
             var metadata = BggTaxonomyCatalog.Present(collectionGame);
+            var players = PlayerCountRange.Normalize(collectionGame.MinPlayers, collectionGame.MaxPlayers);
             return Results.Ok(new
             {
                 Game = new { collectionGame.BggId, collectionGame.Name, collectionGame.ThumbnailImageUrl,
-                    collectionGame.ImageUrl, collectionGame.MinPlayers, collectionGame.MaxPlayers,
+                    collectionGame.ImageUrl, MinPlayers = players.Minimum, MaxPlayers = players.Maximum,
+                    PlayerRangeDefaulted = players.WasDefaulted,
                     collectionGame.BestPlayers, collectionGame.Description, collectionGame.YearPublished,
                     collectionGame.MinPlayTimeMinutes, collectionGame.MaxPlayTimeMinutes, collectionGame.MinAge,
                     collectionGame.Type, metadata.TypeName, metadata.TypeNames, metadata.CategoryNames,

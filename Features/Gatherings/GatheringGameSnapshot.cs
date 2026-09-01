@@ -22,21 +22,24 @@ public sealed record GatheringGameSnapshot(
     int? MinAge = null,
     GameType Type = GameType.Other,
     IReadOnlyList<GameTaxonomyItem>? Categories = null,
-    IReadOnlyList<GameTaxonomyItem>? Mechanics = null)
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
+    bool PlayerRangeDefaulted = false)
 {
     public const int CurrentVersion = 3;
 
     public static GatheringGameSnapshot FromClubGame(
         ClubCollectionGame game,
-        IReadOnlyCollection<long> selectedExpansionIds) =>
-        new(
+        IReadOnlyCollection<long> selectedExpansionIds)
+    {
+        var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
+        return new(
             CurrentVersion,
             game.BggId,
             game.Name,
             game.ThumbnailImageUrl,
             game.ImageUrl,
-            game.MinPlayers,
-            game.MaxPlayers,
+            players.Minimum,
+            players.Maximum,
             game.BestPlayers,
             game.Expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
             "catalog",
@@ -49,7 +52,9 @@ public sealed record GatheringGameSnapshot(
             BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types,
                 game.CategoryItems, game.Categories),
             game.CategoryItems,
-            game.Mechanics);
+            game.Mechanics,
+            players.WasDefaulted);
+    }
 }
 
 public static class GatheringGameSnapshotSerializer
@@ -58,6 +63,7 @@ public static class GatheringGameSnapshotSerializer
 
     public static string Serialize(GatheringGameSnapshot snapshot)
     {
+        snapshot = Normalize(snapshot);
         Validate(snapshot);
         return JsonSerializer.Serialize(snapshot, Options);
     }
@@ -68,6 +74,7 @@ public static class GatheringGameSnapshotSerializer
         {
             var snapshot = JsonSerializer.Deserialize<GatheringGameSnapshot>(json ?? string.Empty, Options)
                 ?? throw new InvalidOperationException("Снимок игры сбора пуст.");
+            snapshot = Normalize(snapshot);
             Validate(snapshot);
             return snapshot;
         }
@@ -75,6 +82,17 @@ public static class GatheringGameSnapshotSerializer
         {
             throw new InvalidOperationException("Снимок игры сбора содержит некорректный JSON.", exception);
         }
+    }
+
+    private static GatheringGameSnapshot Normalize(GatheringGameSnapshot snapshot)
+    {
+        var players = PlayerCountRange.Normalize(snapshot.MinPlayers, snapshot.MaxPlayers);
+        return snapshot with
+        {
+            MinPlayers = players.Minimum,
+            MaxPlayers = players.Maximum,
+            PlayerRangeDefaulted = snapshot.PlayerRangeDefaulted || players.WasDefaulted
+        };
     }
 
     public static void Validate(GatheringGameSnapshot snapshot)

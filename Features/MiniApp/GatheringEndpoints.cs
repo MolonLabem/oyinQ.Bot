@@ -128,6 +128,7 @@ internal static class GatheringEndpoints
             ,gathering.MaximumPlayers
             ,GameMinimumPlayers = snapshot.MinPlayers
             ,GameMaximumPlayers = snapshot.MaxPlayers
+            ,GamePlayerRangeDefaulted = snapshot.PlayerRangeDefaulted
             ,gathering.Description
             ,gathering.CanTeachRules
             ,KnownExpansions = (snapshot.KnownExpansions ?? snapshot.SelectedExpansions)
