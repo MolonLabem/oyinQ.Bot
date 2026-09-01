@@ -9,14 +9,14 @@ namespace oyinQ.Bot.Features.Catalog;
 public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollection<GameType> Types,
     IReadOnlyCollection<long> CategoryIds, string? Sort);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
-public sealed record GameListItemResponse(long BggId, string Name, string? ThumbnailImageUrl,
+public sealed record GameListItemResponse(long BggId, string Name, string? OriginalName, string? ThumbnailImageUrl,
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     string AvailabilitySummary, bool IsDefinitelyAvailable,
     bool NeedsProviderCoordination);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider);
-public sealed record GameDetailsResponse(long BggId, string Name, string? ImageUrl, string? Description,
+public sealed record GameDetailsResponse(long BggId, string Name, string? OriginalName, string? ImageUrl, string? Description,
     int? YearPublished, GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     int? MinPlayTimeMinutes, int? MaxPlayTimeMinutes, int? MinAge,
@@ -36,7 +36,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim();
-            filtered = filtered.Where(value => value.Game.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
+            filtered = filtered.Where(value => value.Game.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || value.Game.OriginalName?.Contains(search, StringComparison.OrdinalIgnoreCase) == true);
         }
         filtered = filtered.Where(value => Matches(value.Game, query));
 
@@ -63,7 +64,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             .SingleOrDefault(x => x.Game.BggId == bggId) ?? throw new KeyNotFoundException("Игра отсутствует в каталоге.");
         var game = value.Game;
         var presentation = BggTaxonomyCatalog.Present(game);
-        return new GameDetailsResponse(game.BggId, game.Name, game.ImageUrl ?? game.ThumbnailImageUrl,
+        return new GameDetailsResponse(game.BggId, game.Name, game.OriginalName,
+            game.ImageUrl ?? game.ThumbnailImageUrl,
             game.Description, game.YearPublished, game.Type, presentation.TypeName, presentation.TypeNames,
             game.MinPlayers, game.MaxPlayers, game.BestPlayers, game.MinPlayTimeMinutes,
             game.MaxPlayTimeMinutes, game.MinAge,
@@ -98,7 +100,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         var summary = value.IsInBaseCollection ? "Есть в коллекции клуба" : committed ? "Точно будет"
             : coordination ? "Нужно решить, кто привезёт" : value.Providers.Count > 0 ? "Можно привезти" : string.Empty;
         var presentation = BggTaxonomyCatalog.Present(value.Game);
-        return new GameListItemResponse(value.Game.BggId, value.Game.Name, value.Game.ThumbnailImageUrl,
+        return new GameListItemResponse(value.Game.BggId, value.Game.Name, value.Game.OriginalName,
+            value.Game.ThumbnailImageUrl,
             value.Game.Type, presentation.TypeName, presentation.TypeNames, value.Game.MinPlayers,
             value.Game.MaxPlayers, value.Game.BestPlayers, summary,
             value.IsInBaseCollection || committed, coordination);

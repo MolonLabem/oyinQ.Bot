@@ -11,13 +11,13 @@ public sealed class ClubBggImportTests
         var current = new ClubCollectionDocument(2,
         [
             new ClubCollectionGame(10, "Old title", null, null, 1, 4, null,
-                [new ClubCollectionExpansion(100, "Kept")]),
+                [new ClubCollectionExpansion(100, "Kept")], OriginalName: "Original title"),
             new ClubCollectionGame(20, "Club only", null, null, 2, 4, null, [])
         ]);
         CampImportSelectionItem[] imported =
         [
             new(10, CampContributionItemType.BaseGame, null, "Fresh title", true,
-                Description: "Fresh metadata", Type: GameType.Strategy),
+                Description: "Fresh metadata", Type: GameType.Strategy, OriginalName: "Fresh original"),
             new(30, CampContributionItemType.BaseGame, null, "New game", true),
             new(101, CampContributionItemType.Expansion, 10, "New expansion", true,
                 ParentBggIds: [10]),
@@ -35,7 +35,9 @@ public sealed class ClubBggImportTests
         Assert.Contains(result.Document.Games, game => game.BggId == 20);
         var refreshed = Assert.Single(result.Document.Games, game => game.BggId == 10);
         Assert.Equal("Fresh title", refreshed.Name);
+        Assert.Equal("Fresh original", refreshed.OriginalName);
         Assert.Equal("Fresh metadata", refreshed.Description);
+        Assert.Equal(3, result.Document.Games.Count);
         Assert.Equal([100L, 101L, 102L], refreshed.Expansions.Select(x => x.BggId).Order());
         Assert.Equal([102L], Assert.Single(result.Document.Games, game => game.BggId == 30)
             .Expansions.Select(x => x.BggId));

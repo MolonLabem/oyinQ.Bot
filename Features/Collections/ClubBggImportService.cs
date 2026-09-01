@@ -160,7 +160,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     private static IEnumerable<ClubCollectionExpansion> LinkedExpansions(long baseId,
         IEnumerable<CampImportSelectionItem> expansions) => expansions
         .Where(x => (x.ParentBggIds ?? []).Contains(baseId))
-        .Select(x => new ClubCollectionExpansion(x.BggId, x.Name));
+        .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName));
 
     private static IReadOnlyList<ClubCollectionExpansion> MergeExpansions(
         IReadOnlyList<ClubCollectionExpansion> existing, IEnumerable<ClubCollectionExpansion> imported,
@@ -184,7 +184,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
             item.Description is { Length: > 20_000 } ? item.Description[..20_000] : item.Description,
             item.YearPublished is >= 1000 and <= 3000 ? item.YearPublished : null,
             minPlayTime, maxPlayTime, item.MinAge is >= 0 and <= 100 ? item.MinAge : null,
-            item.Type, item.Subdomains, item.CategoryItems, item.Mechanics);
+            item.Type, item.Subdomains, item.CategoryItems, item.Mechanics, item.OriginalName);
     }
 
     private static ClubBggImportView ToView(ClubBggImport job) => new(job.PublicId, job.BggUsername,

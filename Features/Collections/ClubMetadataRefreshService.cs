@@ -163,8 +163,10 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
             MinPlayTimeMinutes = game.MinPlayTimeMinutes, MaxPlayTimeMinutes = game.MaxPlayTimeMinutes,
             MinAge = game.MinAge, Type = game.Type, Subdomains = game.Subdomains,
             CategoryItems = game.CategoryItems, Mechanics = game.Mechanics,
+            OriginalName = game.OriginalName,
             Expansions = existing.Expansions.Select(selected => details.Expansions
-                .Where(x => x.BggId == selected.BggId).Select(x => new ClubCollectionExpansion(x.BggId, x.Name))
+                .Where(x => x.BggId == selected.BggId)
+                .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName))
                 .SingleOrDefault() ?? selected).ToArray() };
     }
 }

@@ -28,10 +28,11 @@ public sealed class BoardGameGeekClientTests
     {
         var handler = new StubHttpMessageHandler(request =>
         {
-            Assert.Equal("/xmlapi2/search", request.RequestUri!.AbsolutePath);
-            Assert.Contains("query=Terraforming%20Mars", request.RequestUri.Query, StringComparison.Ordinal);
-            Assert.Contains("type=boardgame", request.RequestUri.Query, StringComparison.Ordinal);
-            return XmlResponse(HttpStatusCode.OK, """
+            if (request.RequestUri!.AbsolutePath == "/xmlapi2/search")
+            {
+                Assert.Contains("query=Terraforming%20Mars", request.RequestUri.Query, StringComparison.Ordinal);
+                Assert.Contains("type=boardgame", request.RequestUri.Query, StringComparison.Ordinal);
+                return XmlResponse(HttpStatusCode.OK, """
                 <items>
                   <item id="1"><name type="alternate" value="Ignore me" /><name type="primary" value="Game 1" /><yearpublished value="2020" /></item>
                   <item id="2"><name type="primary" value="Game 2" /></item>
@@ -41,13 +42,30 @@ public sealed class BoardGameGeekClientTests
                   <item id="6"><name type="primary" value="Game 6" /></item>
                 </items>
                 """);
+            }
+
+            Assert.Equal("/xmlapi2/thing", request.RequestUri.AbsolutePath);
+            Assert.Contains("versions=1", request.RequestUri.Query, StringComparison.Ordinal);
+            return XmlResponse(HttpStatusCode.OK, """
+                <items>
+                  <item type="boardgame" id="1"><name type="primary" value="Game 1" /><yearpublished value="2020" />
+                    <versions><item><name type="primary" value="Russian edition" /><canonicalname value="Игра 1" /><link type="language" id="2202" value="Russian" /></item></versions>
+                  </item>
+                  <item type="boardgame" id="2"><name type="primary" value="Game 2" /></item>
+                  <item type="boardgame" id="3"><name type="primary" value="Game 3" /></item>
+                  <item type="boardgame" id="4"><name type="primary" value="Game 4" /></item>
+                  <item type="boardgame" id="5"><name type="primary" value="Game 5" /></item>
+                  <item type="boardgame" id="6"><name type="primary" value="Game 6" /></item>
+                </items>
+                """);
         });
 
         var games = await CreateClient(handler).SearchAsync("  Terraforming Mars  ", default);
 
         Assert.Equal(6, games.Count);
-        Assert.Equal(new[] { "Game 1", "Game 2", "Game 3", "Game 4", "Game 5", "Game 6" },
+        Assert.Equal(new[] { "Игра 1", "Game 2", "Game 3", "Game 4", "Game 5", "Game 6" },
             games.Select(game => game.Name));
+        Assert.Equal("Game 1", games[0].OriginalName);
         Assert.Equal(2020, games[0].YearPublished);
     }
 
@@ -123,9 +141,22 @@ public sealed class BoardGameGeekClientTests
     [Fact]
     public async Task GetGameDetailsAsync_ReturnsOnlyReliablyLinkedInboundExpansions()
     {
-        var handler = new StubHttpMessageHandler(_ => XmlResponse(
-            HttpStatusCode.OK,
-            """
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Contains("versions=1", request.RequestUri!.Query, StringComparison.Ordinal);
+            if (!request.RequestUri.Query.Contains("id=167791", StringComparison.Ordinal))
+                return XmlResponse(HttpStatusCode.OK, """
+                    <items>
+                      <item type="boardgameexpansion" id="247030">
+                        <name type="primary" value="Terraforming Mars: Prelude" />
+                        <versions><item><canonicalname value="Покорение Марса: Пролог" /><link type="language" id="2202" value="Russian" /></item></versions>
+                      </item>
+                      <item type="boardgameexpansion" id="231965">
+                        <name type="primary" value="Terraforming Mars: Hellas &amp; Elysium" />
+                      </item>
+                    </items>
+                    """);
+            return XmlResponse(HttpStatusCode.OK, """
             <items>
               <item type="boardgame" id="167791">
                 <name type="primary" value="Terraforming Mars" />
@@ -143,7 +174,8 @@ public sealed class BoardGameGeekClientTests
                 <link type="boardgamecategory" id="1016" value="Science Fiction" inbound="true" />
               </item>
             </items>
-            """));
+            """);
+        });
         var client = CreateClient(handler);
 
         var details = await client.GetGameDetailsAsync(167791, CancellationToken.None);
@@ -163,7 +195,12 @@ public sealed class BoardGameGeekClientTests
         Assert.Collection(
             details.Expansions,
             expansion => Assert.Equal(231965, expansion.BggId),
-            expansion => Assert.Equal(247030, expansion.BggId));
+            expansion =>
+            {
+                Assert.Equal(247030, expansion.BggId);
+                Assert.Equal("Покорение Марса: Пролог", expansion.Name);
+                Assert.Equal("Terraforming Mars: Prelude", expansion.OriginalName);
+            });
     }
 
     [Fact]
@@ -243,6 +280,7 @@ public sealed class BoardGameGeekClientTests
             Assert.Contains("id=10,20", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
             requests.Add(request.RequestUri.Query);
             Assert.DoesNotContain("type=", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("versions=1", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
             return XmlResponse(HttpStatusCode.OK, """
                   <items>
                   <item type="boardgame" id="10">
@@ -258,7 +296,7 @@ public sealed class BoardGameGeekClientTests
                   """);
         });
 
-        var items = await CreateClient(handler).GetItemsByIdsAsync([10, 20], default);
+        var items = await CreateClient(handler).GetItemsByIdsAsync([10, 10, 20], default);
 
         Assert.False(items.Single(item => item.Game.BggId == 10).IsExpansion);
         var expansion = items.Single(item => item.Game.BggId == 20);

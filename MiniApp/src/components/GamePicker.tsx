@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { BggDetails, BggSearchResult, ClubGame } from "../api/types";
 import { Cover, Notice } from "./Ui";
+import { normalizeGameSearch, rankGames } from "./gameSearch";
+
+export { normalizeGameSearch, searchGames } from "./gameSearch";
 
 type GameSource = "catalog" | "bgg";
 
@@ -104,7 +107,8 @@ export function GamePicker({
     const value = input.trim();
     if (!value) return;
     if (isReference) { await chooseBgg(value); return; }
-    const exactLocal = catalogMatches.find(game => normalizeGameSearch(game.name) === normalized);
+    const exactLocal = catalogMatches.find(game => normalizeGameSearch(game.name) === normalized
+      || (game.originalName && normalizeGameSearch(game.originalName) === normalized));
     if (exactLocal) { chooseCatalog(exactLocal); return; }
     if (!bggAvailable) {
       setError(catalog.length ? "Такой игры нет в доступной коллекции, а BGG сейчас недоступен." : "BGG сейчас недоступен.");
@@ -170,47 +174,6 @@ export function GameMeta({ game, compact = false }: { game: ClubGame; compact?: 
     {players && <small>{players}{game.bestPlayers ? ` · лучше: ${game.bestPlayers}` : ""}</small>}
     {tags.length > 0 && <span className="tag-list">{tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}</span>}
   </span>;
-}
-
-export function normalizeGameSearch(value: string) {
-  return value.trim().toLocaleLowerCase("ru-RU").normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-}
-
-export function searchGames<T extends ClubGame>(games: T[], query: string): T[] {
-  const normalized = normalizeGameSearch(query);
-  return normalized ? rankGames(games, normalized) : games;
-}
-
-function rankGames<T extends ClubGame>(games: T[], query: string): T[] {
-  if (!query) return [];
-  return games.map(game => ({ game, score: matchScore(normalizeGameSearch(game.name), query) }))
-    .filter(value => value.score < Number.POSITIVE_INFINITY)
-    .sort((left, right) => left.score - right.score || left.game.name.localeCompare(right.game.name))
-    .map(value => value.game);
-}
-
-function matchScore(candidate: string, query: string) {
-  if (candidate === query) return 0;
-  if (candidate.startsWith(query)) return 1;
-  const index = candidate.indexOf(query);
-  if (index >= 0) return 2 + index / 100;
-  const words = candidate.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  const distance = Math.min(editDistance(candidate, query), ...words.map(word => editDistance(word, query)));
-  const allowed = query.length >= 8 ? 2 : query.length >= 5 ? 1 : 0;
-  return distance <= allowed ? 10 + distance : Number.POSITIVE_INFINITY;
-}
-
-function editDistance(left: string, right: string) {
-  const row = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= left.length; i++) {
-    let previous = row[0]; row[0] = i;
-    for (let j = 1; j <= right.length; j++) {
-      const old = row[j];
-      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (left[i - 1] === right[j - 1] ? 0 : 1));
-      previous = old;
-    }
-  }
-  return row[right.length];
 }
 
 function looksLikeBggReference(value: string) {

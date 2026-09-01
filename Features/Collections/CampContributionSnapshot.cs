@@ -21,7 +21,8 @@ public sealed record CampContributionSnapshot(
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
-    IReadOnlyList<long>? ParentBggIds = null)
+    IReadOnlyList<long>? ParentBggIds = null,
+    string? OriginalName = null)
 {
     public const int CurrentVersion = 3;
 }
@@ -55,7 +56,8 @@ public static class CampContributionSnapshotSerializer
     {
         if (snapshot.Version is not 1 and not 2 and not CampContributionSnapshot.CurrentVersion)
             throw new InvalidOperationException($"Версия снимка вклада {snapshot.Version} не поддерживается.");
-        if (string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.Name.Length > 300)
+        if (string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.Name.Length > 300
+            || snapshot.OriginalName?.Length > 300)
             throw new InvalidOperationException("Название игры во вкладе некорректно.");
         if (snapshot.ThumbnailImageUrl?.Length > 1000 || snapshot.ImageUrl?.Length > 1000)
             throw new InvalidOperationException("URL изображения во вкладе слишком длинный.");

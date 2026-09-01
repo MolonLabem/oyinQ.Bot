@@ -15,7 +15,8 @@ public sealed record CampImportSelectionItem(long BggId, CampContributionItemTyp
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
-    IReadOnlyList<long>? ParentBggIds = null);
+    IReadOnlyList<long>? ParentBggIds = null,
+    string? OriginalName = null);
 
 public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemType ItemType,
     IReadOnlyList<long> ParentBggIds, CampContributionSnapshot Snapshot, int CopyCount,

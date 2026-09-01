@@ -28,13 +28,14 @@ public sealed record ClubCollectionGame(
     GameType Type = GameType.Other,
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
-    IReadOnlyList<GameTaxonomyItem>? Mechanics = null)
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
+    string? OriginalName = null)
 {
     [JsonIgnore]
     public bool HasExpansions => Expansions is { Count: > 0 };
 }
 
-public sealed record ClubCollectionExpansion(long BggId, string Name);
+public sealed record ClubCollectionExpansion(long BggId, string Name, string? OriginalName = null);
 public sealed record GameTaxonomyItem(long BggId, string Name);
 
 public enum GameType
@@ -113,7 +114,8 @@ public static class ClubCollectionSerializer
             throw new InvalidOperationException("В документе коллекции отсутствует список игр.");
         }
 
-        if (document.Games.Any(game => game.BggId <= 0 || string.IsNullOrWhiteSpace(game.Name)))
+        if (document.Games.Any(game => game.BggId <= 0 || string.IsNullOrWhiteSpace(game.Name)
+            || game.OriginalName?.Length > 300))
         {
             throw new InvalidOperationException("У каждой игры коллекции должны быть название и положительный BGG ID.");
         }
@@ -126,7 +128,8 @@ public static class ClubCollectionSerializer
         foreach (var game in document.Games)
         {
             var expansions = game.Expansions ?? [];
-            if (expansions.Any(expansion => expansion.BggId <= 0 || string.IsNullOrWhiteSpace(expansion.Name))
+            if (expansions.Any(expansion => expansion.BggId <= 0 || string.IsNullOrWhiteSpace(expansion.Name)
+                    || expansion.OriginalName?.Length > 300)
                 || expansions.GroupBy(expansion => expansion.BggId).Any(group => group.Count() > 1))
             {
                 throw new InvalidOperationException($"Club collection game '{game.Name}' has invalid expansions.");

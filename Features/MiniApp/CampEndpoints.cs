@@ -22,7 +22,7 @@ internal sealed record ResolveCampImportRequest(string CommunityKey, CampImportO
 internal sealed record AddManualContributionRequest(string CommunityKey, string BggInput,
     IReadOnlyCollection<long>? ExpansionBggIds);
 internal sealed record CampCatalogResponse(long BggId, string ItemType, long? ParentBggId,
-    string Name, string? ThumbnailImageUrl, string? ImageUrl, int? MinPlayers, int? MaxPlayers,
+    string Name, string? OriginalName, string? ThumbnailImageUrl, string? ImageUrl, int? MinPlayers, int? MaxPlayers,
     string? BestPlayers, GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames, int CopyCount,
@@ -287,7 +287,7 @@ internal static class CampEndpoints
                 await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, expansion.BggId,
                     CampContributionItemType.Expansion, bggId.Value,
                     Snapshot(expansion.Name, null, null, null, null, null, null, null, null) with
-                    { ParentBggIds = [bggId.Value] },
+                    { ParentBggIds = [bggId.Value], OriginalName = expansion.OriginalName },
                     DateTimeOffset.UtcNow, cancellationToken);
             return Results.NoContent();
         }
@@ -344,6 +344,7 @@ internal static class CampEndpoints
         var effective = await catalog.LoadAsync(community, participantId, cancellationToken);
         return Results.Ok(effective.Select(x => { var metadata = BggTaxonomyCatalog.Present(x.Game); return new CampCatalogResponse(
             x.Game.BggId, CampContributionItemType.BaseGame.ToString(), null, x.Game.Name,
+            x.Game.OriginalName,
             x.Game.ThumbnailImageUrl, x.Game.ImageUrl, x.Game.MinPlayers, x.Game.MaxPlayers,
             x.Game.BestPlayers, x.Game.Type, metadata.TypeName, metadata.TypeNames,
             metadata.CategoryNames, metadata.MechanicNames,
@@ -359,7 +360,8 @@ internal static class CampEndpoints
         IReadOnlyList<string>? categories, oyinQ.Bot.Integrations.ExternalGame? game) => new(CampContributionSnapshot.CurrentVersion,
         name, thumbnail, image, min, max, best, types, categories,
         game?.Description, game?.YearPublished, game?.MinPlayTimeMinutes, game?.MaxPlayTimeMinutes,
-        game?.MinAge, game?.Type ?? GameType.Other, game?.Subdomains, game?.CategoryItems, game?.Mechanics);
+        game?.MinAge, game?.Type ?? GameType.Other, game?.Subdomains, game?.CategoryItems, game?.Mechanics,
+        OriginalName: game?.OriginalName);
 
     private static async Task<(long CampId, long ParticipantId, IResult? Error)> OwnedCampAsync(
         HttpRequest request, string community, AppDbContext dbContext,

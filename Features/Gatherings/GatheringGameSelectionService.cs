@@ -36,7 +36,7 @@ public sealed class GatheringGameSelectionService(
         var details = await bggClient.GetGameDetailsAsync(bggId, cancellationToken)
             ?? throw new KeyNotFoundException("Игра не найдена в BGG.");
         var expansions = details.Expansions
-            .Select(value => new ClubCollectionExpansion(value.BggId, value.Name))
+            .Select(value => new ClubCollectionExpansion(value.BggId, value.Name, value.OriginalName))
             .ToArray();
         EnsureKnownExpansions(expansions, selectedExpansionIds);
         var game = details.Game;
@@ -62,7 +62,8 @@ public sealed class GatheringGameSelectionService(
                 game.CategoryItems, game.Categories),
             game.CategoryItems,
             game.Mechanics,
-            players.WasDefaulted);
+            players.WasDefaulted,
+            game.OriginalName);
     }
 
     public async Task<GatheringGameSnapshot> FromCampCatalogAsync(

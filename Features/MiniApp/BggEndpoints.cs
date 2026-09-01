@@ -49,12 +49,13 @@ internal static class BggEndpoints
                 game.ImageUrl, game.MinPlayers, game.MaxPlayers, game.BestPlayers, [], game.Types,
                 game.Categories, game.Description, game.YearPublished, game.MinPlayTimeMinutes,
                 game.MaxPlayTimeMinutes, game.MinAge, game.Type, game.Subdomains, game.CategoryItems,
-                game.Mechanics);
+                game.Mechanics, game.OriginalName);
             var metadata = BggTaxonomyCatalog.Present(collectionGame);
             var players = PlayerCountRange.Normalize(collectionGame.MinPlayers, collectionGame.MaxPlayers);
             return Results.Ok(new
             {
-                Game = new { collectionGame.BggId, collectionGame.Name, collectionGame.ThumbnailImageUrl,
+                Game = new { collectionGame.BggId, collectionGame.Name, collectionGame.OriginalName,
+                    collectionGame.ThumbnailImageUrl,
                     collectionGame.ImageUrl, MinPlayers = players.Minimum, MaxPlayers = players.Maximum,
                     PlayerRangeDefaulted = players.WasDefaulted,
                     collectionGame.BestPlayers, collectionGame.Description, collectionGame.YearPublished,

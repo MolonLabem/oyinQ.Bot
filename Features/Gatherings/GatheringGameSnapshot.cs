@@ -23,7 +23,8 @@ public sealed record GatheringGameSnapshot(
     GameType Type = GameType.Other,
     IReadOnlyList<GameTaxonomyItem>? Categories = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
-    bool PlayerRangeDefaulted = false)
+    bool PlayerRangeDefaulted = false,
+    string? OriginalName = null)
 {
     public const int CurrentVersion = 3;
 
@@ -53,7 +54,8 @@ public sealed record GatheringGameSnapshot(
                 game.CategoryItems, game.Categories),
             game.CategoryItems,
             game.Mechanics,
-            players.WasDefaulted);
+            players.WasDefaulted,
+            game.OriginalName);
     }
 }
 
@@ -89,6 +91,7 @@ public static class GatheringGameSnapshotSerializer
         var players = PlayerCountRange.Normalize(snapshot.MinPlayers, snapshot.MaxPlayers);
         return snapshot with
         {
+            SelectedExpansions = snapshot.SelectedExpansions ?? [],
             MinPlayers = players.Minimum,
             MaxPlayers = players.Maximum,
             PlayerRangeDefaulted = snapshot.PlayerRangeDefaulted || players.WasDefaulted
@@ -103,7 +106,7 @@ public static class GatheringGameSnapshotSerializer
             throw new InvalidOperationException($"Unsupported gathering game snapshot version {snapshot.Version}.");
         }
 
-        if (string.IsNullOrWhiteSpace(snapshot.Name))
+        if (string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.OriginalName?.Length > 300)
         {
             throw new InvalidOperationException("В снимке игры сбора отсутствует название.");
         }

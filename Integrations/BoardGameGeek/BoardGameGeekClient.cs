@@ -52,23 +52,38 @@ public sealed class BoardGameGeekClient(
 
                 return id is null || string.IsNullOrWhiteSpace(name)
                     ? null
-                    : new ExternalGameSearchResult(id.Value, name, year);
+                    : new ExternalGameSearchResult(id.Value, name, year, name);
             })
             .Where(result => result is not null)
             .Cast<ExternalGameSearchResult>()
             .ToArray()
             ?? [];
-        return RankSearchResults(results, normalizedQuery).Take(25).ToArray();
+        var ranked = RankSearchResults(results, normalizedQuery).Take(25).ToArray();
+        var enriched = await FetchThingsAsync(ranked.Select(result => result.BggId).ToArray(),
+            cancellationToken);
+        return ranked.Select(result => enriched.TryGetValue(result.BggId, out var game)
+                ? new ExternalGameSearchResult(result.BggId, game.Name,
+                    game.YearPublished ?? result.YearPublished, game.OriginalName)
+                : result)
+            .ToArray();
     }
 
     public static IReadOnlyList<ExternalGameSearchResult> RankSearchResults(
         IEnumerable<ExternalGameSearchResult> results, string query)
     {
         var normalized = NormalizeSearch(query);
-        return results.OrderBy(result => SearchRank(NormalizeSearch(result.Name), normalized))
+        return results.OrderBy(result => BestSearchRank(result, normalized))
             .ThenBy(result => result.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenByDescending(result => result.YearPublished)
             .ToArray();
+    }
+
+    private static (int Tier, int Position) BestSearchRank(ExternalGameSearchResult result, string query)
+    {
+        var display = SearchRank(NormalizeSearch(result.Name), query);
+        var original = string.IsNullOrWhiteSpace(result.OriginalName)
+            ? display : SearchRank(NormalizeSearch(result.OriginalName), query);
+        return display.CompareTo(original) <= 0 ? display : original;
     }
 
     private static (int Tier, int Position) SearchRank(string name, string query)
@@ -95,7 +110,7 @@ public sealed class BoardGameGeekClient(
         }
 
         var document = await GetXmlAsync(
-            $"/xmlapi2/thing?id={bggId}&type=boardgame&stats=1",
+            $"/xmlapi2/thing?id={bggId}&type=boardgame&stats=1&versions=1",
             cancellationToken,
             acceptedAttempts: ThingAttempts,
             transientAttempts: ThingAttempts);
@@ -106,7 +121,7 @@ public sealed class BoardGameGeekClient(
             return null;
         }
 
-        var expansions = item!.Elements("link")
+        var linkedExpansions = item!.Elements("link")
             .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion", StringComparison.OrdinalIgnoreCase)
                 && string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
             .Select(link =>
@@ -115,11 +130,21 @@ public sealed class BoardGameGeekClient(
                 var name = ((string?)link.Attribute("value"))?.Trim();
                 return id is null || string.IsNullOrWhiteSpace(name)
                     ? null
-                    : new BggExpansion(id.Value, name);
+                    : new BggExpansion(id.Value, name, name);
             })
             .Where(value => value is not null)
             .Cast<BggExpansion>()
             .DistinctBy(value => value.BggId)
+            .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var enrichedExpansions = await GetItemsByIdsAsync(
+            linkedExpansions.Select(expansion => expansion.BggId).ToArray(), cancellationToken);
+        var expansionById = enrichedExpansions.Where(value => value.IsExpansion)
+            .ToDictionary(value => value.Game.BggId!.Value);
+        var expansions = linkedExpansions.Select(expansion =>
+            expansionById.TryGetValue(expansion.BggId, out var enriched)
+                ? new BggExpansion(expansion.BggId, enriched.Game.Name, enriched.Game.OriginalName)
+                : expansion)
             .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -160,7 +185,7 @@ public sealed class BoardGameGeekClient(
             if (offset > 0) await Task.Delay(ThingBatchDelay, cancellationToken);
             var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
             var document = await GetXmlAsync(
-                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgameexpansion&stats=1",
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgameexpansion&stats=1&versions=1",
                 cancellationToken,
                 acceptedAttempts: ThingAttempts,
                 transientAttempts: ThingAttempts);
@@ -195,7 +220,7 @@ public sealed class BoardGameGeekClient(
             if (offset > 0) await Task.Delay(ThingBatchDelay, cancellationToken);
             var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
             var document = await GetXmlAsync(
-                $"/xmlapi2/thing?id={string.Join(',', batch)}&stats=1",
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&stats=1&versions=1",
                 cancellationToken,
                 acceptedAttempts: ThingAttempts,
                 transientAttempts: ThingAttempts);
@@ -256,7 +281,7 @@ public sealed class BoardGameGeekClient(
 
             var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
             var document = await GetXmlAsync(
-                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgame&stats=1",
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgame&stats=1&versions=1",
                 cancellationToken,
                 acceptedAttempts: ThingAttempts,
                 transientAttempts: ThingAttempts);
@@ -346,14 +371,9 @@ public sealed class BoardGameGeekClient(
         }
 
         var bggId = ReadLongAttribute(item, "id");
-        var primaryName = item.Elements("name")
-            .FirstOrDefault(name => string.Equals(
-                (string?)name.Attribute("type"),
-                "primary",
-                StringComparison.OrdinalIgnoreCase));
-        var name = (string?)primaryName?.Attribute("value");
+        var resolvedName = BggGameNameResolver.Resolve(item);
 
-        if (bggId is null || string.IsNullOrWhiteSpace(name))
+        if (bggId is null || resolvedName is null)
         {
             return null;
         }
@@ -363,7 +383,7 @@ public sealed class BoardGameGeekClient(
         var mechanics = ReadTaxonomy(item, "boardgamemechanic");
         return new ExternalGame(
             bggId,
-            name,
+            resolvedName.DisplayName,
             ReadIntValue(item.Element("minplayers")),
             ReadIntValue(item.Element("maxplayers")),
             BggBestPlayerCalculator.Calculate(item),
@@ -380,7 +400,8 @@ public sealed class BoardGameGeekClient(
             subdomains,
             categories,
             mechanics,
-            BggTaxonomyCatalog.MapGameType(subdomains));
+            BggTaxonomyCatalog.MapGameType(subdomains),
+            resolvedName.OriginalName);
     }
 
     private static IReadOnlyList<string> ReadTags(XElement item, string linkType,

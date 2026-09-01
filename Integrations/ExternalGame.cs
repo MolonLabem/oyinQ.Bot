@@ -21,4 +21,5 @@ public sealed record ExternalGame(
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
-    GameType Type = GameType.Other);
+    GameType Type = GameType.Other,
+    string? OriginalName = null);

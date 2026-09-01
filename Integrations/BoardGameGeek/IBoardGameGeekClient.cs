@@ -5,9 +5,10 @@ namespace oyinQ.Bot.Integrations.BoardGameGeek;
 public sealed record ExternalGameSearchResult(
     long BggId,
     string Name,
-    int? YearPublished);
+    int? YearPublished,
+    string? OriginalName = null);
 
-public sealed record BggExpansion(long BggId, string Name);
+public sealed record BggExpansion(long BggId, string Name, string? OriginalName = null);
 
 public sealed record BggGameDetails(
     ExternalGame Game,

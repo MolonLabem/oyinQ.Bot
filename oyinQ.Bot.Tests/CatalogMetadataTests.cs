@@ -17,14 +17,18 @@ public sealed class CatalogMetadataTests
             """);
 
         Assert.Equal(ClubCollectionDocument.CurrentVersion, document.Version);
-        Assert.Equal(GameType.Other, Assert.Single(document.Games).Type);
+        var game = Assert.Single(document.Games);
+        Assert.Equal(GameType.Other, game.Type);
+        Assert.Null(game.OriginalName);
     }
 
     [Fact]
     public void VersionTwoMetadata_RoundTrips()
     {
         var game = Game() with { Description = "Описание", YearPublished = 2020, MinAge = 12,
-            Type = GameType.Strategy, CategoryItems = [new(1021, "Economic")], Mechanics = [new(2040, "Hand Management")] };
+            Type = GameType.Strategy, CategoryItems = [new(1021, "Economic")], Mechanics = [new(2040, "Hand Management")],
+            Name = "Покорение Марса", OriginalName = "Terraforming Mars",
+            Expansions = [new(247030, "Покорение Марса: Пролог", "Terraforming Mars: Prelude")] };
         var restored = ClubCollectionSerializer.Deserialize(ClubCollectionSerializer.Serialize(new(2, [game])));
 
         var restoredGame = Assert.Single(restored.Games);
@@ -34,6 +38,8 @@ public sealed class CatalogMetadataTests
         Assert.Equal(game.Type, restoredGame.Type);
         Assert.Equal(game.CategoryItems, restoredGame.CategoryItems);
         Assert.Equal(game.Mechanics, restoredGame.Mechanics);
+        Assert.Equal("Terraforming Mars", restoredGame.OriginalName);
+        Assert.Equal("Terraforming Mars: Prelude", Assert.Single(restoredGame.Expansions).OriginalName);
     }
 
     [Fact]

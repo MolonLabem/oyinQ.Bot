@@ -47,7 +47,8 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                     value.Subdomains,
                     value.CategoryItems,
                     value.Mechanics,
-                    value.ParentBggIds),
+                    value.ParentBggIds,
+                    value.OriginalName),
                 ParentBggIds: value.ParentBggIds)).ToArray());
     }
 
@@ -85,7 +86,8 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.Types,
                 value.Categories,
                 value.Description, value.YearPublished, value.MinPlayTimeMinutes, value.MaxPlayTimeMinutes,
-                value.MinAge, value.Type, value.Subdomains, value.CategoryItems, value.Mechanics)));
+                value.MinAge, value.Type, value.Subdomains, value.CategoryItems, value.Mechanics,
+                OriginalName: value.OriginalName)));
         items.AddRange(expansions.Where(value => value.Expansion.BggId is > 0).Select(value =>
         {
             var parentIds = value.ParentBggIds.Where(x => x > 0).Distinct().ToArray();
@@ -107,7 +109,8 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.Expansion.Description, value.Expansion.YearPublished,
                 value.Expansion.MinPlayTimeMinutes, value.Expansion.MaxPlayTimeMinutes,
                 value.Expansion.MinAge, value.Expansion.Type, value.Expansion.Subdomains,
-                value.Expansion.CategoryItems, value.Expansion.Mechanics, parentIds);
+                value.Expansion.CategoryItems, value.Expansion.Mechanics, parentIds,
+                value.Expansion.OriginalName);
         }));
 
         return items

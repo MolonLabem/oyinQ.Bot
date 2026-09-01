@@ -137,7 +137,7 @@ public static class ClubCollectionRefreshGenerator
             game.Name, true, game.ThumbnailImageUrl, game.ImageUrl, game.MinPlayers, game.MaxPlayers,
             game.BestPlayers, game.Types, game.Categories, game.Description, game.YearPublished,
             game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type, game.Subdomains,
-            game.CategoryItems, game.Mechanics, item.ParentBggIds);
+            game.CategoryItems, game.Mechanics, item.ParentBggIds, game.OriginalName);
     }
 
     private static bool TryReadPositiveId(JsonElement element, out long bggId)

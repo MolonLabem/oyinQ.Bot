@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace oyinQ.Bot.Features.Catalog;
 
-public sealed record EffectiveCampExpansion(long BggId, string Name,
+public sealed record EffectiveCampExpansion(long BggId, string Name, string? OriginalName,
     IReadOnlyList<CampCatalogProvider> Providers);
 
 public sealed record EffectiveCampGame(ClubCollectionGame Game, bool IsInBaseCollection,
@@ -46,18 +46,21 @@ public sealed class EffectiveCampCatalogService(
         return bases.Select(value =>
         {
             var expansionMap = value.Game.Expansions
-                .Select(x => new EffectiveCampExpansion(x.BggId, x.Name,
+                .Select(x => new EffectiveCampExpansion(x.BggId, x.Name, x.OriginalName,
                     contributedExpansions.SingleOrDefault(c => c.BggId == x.BggId)?.Providers ?? []))
                 .Concat(contributedExpansions.Where(x => x.ParentBggIds.Contains(value.Game.BggId))
-                    .Select(x => new EffectiveCampExpansion(x.BggId, x.Name, x.Providers)))
+                    .Select(x => new EffectiveCampExpansion(x.BggId, x.Name,
+                        x.Snapshot.OriginalName, x.Providers)))
                 .GroupBy(x => x.BggId)
                 .Select(group => new EffectiveCampExpansion(group.Key,
                     group.Select(x => x.Name).First(x => !string.IsNullOrWhiteSpace(x)),
+                    group.Select(x => x.OriginalName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
                     group.SelectMany(x => x.Providers).DistinctBy(x => x.ParticipantId).ToArray()))
                 .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             var game = value.Game with
             {
-                Expansions = expansionMap.Select(x => new ClubCollectionExpansion(x.BggId, x.Name)).ToArray()
+                Expansions = expansionMap.Select(x => new ClubCollectionExpansion(x.BggId, x.Name,
+                    x.OriginalName)).ToArray()
             };
             return new EffectiveCampGame(game, value.InBase, value.Providers, expansionMap);
         }).OrderBy(x => x.Game.Name, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -71,7 +74,7 @@ public sealed class EffectiveCampCatalogService(
             s.MinPlayTimeMinutes, s.MaxPlayTimeMinutes, s.MinAge,
             BggTaxonomyCatalog.ResolveType(s.Type, s.Subdomains, s.Types, s.CategoryItems, s.Categories),
             s.Subdomains, s.CategoryItems,
-            s.Mechanics);
+            s.Mechanics, s.OriginalName);
     }
 
     private static ClubCollectionGame MergeMetadata(ClubCollectionGame current,
@@ -96,6 +99,8 @@ public sealed class EffectiveCampCatalogService(
         Categories = current.Categories is { Count: > 0 } ? current.Categories : fallback.Categories,
         Subdomains = current.Subdomains is { Count: > 0 } ? current.Subdomains : fallback.Subdomains,
         CategoryItems = current.CategoryItems is { Count: > 0 } ? current.CategoryItems : fallback.CategoryItems,
-        Mechanics = current.Mechanics is { Count: > 0 } ? current.Mechanics : fallback.Mechanics
+        Mechanics = current.Mechanics is { Count: > 0 } ? current.Mechanics : fallback.Mechanics,
+        OriginalName = string.IsNullOrWhiteSpace(current.OriginalName)
+            ? fallback.OriginalName : current.OriginalName
     };
 }

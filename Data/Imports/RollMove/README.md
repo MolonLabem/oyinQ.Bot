@@ -4,7 +4,7 @@ This directory contains the reviewed inputs for the one-time migration from the 
 
 Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is the reviewed historical migration snapshot. `club-collection.v2.json` is the current recovery/bootstrap snapshot rebuilt from the authoritative positive BGG IDs in only `club.json`, `guests.json`, `john.json`, and `sergei.json` under `BarinDwalin/board-games-club/public/data/collections`. Restore a snapshot only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
 
-The v2 refresh reads IDs from the four source documents but never copies their game metadata. It fetches current metadata and item classification from BGG in throttled batches, deduplicates by canonical BGG ID, and writes through `ClubCollectionSerializer`. BGG-classified expansions are nested only under included official inbound parents; unresolved IDs and orphan expansions are omitted and reported.
+The v2 refresh reads IDs from the four source documents but never copies their game metadata. It fetches current metadata, versions, and item classification from BGG in throttled batches, deduplicates by canonical BGG ID, and writes through `ClubCollectionSerializer`. `name` prefers the single confidently associated Russian-version canonical title while `originalName` retains the primary BGG title; both base games and expansions use the centralized resolver. BGG-classified expansions are nested only under included official inbound parents; unresolved IDs and orphan expansions are omitted and reported.
 
 ## Audit status
 
@@ -42,5 +42,13 @@ The historical BGG-account enrichment resolved 219 base games and 121 expansions
 
    On a fresh single-Club installation, `--apply-only-club` resolves the target only when exactly one Club exists. It fails before mutation when the database contains zero or multiple Clubs, so an operator never has to guess a community key.
 5. Normal metadata refresh updates PostgreSQL only and does not rewrite recovery files automatically.
+
+To update localized/original names in existing PostgreSQL Club collections and Camp contributions without changing BGG membership or immutable gathering history, run:
+
+```powershell
+dotnet run --project oyinQ.Bot.csproj -- --refresh-bgg-names
+```
+
+The command loads all distinct stored BGG IDs, completes every batched BGG request before opening its database transaction, and then changes only stored display/original names. A confidently resolved Russian title updates the display name; when Russian data is missing or ambiguous, the existing display name remains untouched while a resolved primary BGG title is retained as `originalName`. Repeating the command is idempotent.
 
 Do not commit the BGG password, email address, application token, browser profile, or uploader logs.

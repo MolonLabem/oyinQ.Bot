@@ -23,6 +23,12 @@ if (args.Any(x => string.Equals(x, "--refresh-club-collection", StringComparison
     return;
 }
 
+if (args.Any(x => string.Equals(x, "--refresh-bgg-names", StringComparison.OrdinalIgnoreCase)))
+{
+    Environment.ExitCode = await BggNameRefreshCommand.RunAsync(builder.Configuration);
+    return;
+}
+
 var connectionString = builder.Configuration["Database:ConnectionString"]?.Trim();
 if (string.IsNullOrWhiteSpace(connectionString))
 {
