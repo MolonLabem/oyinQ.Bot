@@ -20,7 +20,8 @@ public sealed class TelegramPollingService(
 
         var receiverOptions = new ReceiverOptions
         {
-            AllowedUpdates = [UpdateType.Message, UpdateType.CallbackQuery],
+            AllowedUpdates = [UpdateType.Message, UpdateType.CallbackQuery,
+                UpdateType.MyChatMember, UpdateType.ChatMember],
             DropPendingUpdates = false
         };
 

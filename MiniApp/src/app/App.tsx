@@ -25,7 +25,7 @@ export function App() {
   const community = useMemo(() => bootstrap?.communities.find(x => x.key === communityKey), [bootstrap, communityKey]);
   if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
-  if (adminMode) return bootstrap.isAdministrator ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна только администраторам OyinQ.</Notice></Page>;
+  if (adminMode) return bootstrap.canOpenAdminPanel ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} isSuperAdmin={bootstrap.isSuperAdmin} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна администраторам зарегистрированных чатов OyinQ.</Notice></Page>;
   if (!community) return <CommunityPicker communities={bootstrap.communities} choose={setCommunityKey} admin={bootstrap.isAdministrator} />;
   const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }, { id: "profile", label: "Профиль", icon: "👤" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "profile", label: "Профиль", icon: "👤" }];
   const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";

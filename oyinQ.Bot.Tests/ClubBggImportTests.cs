@@ -58,4 +58,27 @@ public sealed class ClubBggImportTests
         Assert.Null(game.MinAge);
         ClubCollectionSerializer.Validate(new ClubCollectionDocument(2, [game]));
     }
+
+    [Fact]
+    public void Merge_PreservesAndDeduplicatesOfficialExpansionRelationships()
+    {
+        CampImportSelectionItem[] imported =
+        [
+            new(10, CampContributionItemType.BaseGame, null, "Base", true),
+            new(20, CampContributionItemType.BaseGame, null, "Other base", true),
+            new(100, CampContributionItemType.Expansion, 10, "Shared expansion", true,
+                ParentBggIds: [10, 20]),
+            new(100, CampContributionItemType.Expansion, 10, "Duplicate provider row", true,
+                ParentBggIds: [10, 20])
+        ];
+
+        var result = ClubBggImportService.Merge(ClubCollectionDocument.Empty, imported);
+
+        Assert.Equal([100L], Assert.Single(result.Document.Games, game => game.BggId == 10)
+            .Expansions.Select(expansion => expansion.BggId));
+        Assert.Equal([100L], Assert.Single(result.Document.Games, game => game.BggId == 20)
+            .Expansions.Select(expansion => expansion.BggId));
+        Assert.Equal(2, result.AddedExpansions);
+        Assert.Equal(0, result.OrphanExpansions);
+    }
 }

@@ -19,7 +19,8 @@ public sealed class TelegramWebhookSetupService(
 
         await botClient.SetWebhook(
             webhookUrl,
-            allowedUpdates: [UpdateType.Message, UpdateType.CallbackQuery],
+            allowedUpdates: [UpdateType.Message, UpdateType.CallbackQuery,
+                UpdateType.MyChatMember, UpdateType.ChatMember],
             dropPendingUpdates: false,
             secretToken: botOptions.WebhookSecret,
             cancellationToken: cancellationToken);

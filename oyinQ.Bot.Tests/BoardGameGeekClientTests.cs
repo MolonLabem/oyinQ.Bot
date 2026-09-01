@@ -258,6 +258,46 @@ public sealed class BoardGameGeekClientTests
         Assert.Contains(collectionQueries, value => value.Contains("subtype=boardgameexpansion", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task GetItemsByIdsAsync_UsesBggTypesAndOfficialExpansionParents()
+    {
+        var requests = new List<string>();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal("/xmlapi2/thing", request.RequestUri!.AbsolutePath);
+            Assert.Contains("id=10,20", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
+            requests.Add(request.RequestUri.Query);
+            return request.RequestUri.Query.Contains("type=boardgameexpansion", StringComparison.Ordinal)
+                ? XmlResponse(HttpStatusCode.OK, """
+                  <items>
+                  <item type="boardgameexpansion" id="20">
+                    <name type="primary" value="Expansion" />
+                    <link type="boardgameexpansion" id="10" value="Base" inbound="true" />
+                    <link type="boardgameexpansion" id="30" value="Child" />
+                  </item>
+                  </items>
+                  """)
+                : XmlResponse(HttpStatusCode.OK, """
+                  <items>
+                    <item type="boardgame" id="10">
+                      <name type="primary" value="Base" />
+                      <minplayers value="2" /><maxplayers value="4" />
+                    </item>
+                  </items>
+                  """);
+        });
+
+        var items = await CreateClient(handler).GetItemsByIdsAsync([10, 20], default);
+
+        Assert.False(items.Single(item => item.Game.BggId == 10).IsExpansion);
+        var expansion = items.Single(item => item.Game.BggId == 20);
+        Assert.True(expansion.IsExpansion);
+        Assert.Equal([10L], expansion.ParentBggIds);
+        Assert.Equal(2, requests.Count);
+        Assert.Contains(requests, query => query.Contains("type=boardgame&", StringComparison.Ordinal));
+        Assert.Contains(requests, query => query.Contains("type=boardgameexpansion", StringComparison.Ordinal));
+    }
+
     private static BoardGameGeekClient CreateClient(HttpMessageHandler handler)
     {
         var httpClient = new HttpClient(handler)

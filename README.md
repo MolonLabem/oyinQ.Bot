@@ -26,12 +26,12 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 | `Telegram:PublicBaseUrl` | `Telegram__PublicBaseUrl` | yes | Public HTTPS origin used for webhook and Mini App URLs. |
 | `Telegram:UseLongPolling` | `Telegram__UseLongPolling` | no | Defaults to `false`; Development configuration sets `true`. Do not set it in production. |
 | `BoardGameGeek:ApiToken` | `BoardGameGeek__ApiToken` | no | Server-only BGG API token. |
-| `Administration:BootstrapTelegramUserIds` | `Administration__BootstrapTelegramUserIds` | initial bootstrap only | Optional comma-separated administrator IDs. Missing IDs are inserted into PostgreSQL at startup. Remove after initial setup. |
+| `Administration:SuperAdminTelegramUserIds` | `Administration__SuperAdminTelegramUserIds` | yes | Comma-separated configuration-only Super Admin IDs. Set the owner account here. |
 | `CommunityBootstrap:CommunitiesJson` | `CommunityBootstrap__CommunitiesJson` | no | Optional one-time JSON bootstrap for a fresh database. Remove after rows exist. |
 
 `appsettings.json` contains stable non-secret defaults. `appsettings.Development.json` enables long polling and contains the non-secret local Docker PostgreSQL connection. Secrets are never committed.
 
-Administrator authorization is stored in `OyinQAdministrators`. Use the bootstrap value only to establish initial or recovery access, then add/remove administrators in Mini App administration and remove the bootstrap variable. A configured bootstrap ID is reinserted when missing, so leaving it configured intentionally acts as recovery access.
+Super Admins come only from `Administration:SuperAdminTelegramUserIds`. Normal administrators are stored per chat in `ChatAdminPermissions` and remain effective only while Telegram reports them as an administrator of that chat. Telegram administrators without an OyinQ permission see a locked entry with no sensitive data or controls. The legacy `OyinQAdministrators` table is retained for schema compatibility but no longer grants access. A single legacy bootstrap ID is treated as the original owner only when the explicit Super Admin setting is absent; multiple legacy IDs are not promoted.
 
 Bootstrap JSON example:
 
@@ -39,7 +39,7 @@ Bootstrap JSON example:
 [{"key":"club","name":"Board game club","telegramChatId":-1001111111111,"mode":"Club","timeZone":"Asia/Qyzylorda"}]
 ```
 
-Only `Club` and `Camp` are valid modes. Bootstrap is optional when communities already exist in PostgreSQL. Clubs and Camps are created in the admin Mini App with Telegram's native group picker. `/admin` opens that global area even when the administrator belongs to no managed community.
+Only `Club` and `Camp` are valid modes. Bootstrap is optional when communities already exist in PostgreSQL. Clubs and Camps are created by a Super Admin with Telegram's native group picker. `/admin` opens for Super Admins and current Telegram administrators of chats recorded in `KnownTelegramChats`; unapproved chats remain locked.
 
 ## Collection recovery
 
@@ -47,7 +47,7 @@ Normal deployments must reuse the persistent PostgreSQL database. EF migrations 
 
 For deliberate fresh-database recovery:
 
-1. Bootstrap the first administrator.
+1. Configure the owner as Super Admin.
 2. Create the Club with the native Telegram group picker.
 3. Open **Manage collection → Import JSON**.
 4. Prefer the audited `Data/Imports/RollMove/club-collection.v2.json` when present; otherwise select the reviewed v1 membership artifact or a newer exported Club JSON file. See `Data/Imports/RollMove/README.md` for deterministic v2 generation.
@@ -62,7 +62,7 @@ docker compose up -d
 dotnet user-secrets set "Telegram:Token" "<telegram-bot-token>" --project oyinQ.Bot.csproj
 dotnet user-secrets set "Telegram:PublicBaseUrl" "https://<your-tunnel-host>" --project oyinQ.Bot.csproj
 dotnet user-secrets set "BoardGameGeek:ApiToken" "<bgg-api-token>" --project oyinQ.Bot.csproj
-dotnet user-secrets set "Administration:BootstrapTelegramUserIds" "<telegram-user-id>,<another-telegram-user-id>" --project oyinQ.Bot.csproj
+dotnet user-secrets set "Administration:SuperAdminTelegramUserIds" "<owner-telegram-user-id>" --project oyinQ.Bot.csproj
 dotnet user-secrets set "CommunityBootstrap:CommunitiesJson" '[{"key":"club","name":"Local club","telegramChatId":-1001111111111,"mode":"Club","timeZone":"Asia/Qyzylorda"}]' --project oyinQ.Bot.csproj
 dotnet run --project oyinQ.Bot.csproj
 ```
@@ -117,12 +117,12 @@ The Dockerfile builds the Mini App and backend in separate stages. Northflank su
 |---|---|
 | `Telegram__PublicBaseUrl` | `https://oyinq.example.com` |
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
-| `Administration__BootstrapTelegramUserIds` | `123456789,987654321` for initial bootstrap only; delete after administrators appear in the Mini App |
+| `Administration__SuperAdminTelegramUserIds` | `123456789` for the owner/Super Admin account |
 | `CommunityBootstrap__CommunitiesJson` | optional one-time bootstrap JSON; delete after successful bootstrap |
 
 ### Remove from Northflank
 
-Remove the old flat keys `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `PUBLIC_BASE_URL`, `CONNECTION_STRING`, `BGG_API_TOKEN`, `ADMIN_TELEGRAM_IDS`, `OYINQ_COMMUNITIES`, `USE_LONG_POLLING`, and `BOARD_CAMP_CHAT_ID` after adding their replacements where applicable. Remove any indexed `Administration__TelegramUserIds__0`, `__1`, and later keys as well. `Administration__BootstrapTelegramUserIds` is removable after initial setup because runtime administrators are stored in PostgreSQL and managed in the Mini App. Also remove every Tesera, Cloudflare/Tesera proxy, and legacy import-worker setting.
+Remove the old flat keys `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `PUBLIC_BASE_URL`, `CONNECTION_STRING`, `BGG_API_TOKEN`, `ADMIN_TELEGRAM_IDS`, `OYINQ_COMMUNITIES`, `USE_LONG_POLLING`, and `BOARD_CAMP_CHAT_ID` after adding their replacements where applicable. Replace `Administration__BootstrapTelegramUserIds` and any indexed `Administration__TelegramUserIds__0`, `__1`, and later keys with the explicit owner-only `Administration__SuperAdminTelegramUserIds`. Also remove every Tesera, Cloudflare/Tesera proxy, and legacy import-worker setting.
 
 Do not set `Telegram__UseLongPolling` in production. Do not manually set `PORT` or `ASPNETCORE_URLS`; the platform and image handle them.
 
@@ -130,7 +130,9 @@ Do not set `Telegram__UseLongPolling` in production. Do not manually set `PORT` 
 
 Migration `20260828183821_ClubCampContextsAndGatheringSnapshots` is additive and must be reviewed with a production backup. The EF model intentionally retains legacy `Games`, `GameCopies`, `GameInterests`, `CollectionImports`, `GameSessions`, `GameSessionParticipants`, the old participant registration columns, and nullable `GameGathering.GameId`. Runtime code no longer reads or writes those paths. They remain mapped so production data is not silently dropped; retirement needs a separately reviewed data audit/migration.
 
-Migration `20260828230514_PersistAdministrators` is also additive. It creates only `OyinQAdministrators`; startup then inserts missing comma-separated bootstrap IDs with `ON CONFLICT DO NOTHING`. It does not delete or rewrite application data.
+Migration `20260828230514_PersistAdministrators` created the retained legacy `OyinQAdministrators` table. It is no longer a runtime authorization source.
+
+Migrations `20260901053106_ChatScopedAdministration` and `20260901053721_TrackKnownTelegramChats` are additive. They create per-community permissions and the finite Telegram chat discovery registry; the latter backfills configured communities without deleting or rewriting application data.
 
 Migration `20260829000852_StabilizeClubCampMiniApp` is additive. It adds Club revisions, Camp dates, typed contribution source, Camp import jobs, pending Telegram peer selections, administrator presentation fields, and gathering publication state. Existing contribution JSON receives only the required version marker; existing published gatherings are marked published. Existing legacy tables and `Club.BggUsername` remain mapped and deprecated.
 

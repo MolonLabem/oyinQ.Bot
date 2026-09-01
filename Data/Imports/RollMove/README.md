@@ -2,7 +2,9 @@
 
 This directory contains the reviewed inputs for the one-time migration from the Tesera collection of user `John90` to the dedicated BoardGameGeek account `RollMoveClub`.
 
-Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is a reviewed backward-compatible disaster-recovery/bootstrap snapshot, not a synchronization source. Prefer the audited `club-collection.v2.json` after it has been generated because it also contains current catalog metadata. Restore either snapshot only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
+Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is the reviewed historical migration snapshot. `club-collection.v2.json` is the current recovery/bootstrap snapshot rebuilt from the authoritative positive BGG IDs in only `club.json`, `guests.json`, `john.json`, and `sergei.json` under `BarinDwalin/board-games-club/public/data/collections`. Restore a snapshot only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
+
+The v2 refresh reads IDs from the four source documents but never copies their game metadata. It fetches current metadata and item classification from BGG in throttled batches, deduplicates by canonical BGG ID, and writes through `ClubCollectionSerializer`. BGG-classified expansions are nested only under included official inbound parents; unresolved IDs and orphan expansions are omitted and reported.
 
 ## Audit status
 
@@ -16,26 +18,26 @@ Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is a review
 - Tesera incorrectly linked `За бортом. 2-е издание` to Cascadia promo `477191`; that item was removed from Owned and the source row returned to `needs-review`.
 - The Russian Lifeboat second-edition expansion bundle is represented by official expansion items `37036`, `85927`, and `105046`. The Star Realms: United bundle is represented by `208503`, `208501`, `202247`, and `208502`.
 
-The BGG-backed enrichment resolved 219 base games and 121 expansions. Twelve expansions have no officially linked owned base and are excluded as orphans; the other 109 expansions produce 119 nested links because official BGG relationships attach some expansions to multiple owned bases. Bundle components are listed in `additionalBggIds`, so the audit still has exactly one row for each Tesera source entry.
+The historical BGG-account enrichment resolved 219 base games and 121 expansions. Twelve expansions had no officially linked owned base and were excluded as orphans; the other 109 expansions produced 119 nested links. Those numbers describe v1 and the earlier RollMove account snapshot, not the current four-source v2 refresh.
 
-`bgg-owned-ids.csv` is the semicolon-delimited reviewed set of 340 unique Owned IDs. It contains no credentials.
+`bgg-owned-ids.csv` is the semicolon-delimited historical reviewed set of 340 unique RollMove Owned IDs. It is retained as migration audit evidence and is not an input to the current v2 refresh.
 
-`club-collection.v1.json` is the validated recovery snapshot generated exclusively from BGG metadata. It contains 219 base games and 119 nested expansion links representing 109 unique owned expansions.
+`club-collection.v1.json` contains 219 base games and 119 nested expansion links representing 109 unique owned expansions. The current v2 snapshot contains 337 BGG-resolved base games from the four requested sources. The source IDs `215545` and `5179628` do not resolve to included BGG items, while `477191` is classified by BGG as an expansion without an included official parent; all three are therefore omitted instead of guessed or copied from Tesera metadata.
 
 ## Operator workflow
 
 1. Resolve the remaining 22 review-only rows separately; do not infer IDs from translated names alone.
 2. Keep the server-side `BGG_API_TOKEN` outside source control. The BGG account password is never used or stored by OyinQ.
-3. Use the explicit BGG username import in Mini App administration when adding the account to a Club. It is additive: current games and selected expansions are retained.
-4. Generate the current-version recovery snapshot with a server-side BGG token:
+3. Use the explicit BGG username import in Mini App administration when adding an account to a Club. It is additive: current games and selected expansions are retained.
+4. Refresh the current-version recovery snapshot with a server-side BGG token:
 
    ```powershell
    $env:BoardGameGeek__ApiToken = '<server-side BGG token>'
-   dotnet run --project oyinQ.Bot.csproj -- --generate-rollmove-recovery
+   dotnet run --project oyinQ.Bot.csproj -- --refresh-club-collection
    Remove-Item Env:BoardGameGeek__ApiToken
    ```
 
-   The command reads the current Owned collection of `RollMoveClub`, writes current v2 metadata, links owned expansions through official BGG parent relationships, and reports excluded orphan expansions. Audit `club-collection.v2.json` before making it the preferred recovery artifact. Pass `--username=<name>` only when intentionally generating a snapshot for another BGG account.
+   The command reads only the four named source JSONs, extracts and deduplicates positive BGG IDs recursively, fetches BGG metadata through typed base/expansion requests, links expansions through official BGG parent relationships, and reports invalid, unresolved, and orphan items. Use `--source-base-url=<url>` only for a reviewed mirror or test fixture and `--output=<path>` for an audit run.
 5. Normal metadata refresh updates PostgreSQL only and does not rewrite recovery files automatically.
 
 Do not commit the BGG password, email address, application token, browser profile, or uploader logs.

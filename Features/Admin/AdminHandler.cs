@@ -7,15 +7,17 @@ namespace oyinQ.Bot.Features.Admin;
 
 public sealed class AdminHandler(
     ITelegramBotClient botClient,
-    IAdministratorStore administratorStore,
+    IAdminAuthorizationService authorization,
     MiniAppLinkBuilder links)
 {
     public async Task HandleCommandAsync(Message message, long telegramUserId,
         CancellationToken cancellationToken)
     {
-        if (!await administratorStore.IsAdministratorAsync(telegramUserId, cancellationToken))
+        if (!await authorization.CanOpenAdminPanelAsync(telegramUserId, cancellationToken))
         {
-            await botClient.SendMessage(message.Chat.Id, "Доступ запрещён.", cancellationToken: cancellationToken);
+            await botClient.SendMessage(message.Chat.Id,
+                "Админ-панель доступна администраторам зарегистрированных чатов OyinQ.",
+                cancellationToken: cancellationToken);
             return;
         }
 

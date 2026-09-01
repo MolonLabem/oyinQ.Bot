@@ -18,7 +18,7 @@ public sealed class TelegramUpdateHandler(
     AdminHandler adminHandler,
     CommunityContextResolver communityContextResolver,
     ManagedCommunityService managedCommunities,
-    IAdministratorStore administratorStore,
+    IAdminAuthorizationService adminAuthorization,
     TelegramPeerSelectionService peerSelectionService,
     CampBggImportCoordinator campImports,
     MiniAppLinkBuilder links,
@@ -26,6 +26,7 @@ public sealed class TelegramUpdateHandler(
 {
     public async Task HandleAsync(Update update, CancellationToken cancellationToken)
     {
+        await TrackKnownChatAsync(update, cancellationToken);
         if (update.Message is { MigrateToChatId: { } migrateTo } toMessage)
         {
             await HandleChatMigrationAsync(toMessage.Chat.Id, migrateTo, cancellationToken);
@@ -106,7 +107,7 @@ public sealed class TelegramUpdateHandler(
             return;
         }
 
-        var isAdministrator = await administratorStore.IsAdministratorAsync(user.Id, cancellationToken);
+        var isAdministrator = await adminAuthorization.CanOpenAdminPanelAsync(user.Id, cancellationToken);
         if (participant is null && (command is "/start" or "/menu" or "/help"
                 || command == "/admin" && isAdministrator))
         {
@@ -163,6 +164,22 @@ public sealed class TelegramUpdateHandler(
         {
             var result = await managedCommunities.MigrateTelegramChatAsync(oldChatId, newChatId,
                 cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            var oldKnown = await dbContext.KnownTelegramChats.SingleOrDefaultAsync(
+                x => x.TelegramChatId == oldChatId, cancellationToken);
+            if (oldKnown is not null)
+            {
+                oldKnown.IsBotPresent = false;
+                oldKnown.UpdatedAt = now;
+            }
+            if (!await dbContext.KnownTelegramChats.AnyAsync(x => x.TelegramChatId == newChatId,
+                    cancellationToken))
+                dbContext.KnownTelegramChats.Add(new KnownTelegramChat
+                {
+                    TelegramChatId = newChatId, Title = oldKnown?.Title, Username = oldKnown?.Username,
+                    IsBotPresent = true, FirstSeenAt = now, UpdatedAt = now
+                });
+            await dbContext.SaveChangesAsync(cancellationToken);
             if (result.Updated)
                 logger.LogInformation("Telegram chat migrated from {OldChatId} to {NewChatId} for {CommunityKey}.",
                     oldChatId, newChatId, result.CommunityKey);
@@ -174,12 +191,32 @@ public sealed class TelegramUpdateHandler(
         }
     }
 
+    private async Task TrackKnownChatAsync(Update update, CancellationToken cancellationToken)
+    {
+        var chat = update.MyChatMember?.Chat ?? update.ChatMember?.Chat ?? update.Message?.Chat;
+        if (chat is null || chat.Type is not ChatType.Group and not ChatType.Supergroup) return;
+        var now = DateTimeOffset.UtcNow;
+        var known = await dbContext.KnownTelegramChats.SingleOrDefaultAsync(
+            x => x.TelegramChatId == chat.Id, cancellationToken);
+        if (known is null)
+        {
+            known = new KnownTelegramChat { TelegramChatId = chat.Id, FirstSeenAt = now };
+            dbContext.KnownTelegramChats.Add(known);
+        }
+        known.Title = chat.Title;
+        known.Username = chat.Username;
+        known.IsBotPresent = update.MyChatMember is not { } membership
+            || membership.NewChatMember.Status is not ChatMemberStatus.Left and not ChatMemberStatus.Kicked;
+        known.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task SendGroupEntryPointAsync(long groupChatId, long telegramUserId,
         CancellationToken cancellationToken)
     {
         var community = await dbContext.OyinQCommunities.AsNoTracking()
             .SingleOrDefaultAsync(value => value.TelegramChatId == groupChatId, cancellationToken);
-        var isAdministrator = await administratorStore.IsAdministratorAsync(telegramUserId, cancellationToken);
+        var isAdministrator = await adminAuthorization.CanOpenAdminPanelAsync(telegramUserId, cancellationToken);
         string? runtimeUsername = null;
         try
         {

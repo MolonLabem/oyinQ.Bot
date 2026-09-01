@@ -26,6 +26,36 @@ public sealed class StabilizationDomainTests
     }
 
     [Fact]
+    public void ClubCollection_BaseGameWithoutExpansions_DoesNotReportAvailability()
+    {
+        var game = Game(10, "Base");
+
+        Assert.False(game.HasExpansions);
+    }
+
+    [Fact]
+    public void ClubCollection_GameWithExpansions_ReportsAvailability()
+    {
+        var game = Game(10, "Base") with
+        {
+            Expansions = [new ClubCollectionExpansion(20, "Expansion")]
+        };
+
+        Assert.True(game.HasExpansions);
+    }
+
+    [Theory]
+    [InlineData("{\"version\":2,\"games\":[{\"bggId\":10,\"name\":\"Base\"}]}")]
+    [InlineData("{\"version\":2,\"games\":[{\"bggId\":10,\"name\":\"Base\",\"expansions\":null}]}")]
+    public void ClubCollection_MissingOrNullExpansions_NormalizesToEmpty(string json)
+    {
+        var game = Assert.Single(ClubCollectionSerializer.Deserialize(json).Games);
+
+        Assert.Empty(game.Expansions);
+        Assert.False(game.HasExpansions);
+    }
+
+    [Fact]
     public void ContributionSnapshot_RejectsUnsupportedVersionAndMalformedMetadata()
     {
         Assert.Throws<InvalidOperationException>(() => CampContributionSnapshotSerializer.Serialize(

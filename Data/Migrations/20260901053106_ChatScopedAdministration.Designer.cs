@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using oyinQ.Bot.Data;
@@ -11,11 +12,11 @@ using oyinQ.Bot.Data;
 namespace oyinQ.Bot.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901053106_ChatScopedAdministration")]
+    partial class ChatScopedAdministration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder) => BuildModelStatic(modelBuilder);
-
-        internal static void BuildModelStatic(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -940,35 +941,6 @@ namespace oyinQ.Bot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("GameSessionParticipants", (string)null);
-                });
-
-            modelBuilder.Entity("oyinQ.Bot.Data.Entities.KnownTelegramChat", b =>
-                {
-                    b.Property<long>("TelegramChatId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("FirstSeenAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsBotPresent")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Username")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.HasKey("TelegramChatId");
-
-                    b.HasIndex("IsBotPresent");
-
-                    b.ToTable("KnownTelegramChats", (string)null);
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.OyinQAdministrator", b =>

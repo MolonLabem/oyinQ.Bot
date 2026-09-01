@@ -179,6 +179,22 @@ public sealed class AppDbContextMigrationTests
             && index.Properties.Select(property => property.Name).SequenceEqual([nameof(ClubBggImport.ClubId)]));
     }
 
+    [Fact]
+    public void ChatScopedAdministration_IsAdditiveAndUniquelyScoped()
+    {
+        using var dbContext = CreateDbContext();
+        var permission = dbContext.Model.FindEntityType(typeof(ChatAdminPermission));
+        var knownChat = dbContext.Model.FindEntityType(typeof(KnownTelegramChat));
+
+        Assert.NotNull(permission);
+        Assert.NotNull(knownChat);
+        Assert.Contains("20260901053106_ChatScopedAdministration", dbContext.Database.GetMigrations());
+        Assert.Contains("20260901053721_TrackKnownTelegramChats", dbContext.Database.GetMigrations());
+        Assert.Contains(permission!.GetIndexes(), index => index.IsUnique
+            && index.Properties.Select(x => x.Name).SequenceEqual(
+                [nameof(ChatAdminPermission.TelegramUserId), nameof(ChatAdminPermission.CommunityKey)]));
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

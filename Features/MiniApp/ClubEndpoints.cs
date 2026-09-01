@@ -29,25 +29,29 @@ internal static class ClubEndpoints
         return group;
     }
 
-    private static async Task<TelegramMiniAppIdentity?> AdminAsync(HttpRequest request,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
-        CancellationToken cancellationToken) => await MiniAppEndpointSupport.AuthenticateAdminAsync(
-            request, authenticator, administrators, cancellationToken);
+    private static async Task<TelegramMiniAppIdentity?> AdminAsync(HttpRequest request, long clubId,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
+        CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        return identity is not null && await authorization.CanAdministerClubAsync(identity.TelegramUserId,
+            clubId, cancellationToken) ? identity : null;
+    }
 
     private static async Task<IResult> GetAsync(HttpRequest request, long clubId,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         ClubCollectionService service, CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         try { return Results.Ok(await service.GetAsync(clubId, cancellationToken)); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> ExportAsync(HttpRequest request, long clubId,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         ClubCollectionService service, CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         try
         {
             var state = await service.GetAsync(clubId, cancellationToken);
@@ -60,10 +64,10 @@ internal static class ClubEndpoints
 
     private static async Task<IResult> ReplaceAsync(HttpRequest request, long clubId,
         ReplaceClubCollectionRequest body, TelegramMiniAppAuthenticator authenticator,
-        IAdministratorStore administrators, ClubCollectionService service,
+        IAdminAuthorizationService authorization, ClubCollectionService service,
         CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         try
         {
             await service.ReplaceAsync(clubId, body.Document, body.ExpectedRevision,
@@ -79,11 +83,11 @@ internal static class ClubEndpoints
     }
 
     private static async Task<IResult> AddAsync(HttpRequest request, long clubId, AddClubGameRequest body,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         ClubCollectionService service, IBoardGameGeekClient bggClient, IOptions<BggOptions> bggOptions,
         ILogger<BoardGameGeekClient> logger, CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         if (!bggOptions.Value.IsAvailable)
             return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         var bggId = BggGameUrlParser.Parse(body.BggInput)
@@ -129,10 +133,10 @@ internal static class ClubEndpoints
 
     private static async Task<IResult> RemoveAsync(HttpRequest request, long clubId, long bggId,
         long expectedRevision, TelegramMiniAppAuthenticator authenticator,
-        IAdministratorStore administrators, ClubCollectionService service,
+        IAdminAuthorizationService authorization, ClubCollectionService service,
         CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         try
         {
             if (!await service.RemoveGameAsync(clubId, bggId, expectedRevision,
@@ -148,40 +152,40 @@ internal static class ClubEndpoints
     }
 
     private static async Task<IResult> QueueMetadataRefreshAsync(HttpRequest request, long clubId,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         ClubMetadataRefreshService service, IOptions<BggOptions> bggOptions, CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         if (!bggOptions.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         try { return Results.Accepted(value: await service.QueueAsync(clubId, cancellationToken)); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> GetMetadataRefreshAsync(HttpRequest request, long clubId, Guid publicId,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         ClubMetadataRefreshService service, CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         try { return Results.Ok(await service.GetAsync(publicId, clubId, cancellationToken)); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> QueueBggImportAsync(HttpRequest request, long clubId,
         QueueClubBggImportRequest body, TelegramMiniAppAuthenticator authenticator,
-        IAdministratorStore administrators, ClubBggImportService service, IOptions<BggOptions> bggOptions,
+        IAdminAuthorizationService authorization, ClubBggImportService service, IOptions<BggOptions> bggOptions,
         CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         if (!bggOptions.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         try { return Results.Accepted(value: await service.QueueAsync(clubId, body.BggInput, cancellationToken)); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> GetBggImportAsync(HttpRequest request, long clubId, Guid publicId,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         ClubBggImportService service, CancellationToken cancellationToken)
     {
-        if (await AdminAsync(request, authenticator, administrators, cancellationToken) is null) return Results.Forbid();
+        if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         try { return Results.Ok(await service.GetAsync(publicId, clubId, cancellationToken)); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }

@@ -11,7 +11,7 @@ public sealed record CsvExportFile(string FileName, MemoryStream Content);
 
 public sealed class CsvExportService(
     AppDbContext dbContext,
-    IAdministratorStore administratorStore)
+    IAdminAuthorizationService authorization)
 {
     public static readonly string[] CampRegistrationHeaders =
         ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "display_name", "city",
@@ -21,21 +21,24 @@ public sealed class CsvExportService(
             "source", "commitment", "parent_bgg_id", "parent_bgg_ids", "created_at", "updated_at"];
     public async Task<IReadOnlyList<CsvExportFile>> CreateAllAsync(
         long telegramUserId,
+        string? communityKey,
         CancellationToken cancellationToken)
     {
-        await EnsureAdminAsync(telegramUserId, cancellationToken);
+        await EnsureAdminAsync(telegramUserId, communityKey, cancellationToken);
         return
         [
-            await CreateCommunitiesAsync(cancellationToken),
-            await CreateCampRegistrationsAsync(cancellationToken),
-            await CreateCampContributionsAsync(cancellationToken),
-            await CreateGatheringsAsync(cancellationToken)
+            await CreateCommunitiesAsync(communityKey, cancellationToken),
+            await CreateCampRegistrationsAsync(communityKey, cancellationToken),
+            await CreateCampContributionsAsync(communityKey, cancellationToken),
+            await CreateGatheringsAsync(communityKey, cancellationToken)
         ];
     }
 
-    private async Task<CsvExportFile> CreateCommunitiesAsync(CancellationToken cancellationToken)
+    private async Task<CsvExportFile> CreateCommunitiesAsync(string? communityKey,
+        CancellationToken cancellationToken)
     {
         var rows = await dbContext.OyinQCommunities.AsNoTracking()
+            .Where(value => communityKey == null || value.Key == communityKey)
             .OrderBy(value => value.Key)
             .Select(value => new object?[]
             {
@@ -46,9 +49,11 @@ public sealed class CsvExportService(
         return File("communities.csv", ["key", "name", "telegram_chat_id", "mode", "time_zone", "is_active", "created_at", "updated_at"], rows);
     }
 
-    private async Task<CsvExportFile> CreateCampRegistrationsAsync(CancellationToken cancellationToken)
+    private async Task<CsvExportFile> CreateCampRegistrationsAsync(string? communityKey,
+        CancellationToken cancellationToken)
     {
         var registrations = await dbContext.CampRegistrations.AsNoTracking().Include(value => value.SelectedDays)
+            .Where(value => communityKey == null || value.Camp.BotChatKey == communityKey)
             .OrderBy(value => value.CampId).ThenBy(value => value.ParticipantId)
             .Select(value => new
             {
@@ -67,10 +72,12 @@ public sealed class CsvExportService(
         return File("camp-registrations.csv", CampRegistrationHeaders, rows);
     }
 
-    private async Task<CsvExportFile> CreateCampContributionsAsync(CancellationToken cancellationToken)
+    private async Task<CsvExportFile> CreateCampContributionsAsync(string? communityKey,
+        CancellationToken cancellationToken)
     {
         var contributions = await dbContext.CampGameContributions.AsNoTracking()
             .Include(value => value.Camp).Include(value => value.Participant)
+            .Where(value => communityKey == null || value.Camp.BotChatKey == communityKey)
             .OrderBy(value => value.CampId).ThenBy(value => value.ParticipantId).ThenBy(value => value.BggId)
             .ToArrayAsync(cancellationToken);
         var rows = contributions.Select(value =>
@@ -89,9 +96,11 @@ public sealed class CsvExportService(
         return File("camp-contributions.csv", CampContributionHeaders, rows);
     }
 
-    private async Task<CsvExportFile> CreateGatheringsAsync(CancellationToken cancellationToken)
+    private async Task<CsvExportFile> CreateGatheringsAsync(string? communityKey,
+        CancellationToken cancellationToken)
     {
         var gatherings = await dbContext.GameGatherings.AsNoTracking()
+            .Where(value => communityKey == null || value.CommunityKey == communityKey)
             .Include(value => value.OrganizerParticipant)
             .Include(value => value.Participants).ThenInclude(value => value.Participant)
             .OrderBy(value => value.StartsAtUtc)
@@ -143,11 +152,12 @@ public sealed class CsvExportService(
         return $"\"{text.Replace("\"", "\"\"")}\"";
     }
 
-    private async Task EnsureAdminAsync(long telegramUserId, CancellationToken cancellationToken)
+    private async Task EnsureAdminAsync(long telegramUserId, string? communityKey,
+        CancellationToken cancellationToken)
     {
-        if (!await administratorStore.IsAdministratorAsync(telegramUserId, cancellationToken))
-        {
-            throw new UnauthorizedAccessException("Экспорт доступен только администратору.");
-        }
+        var allowed = communityKey is null
+            ? authorization.IsSuperAdmin(telegramUserId)
+            : await authorization.CanAdministerCommunityAsync(telegramUserId, communityKey, cancellationToken);
+        if (!allowed) throw new UnauthorizedAccessException("Нет доступа к экспорту этого чата.");
     }
 }

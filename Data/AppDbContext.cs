@@ -9,6 +9,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Participant> Participants => Set<Participant>();
     public DbSet<OyinQCommunity> OyinQCommunities => Set<OyinQCommunity>();
     public DbSet<OyinQAdministrator> OyinQAdministrators => Set<OyinQAdministrator>();
+    public DbSet<ChatAdminPermission> ChatAdminPermissions => Set<ChatAdminPermission>();
+    public DbSet<KnownTelegramChat> KnownTelegramChats => Set<KnownTelegramChat>();
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<Camp> Camps => Set<Camp>();
     public DbSet<CampRegistration> CampRegistrations => Set<CampRegistration>();
@@ -50,6 +52,31 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.TelegramUserId).ValueGeneratedNever();
             entity.Property(x => x.DisplayName).HasMaxLength(256);
             entity.Property(x => x.TelegramUsername).HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<ChatAdminPermission>(entity =>
+        {
+            entity.ToTable("ChatAdminPermissions");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TelegramUserId, x.CommunityKey }).IsUnique();
+            entity.HasIndex(x => new { x.CommunityKey, x.RevokedAt });
+            entity.Property(x => x.CommunityKey).HasMaxLength(32);
+            entity.Property(x => x.DisplayName).HasMaxLength(256);
+            entity.Property(x => x.TelegramUsername).HasMaxLength(64);
+            entity.HasOne(x => x.Community)
+                .WithMany(x => x.AdminPermissions)
+                .HasForeignKey(x => x.CommunityKey)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<KnownTelegramChat>(entity =>
+        {
+            entity.ToTable("KnownTelegramChats");
+            entity.HasKey(x => x.TelegramChatId);
+            entity.Property(x => x.TelegramChatId).ValueGeneratedNever();
+            entity.Property(x => x.Title).HasMaxLength(256);
+            entity.Property(x => x.Username).HasMaxLength(64);
+            entity.HasIndex(x => x.IsBotPresent);
         });
 
         modelBuilder.Entity<Club>(entity =>

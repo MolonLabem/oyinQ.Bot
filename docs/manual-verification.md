@@ -4,7 +4,10 @@ Run against an approved staging PostgreSQL database and real Telegram groups.
 
 1. Open an existing Club as a member; confirm there is no registration gate.
 2. Create Club and Camp communities with Telegram native chat selection; reject a reused chat.
-3. Add an administrator with native user selection; confirm there is no raw-ID field.
+3. As Super Admin, open one chat's `Администраторы`, add a current Telegram administrator with native user selection, and confirm there is no raw-ID or Super Admin grant field.
+   - Before approval, verify that the Telegram administrator sees only the chat name and `🔒 Доступ не выдан`; after approval verify only that chat's data/actions are visible.
+   - Remove the Telegram role and confirm old Mini App controls immediately return 403.
+   - Forge a request for another community key/Club/Camp ID and verify it returns 403. Revoke the permission and repeat from an already-open Mini App.
 4. Browse/search the Club collection and verify Russian type/category labels on cards, details, and pickers.
 5. Add a BGG game with expansions, then import a BGG username collection and verify existing games/expansions remain while missing owned items are added. Close/reopen the Mini App during the import and confirm the persisted job continues.
 6. Export JSON, re-import it, and verify stale revision conflict handling.

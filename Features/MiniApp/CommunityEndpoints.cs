@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Catalog;
+using oyinQ.Bot.Features.Gatherings;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
@@ -21,15 +22,17 @@ internal static class CommunityEndpoints
 
     private static async Task<IResult> GetCommunitiesAsync(HttpRequest request,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        IAdministratorStore administrators, CancellationToken cancellationToken)
+        IAdminAuthorizationService authorization, CancellationToken cancellationToken)
     {
         var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
         if (identity is null) return Results.Unauthorized();
         var communities = await resolver.ResolveAuthorizedAsync(identity.TelegramUserId, cancellationToken);
-        var isAdmin = await administrators.IsAdministratorAsync(identity.TelegramUserId, cancellationToken);
+        var canOpenAdminPanel = await authorization.CanOpenAdminPanelAsync(identity.TelegramUserId, cancellationToken);
         return Results.Ok(new
         {
-            IsAdministrator = isAdmin,
+            IsAdministrator = canOpenAdminPanel,
+            CanOpenAdminPanel = canOpenAdminPanel,
+            IsSuperAdmin = authorization.IsSuperAdmin(identity.TelegramUserId),
             Communities = communities.Select(x => new { x.Key, x.Name, Mode = x.Mode.ToString(), x.TimeZoneId })
         });
     }
@@ -70,8 +73,10 @@ internal static class CommunityEndpoints
     private static object PresentGame(ClubCollectionGame game)
     {
         var metadata = BggTaxonomyCatalog.Present(game);
+        var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
         return new { game.BggId, game.Name, game.ThumbnailImageUrl, game.ImageUrl, game.Description,
-            game.YearPublished, game.MinPlayers, game.MaxPlayers, game.BestPlayers,
+            game.YearPublished, MinPlayers = players.Minimum, MaxPlayers = players.Maximum,
+            PlayerRangeDefaulted = players.WasDefaulted, game.BestPlayers,
             game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
             metadata.TypeName, metadata.TypeNames, metadata.CategoryNames, metadata.MechanicNames,
             game.CategoryItems, game.Mechanics, game.Expansions };

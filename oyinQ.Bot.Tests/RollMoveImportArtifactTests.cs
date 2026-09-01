@@ -26,7 +26,7 @@ public sealed class RollMoveImportArtifactTests
     }
 
     [Fact]
-    public void CurrentSnapshot_IsValidV2AndMatchesCurrentOwnedRelationships()
+    public void CurrentSnapshot_IsValidV2AndMatchesFourSourceRefresh()
     {
         var repositoryRoot = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -36,11 +36,14 @@ public sealed class RollMoveImportArtifactTests
         var expansions = document.Games.SelectMany(game => game.Expansions).ToArray();
 
         Assert.Equal(ClubCollectionDocument.CurrentVersion, document.Version);
-        Assert.Equal(219, document.Games.Count);
-        Assert.Equal(119, expansions.Length);
-        Assert.Equal(109, expansions.Select(expansion => expansion.BggId).Distinct().Count());
+        Assert.Equal(337, document.Games.Count);
+        Assert.Empty(expansions);
         Assert.Contains(document.Games, game => (game.Subdomains?.Count ?? 0) > 1);
         Assert.All(document.Games, game => Assert.NotEmpty(game.CategoryItems ?? []));
-        Assert.All(document.Games, game => Assert.NotEmpty(game.Mechanics ?? []));
+        Assert.All(document.Games, game =>
+        {
+            Assert.True(game.MinPlayers >= 1);
+            Assert.True(game.MaxPlayers >= game.MinPlayers);
+        });
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace oyinQ.Bot.Features.Collections;
 
@@ -27,7 +28,11 @@ public sealed record ClubCollectionGame(
     GameType Type = GameType.Other,
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
-    IReadOnlyList<GameTaxonomyItem>? Mechanics = null);
+    IReadOnlyList<GameTaxonomyItem>? Mechanics = null)
+{
+    [JsonIgnore]
+    public bool HasExpansions => Expansions is { Count: > 0 };
+}
 
 public sealed record ClubCollectionExpansion(long BggId, string Name);
 public sealed record GameTaxonomyItem(long BggId, string Name);
@@ -88,6 +93,7 @@ public static class ClubCollectionSerializer
         {
             Type = BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types,
                 game.CategoryItems, game.Categories),
+            Expansions = game.Expansions ?? [],
             Subdomains = game.Subdomains ?? [],
             CategoryItems = game.CategoryItems ?? [],
             Mechanics = game.Mechanics ?? []
@@ -119,9 +125,9 @@ public static class ClubCollectionSerializer
 
         foreach (var game in document.Games)
         {
-            if (game.Expansions is null
-                || game.Expansions.Any(expansion => expansion.BggId <= 0 || string.IsNullOrWhiteSpace(expansion.Name))
-                || game.Expansions.GroupBy(expansion => expansion.BggId).Any(group => group.Count() > 1))
+            var expansions = game.Expansions ?? [];
+            if (expansions.Any(expansion => expansion.BggId <= 0 || string.IsNullOrWhiteSpace(expansion.Name))
+                || expansions.GroupBy(expansion => expansion.BggId).Any(group => group.Count() > 1))
             {
                 throw new InvalidOperationException($"Club collection game '{game.Name}' has invalid expansions.");
             }

@@ -201,6 +201,47 @@ public sealed class BoardGameGeekClient(
         return result;
     }
 
+    public async Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(
+        IReadOnlyCollection<long> bggIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(bggIds);
+        var ids = bggIds.Where(id => id > 0).Distinct().ToArray();
+        var result = new List<BggCollectionItem>();
+        for (var offset = 0; offset < ids.Length; offset += ThingBatchSize)
+        {
+            if (offset > 0) await Task.Delay(ThingBatchDelay, cancellationToken);
+            var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
+            var expansionDocument = await GetXmlAsync(
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgameexpansion&stats=1",
+                cancellationToken,
+                acceptedAttempts: ThingAttempts,
+                transientAttempts: ThingAttempts);
+            foreach (var item in expansionDocument.Root?.Elements("item") ?? [])
+            {
+                var game = ParseThing(item, "boardgameexpansion");
+                if (game is null) continue;
+                result.Add(new BggCollectionItem(game, true, ReadExpansionParentIds(item)));
+            }
+
+            var baseDocument = await GetXmlAsync(
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgame&stats=1",
+                cancellationToken,
+                acceptedAttempts: ThingAttempts,
+                transientAttempts: ThingAttempts);
+            foreach (var item in baseDocument.Root?.Elements("item") ?? [])
+            {
+                var game = ParseThing(item);
+                if (game is null || result.Any(value => value.Game.BggId == game.BggId && value.IsExpansion))
+                    continue;
+                result.Add(new BggCollectionItem(game, false, []));
+            }
+        }
+
+        return result.OrderByDescending(item => item.IsExpansion)
+            .DistinctBy(item => item.Game.BggId).ToArray();
+    }
+
     public async Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
         string username,
         int offset,
@@ -417,6 +458,17 @@ public sealed class BoardGameGeekClient(
         .Select(value => new GameTaxonomyItem(value.Id!.Value, value.Name!))
         .DistinctBy(value => value.BggId)
         .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static IReadOnlyList<long> ReadExpansionParentIds(XElement item) => item.Elements("link")
+        .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion",
+                StringComparison.OrdinalIgnoreCase)
+            && string.Equals((string?)link.Attribute("inbound"), "true",
+                StringComparison.OrdinalIgnoreCase))
+        .Select(link => ReadLongAttribute(link, "id"))
+        .Where(value => value is > 0)
+        .Select(value => value!.Value)
+        .Distinct()
         .ToArray();
 
     private static IReadOnlyList<GameTaxonomyItem> ReadSubdomains(XElement item)

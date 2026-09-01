@@ -23,6 +23,12 @@ if (args.Any(x => string.Equals(x, "--generate-rollmove-recovery", StringCompari
     return;
 }
 
+if (args.Any(x => string.Equals(x, "--refresh-club-collection", StringComparison.OrdinalIgnoreCase)))
+{
+    Environment.ExitCode = await ClubCollectionRefreshGenerator.RunAsync(builder.Configuration, args);
+    return;
+}
+
 var connectionString = builder.Configuration["Database:ConnectionString"]?.Trim();
 if (string.IsNullOrWhiteSpace(connectionString))
 {
@@ -58,8 +64,9 @@ builder.Services.AddSingleton<GatheringPresentationService>();
 builder.Services.AddSingleton<MiniAppLinkBuilder>();
 builder.Services.AddSingleton<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
 builder.Services.AddSingleton<IManagedChatValidator, TelegramManagedChatValidator>();
+builder.Services.AddSingleton<ITelegramChatAdministratorVerifier, TelegramChatAdministratorVerifier>();
 builder.Services.AddScoped<ICommunityStore, CommunityStore>();
-builder.Services.AddScoped<IAdministratorStore, AdministratorStore>();
+builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<ManagedCommunityService>();
 builder.Services.AddScoped<CampParticipationPolicy>();
@@ -114,17 +121,6 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
-
-    var administratorBootstrapTime = DateTimeOffset.UtcNow;
-    foreach (var administratorId in administrationOptions.BootstrapTelegramUserIds)
-    {
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            INSERT INTO "OyinQAdministrators" ("TelegramUserId", "AddedByTelegramUserId", "CreatedAt")
-            VALUES ({administratorId}, NULL, {administratorBootstrapTime})
-            ON CONFLICT ("TelegramUserId") DO NOTHING
-            """);
-    }
 
     var existingCommunities = await dbContext.OyinQCommunities
         .Select(value => new { value.Key, value.TelegramChatId })

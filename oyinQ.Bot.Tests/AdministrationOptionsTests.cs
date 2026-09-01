@@ -24,6 +24,34 @@ public sealed class AdministrationOptionsTests
         var options = AdministrationOptions.FromConfiguration(new ConfigurationManager());
 
         Assert.Empty(options.BootstrapTelegramUserIds);
+        Assert.Empty(options.SuperAdminTelegramUserIds);
+    }
+
+    [Fact]
+    public void FromConfiguration_UsesExplicitSuperAdminsWithoutPromotingMultipleLegacyAdmins()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Administration:SuperAdminTelegramUserIds"] = "42,99",
+            ["Administration:BootstrapTelegramUserIds"] = "1,2"
+        };
+
+        var options = AdministrationOptions.FromConfiguration(configuration);
+
+        Assert.Equal([42L, 99L], options.SuperAdminTelegramUserIds.Order());
+    }
+
+    [Fact]
+    public void FromConfiguration_PreservesSingleLegacyOwnerAsCompatibilitySuperAdmin()
+    {
+        var configuration = new ConfigurationManager
+        {
+            ["Administration:BootstrapTelegramUserIds"] = "42"
+        };
+
+        var options = AdministrationOptions.FromConfiguration(configuration);
+
+        Assert.Equal([42L], options.SuperAdminTelegramUserIds);
     }
 
     [Theory]

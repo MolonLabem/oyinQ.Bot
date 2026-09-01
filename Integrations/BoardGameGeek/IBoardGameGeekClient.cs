@@ -17,6 +17,11 @@ public sealed record BggOwnedExpansion(
     ExternalGame Expansion,
     IReadOnlyList<long> ParentBggIds);
 
+public sealed record BggCollectionItem(
+    ExternalGame Game,
+    bool IsExpansion,
+    IReadOnlyList<long> ParentBggIds);
+
 public interface IBoardGameGeekClient
 {
     Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
@@ -42,6 +47,11 @@ public interface IBoardGameGeekClient
     Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(
         string username,
         CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<BggOwnedExpansion>>([]);
+
+    Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(
+        IReadOnlyCollection<long> bggIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<BggCollectionItem>>([]);
 
     Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
         string username,

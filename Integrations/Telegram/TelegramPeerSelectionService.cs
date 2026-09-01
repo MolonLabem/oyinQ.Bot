@@ -25,7 +25,6 @@ public sealed record TelegramPeerSelectionTicket(
 
 public sealed class TelegramPeerSelectionService(
     AppDbContext dbContext,
-    IAdministratorStore administratorStore,
     ITelegramBotClient botClient,
     TimeProvider timeProvider)
 {
@@ -34,8 +33,6 @@ public sealed class TelegramPeerSelectionService(
     public async Task<TelegramPeerSelectionTicket> CreateAsync(
         long administratorId, TelegramPeerSelectionPurpose purpose, CancellationToken cancellationToken)
     {
-        if (!await administratorStore.IsAdministratorAsync(administratorId, cancellationToken))
-            throw new UnauthorizedAccessException("Доступ запрещён.");
         var requestId = await CreateRequestIdAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         var pending = new PendingTelegramPeerSelection

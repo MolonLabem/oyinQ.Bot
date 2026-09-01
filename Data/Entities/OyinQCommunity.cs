@@ -16,6 +16,7 @@ public sealed class OyinQCommunity
     public Club? Club { get; set; }
     public Camp? Camp { get; set; }
     public ICollection<GameGathering> Gatherings { get; set; } = [];
+    public ICollection<ChatAdminPermission> AdminPermissions { get; set; } = [];
 
     public BotCommunity ToBotCommunity() =>
         new(Key, Name, TelegramChatId, Mode, TimeZoneId);

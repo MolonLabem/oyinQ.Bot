@@ -15,13 +15,29 @@ internal static class MiniAppEndpointSupport
     public static TelegramMiniAppIdentity? Authenticate(HttpRequest request, TelegramMiniAppAuthenticator authenticator) =>
         authenticator.Authenticate(request.Headers["X-Telegram-Init-Data"].FirstOrDefault());
 
-    public static async Task<TelegramMiniAppIdentity?> AuthenticateAdminAsync(HttpRequest request,
-        TelegramMiniAppAuthenticator authenticator, IAdministratorStore administrators,
+    public static async Task<TelegramMiniAppIdentity?> AuthenticateAdminPanelAsync(HttpRequest request,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         CancellationToken cancellationToken)
     {
         var identity = Authenticate(request, authenticator);
-        return identity is not null && await administrators.IsAdministratorAsync(identity.TelegramUserId, cancellationToken)
+        return identity is not null && await authorization.CanOpenAdminPanelAsync(identity.TelegramUserId, cancellationToken)
             ? identity : null;
+    }
+
+    public static async Task<TelegramMiniAppIdentity?> AuthenticateCommunityAdminAsync(HttpRequest request,
+        string communityKey, TelegramMiniAppAuthenticator authenticator,
+        IAdminAuthorizationService authorization, CancellationToken cancellationToken)
+    {
+        var identity = Authenticate(request, authenticator);
+        return identity is not null && await authorization.CanAdministerCommunityAsync(
+            identity.TelegramUserId, communityKey, cancellationToken) ? identity : null;
+    }
+
+    public static TelegramMiniAppIdentity? AuthenticateSuperAdmin(HttpRequest request,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization)
+    {
+        var identity = Authenticate(request, authenticator);
+        return identity is not null && authorization.IsSuperAdmin(identity.TelegramUserId) ? identity : null;
     }
 
     public static async Task<MiniAppCommunityAccess?> AuthorizeCommunityAsync(HttpRequest request, string communityKey,
