@@ -38,6 +38,7 @@ The historical BGG-account enrichment resolved 219 base games and 121 expansions
    ```
 
    The command reads only the four named source JSONs, extracts and deduplicates positive BGG IDs recursively, fetches BGG metadata through typed base/expansion requests, links expansions through official BGG parent relationships, and reports invalid, unresolved, and orphan items. Use `--source-base-url=<url>` only for a reviewed mirror or test fixture and `--output=<path>` for an audit run.
+   To reconcile the completed document into PostgreSQL atomically, add `--apply-club-key=<community-key>`. The command locks the Club row, replaces only `Club.CollectionJson`, increments the revision only when content changed, and reports added/retained/removed IDs and expansion-link changes. Existing gathering snapshots and participation data are not rewritten.
 5. Normal metadata refresh updates PostgreSQL only and does not rewrite recovery files automatically.
 
 Do not commit the BGG password, email address, application token, browser profile, or uploader logs.

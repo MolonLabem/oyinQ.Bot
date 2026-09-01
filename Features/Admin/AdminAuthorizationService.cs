@@ -22,9 +22,16 @@ public sealed record GroupAdministratorRecord(
     long GrantedByTelegramUserId,
     DateTimeOffset CreatedAt);
 
+public sealed record EligibleGroupAdministrator(
+    long TelegramUserId,
+    string? DisplayName,
+    string? TelegramUsername);
+
 public interface ITelegramChatAdministratorVerifier
 {
     Task<bool> IsAdministratorAsync(long telegramChatId, long telegramUserId,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<EligibleGroupAdministrator>> GetAdministratorsAsync(long telegramChatId,
         CancellationToken cancellationToken);
 }
 
@@ -42,6 +49,10 @@ public interface IAdminAuthorizationService
         CancellationToken cancellationToken);
     Task<IReadOnlyList<GroupAdministratorRecord>> ListGroupAdminsAsync(long actorTelegramUserId,
         string communityKey, CancellationToken cancellationToken);
+    Task<IReadOnlyList<EligibleGroupAdministrator>> ListEligibleGroupAdminsAsync(long actorTelegramUserId,
+        string communityKey, CancellationToken cancellationToken);
+    Task GrantEligibleGroupAdminAsync(long actorTelegramUserId, string communityKey,
+        long targetTelegramUserId, CancellationToken cancellationToken);
     Task GrantGroupAdminAsync(long actorTelegramUserId, string communityKey, long targetTelegramUserId,
         string? displayName, string? telegramUsername, CancellationToken cancellationToken);
     Task RevokeGroupAdminAsync(long actorTelegramUserId, string communityKey, long targetTelegramUserId,
@@ -117,28 +128,34 @@ public sealed class AdminAuthorizationService(
                 Approved = x.AdminPermissions.Any(p => p.TelegramUserId == telegramUserId && p.RevokedAt == null)
             })
             .ToArrayAsync(cancellationToken);
-        if (superAdmin)
-            return chats.Select(x => new AdminChatAccess(x.Key, x.Name, x.TelegramChatId, x.Mode,
-                x.IsActive, true, true)).ToArray();
-
         var result = new List<AdminChatAccess>();
-        foreach (var chat in chats)
+        var configuredIds = chats.Select(x => x.TelegramChatId).ToHashSet();
+        var knownPresence = await dbContext.KnownTelegramChats.AsNoTracking()
+            .Where(x => configuredIds.Contains(x.TelegramChatId))
+            .ToDictionaryAsync(x => x.TelegramChatId, x => x.IsBotPresent, cancellationToken);
+        foreach (var chat in chats.Where(chat => !knownPresence.TryGetValue(chat.TelegramChatId, out var present)
+                     || present))
         {
+            if (superAdmin)
+            {
+                result.Add(new(chat.Key, chat.Name, chat.TelegramChatId, chat.Mode, chat.IsActive,
+                    true, true));
+                continue;
+            }
             if (!await telegramVerifier.IsAdministratorAsync(chat.TelegramChatId, telegramUserId,
                     cancellationToken)) continue;
             result.Add(new(chat.Key, chat.Name, chat.TelegramChatId, chat.Mode, chat.IsActive,
                 chat.Approved, false));
         }
-        var configuredIds = chats.Select(x => x.TelegramChatId).ToHashSet();
         var unconfigured = await dbContext.KnownTelegramChats.AsNoTracking()
             .Where(x => x.IsBotPresent && !configuredIds.Contains(x.TelegramChatId))
             .OrderBy(x => x.Title).ToArrayAsync(cancellationToken);
         foreach (var chat in unconfigured)
         {
-            if (!await telegramVerifier.IsAdministratorAsync(chat.TelegramChatId, telegramUserId,
-                    cancellationToken)) continue;
+            if (!superAdmin && !await telegramVerifier.IsAdministratorAsync(chat.TelegramChatId,
+                    telegramUserId, cancellationToken)) continue;
             result.Add(new(null, chat.Title ?? $"Telegram {chat.TelegramChatId}", chat.TelegramChatId,
-                BotMode.Club, false, false, false));
+                BotMode.Club, false, false, superAdmin));
         }
         return result;
     }
@@ -153,6 +170,36 @@ public sealed class AdminAuthorizationService(
             .Select(x => new GroupAdministratorRecord(x.TelegramUserId, x.DisplayName, x.TelegramUsername,
                 x.GrantedByTelegramUserId, x.CreatedAt))
             .ToArrayAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<EligibleGroupAdministrator>> ListEligibleGroupAdminsAsync(
+        long actorTelegramUserId, string communityKey, CancellationToken cancellationToken)
+    {
+        await EnsureCanManageAsync(actorTelegramUserId, communityKey, cancellationToken);
+        var target = await dbContext.OyinQCommunities.AsNoTracking()
+            .Where(x => x.Key == communityKey)
+            .Select(x => new
+            {
+                x.TelegramChatId,
+                ApprovedIds = x.AdminPermissions.Where(p => p.RevokedAt == null)
+                    .Select(p => p.TelegramUserId).ToArray()
+            }).SingleAsync(cancellationToken);
+        var approvedIds = target.ApprovedIds.ToHashSet();
+        return (await telegramVerifier.GetAdministratorsAsync(target.TelegramChatId, cancellationToken))
+            .Where(x => !approvedIds.Contains(x.TelegramUserId))
+            .OrderBy(x => x.DisplayName ?? x.TelegramUsername ?? x.TelegramUserId.ToString())
+            .ToArray();
+    }
+
+    public async Task GrantEligibleGroupAdminAsync(long actorTelegramUserId, string communityKey,
+        long targetTelegramUserId, CancellationToken cancellationToken)
+    {
+        var candidate = (await ListEligibleGroupAdminsAsync(actorTelegramUserId, communityKey,
+                cancellationToken)).SingleOrDefault(x => x.TelegramUserId == targetTelegramUserId)
+            ?? throw new InvalidOperationException(
+                "Пользователь должен быть действующим администратором этого чата Telegram.");
+        await GrantGroupAdminAsync(actorTelegramUserId, communityKey, candidate.TelegramUserId,
+            candidate.DisplayName, candidate.TelegramUsername, cancellationToken);
     }
 
     public async Task GrantGroupAdminAsync(long actorTelegramUserId, string communityKey,

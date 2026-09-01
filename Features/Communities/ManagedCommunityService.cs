@@ -12,14 +12,15 @@ public sealed record ManagedChatValidation(bool IsUsable, string? Title, string?
 public interface IManagedChatValidator
 {
     Task<ManagedChatValidation> ValidateAsync(long telegramChatId, long requestingAdministratorId,
-        CancellationToken cancellationToken);
+        bool requireRequestingAdministrator, CancellationToken cancellationToken);
 }
 
 public sealed record CreateClubCommand(string Name, long TelegramChatId, string TimeZoneId,
-    long CreatedByTelegramUserId);
+    long CreatedByTelegramUserId, bool RequireCreatorTelegramAdmin = true);
 
 public sealed record CreateCampCommand(string Name, long TelegramChatId, string TimeZoneId,
-    long CreatedByTelegramUserId, long? SourceClubId, DateOnly StartDate, DateOnly EndDate);
+    long CreatedByTelegramUserId, long? SourceClubId, DateOnly StartDate, DateOnly EndDate,
+    bool RequireCreatorTelegramAdmin = true);
 
 public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
 public sealed record CampStatusTransitionResult(IReadOnlyList<Guid> CancelledGatheringIds);
@@ -35,7 +36,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var definition = CommunityOptions.CreateValidated(key, command.Name, command.TelegramChatId,
             nameof(BotMode.Club), command.TimeZoneId);
         var validation = await ValidateAvailableChatAsync(command.TelegramChatId,
-            command.CreatedByTelegramUserId, cancellationToken);
+            command.CreatedByTelegramUserId, command.RequireCreatorTelegramAdmin, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var community = CreateCommunity(definition, validation.Title, true, now);
         var club = new Club
@@ -92,7 +93,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var definition = CommunityOptions.CreateValidated(key, command.Name, command.TelegramChatId,
             nameof(BotMode.Camp), command.TimeZoneId);
         var validation = await ValidateAvailableChatAsync(command.TelegramChatId,
-            command.CreatedByTelegramUserId, cancellationToken);
+            command.CreatedByTelegramUserId, command.RequireCreatorTelegramAdmin, cancellationToken);
         Club? sourceClub = null;
         if (command.SourceClubId is { } sourceClubId)
         {
@@ -216,10 +217,11 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
     }
 
     private async Task<ManagedChatValidation> ValidateAvailableChatAsync(long chatId, long administratorId,
-        CancellationToken cancellationToken)
+        bool requireAdministrator, CancellationToken cancellationToken)
     {
         if (administratorId <= 0) throw new InvalidOperationException("Telegram ID создателя обязателен.");
-        var validation = await chatValidator.ValidateAsync(chatId, administratorId, cancellationToken);
+        var validation = await chatValidator.ValidateAsync(chatId, administratorId, requireAdministrator,
+            cancellationToken);
         if (!validation.IsUsable) throw new InvalidOperationException(validation.Error ?? "Группа недоступна.");
         if (await dbContext.OyinQCommunities.AnyAsync(x => x.TelegramChatId == chatId, cancellationToken))
             throw new InvalidOperationException("Эта Telegram-группа уже назначена клубу или кэмпу.");

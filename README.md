@@ -12,6 +12,7 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 - Gathering instants are stored and transported as UTC. The Mini App interprets and validates `datetime-local` values in the selected community's validated IANA time zone, never in the browser or server machine time zone.
 - Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.
 - BGG is the only external board-game provider. Missing BGG credentials visibly disable search/add/import without disabling stored collections, contributions, or gatherings.
+- BGG XML API calls are server-side, authenticated with the application token, throttled, and limited to 20 IDs per `/thing` request. Public Mini App screens include the required linked “Powered by BGG” attribution.
 - Telegram user/chat assignment uses prepared native peer selectors. Raw Telegram IDs are not accepted by normal administration APIs.
 - Runtime community resolution uses `OyinQCommunities` through `ICommunityStore`. Optional bootstrap JSON only inserts missing rows.
 

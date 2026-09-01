@@ -8,7 +8,8 @@ namespace oyinQ.Bot.Integrations.Telegram;
 public sealed class TelegramManagedChatValidator(ITelegramBotClient botClient) : IManagedChatValidator
 {
     public async Task<ManagedChatValidation> ValidateAsync(long telegramChatId,
-        long requestingAdministratorId, CancellationToken cancellationToken)
+        long requestingAdministratorId, bool requireRequestingAdministrator,
+        CancellationToken cancellationToken)
     {
         if (telegramChatId >= 0)
             return new(false, null, null, "Выберите группу или супергруппу Telegram.");
@@ -18,9 +19,14 @@ public sealed class TelegramManagedChatValidator(ITelegramBotClient botClient) :
             if (chat.Type is not ChatType.Group and not ChatType.Supergroup)
                 return new(false, chat.Title, chat.Username, "Выбранный чат не является группой Telegram.");
 
-            var requester = await botClient.GetChatMember(telegramChatId, requestingAdministratorId, cancellationToken);
-            if (requester.Status is not ChatMemberStatus.Creator and not ChatMemberStatus.Administrator)
-                return new(false, chat.Title, chat.Username, "Создатель сообщества должен быть администратором выбранной группы.");
+            if (requireRequestingAdministrator)
+            {
+                var requester = await botClient.GetChatMember(telegramChatId, requestingAdministratorId,
+                    cancellationToken);
+                if (requester.Status is not ChatMemberStatus.Creator and not ChatMemberStatus.Administrator)
+                    return new(false, chat.Title, chat.Username,
+                        "Создатель сообщества должен быть администратором выбранной группы.");
+            }
 
             var bot = await botClient.GetMe(cancellationToken);
             var membership = await botClient.GetChatMember(telegramChatId, bot.Id, cancellationToken);

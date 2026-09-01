@@ -14,6 +14,11 @@ export function Cover({ src, name }: { src?: string; name: string }) { return sr
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) { return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>; }
 export function Notice({ children, kind = "info" }: { children: ReactNode; kind?: "info" | "warning" | "danger" | "success" }) { return <div className={`notice ${kind}`} role="status">{children}</div>; }
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: string }) { return <span className={`badge ${tone}`}>{children}</span>; }
+export function BggAttribution() {
+  return <a className="bgg-attribution" href="https://boardgamegeek.com" target="_blank" rel="noreferrer" aria-label="Powered by BoardGameGeek">
+    <img src="https://dm1i7q1ruvbhg.cloudfront.net/assets/powered_by_bgg-9f2993c7fad826d5407c35b5c8117b08d2a6cdf5beb1f0c02d06a7dc7f5cdd7f.png" alt="Powered by BGG" />
+  </a>;
+}
 export function ContactLink({ url, children }: { url?: string; children: ReactNode }) {
   return url ? <a href={url} onClick={event => { event.preventDefault(); telegram.openContact(url); }}>{children}</a>
     : <span title="Telegram не разрешает открыть профиль этого пользователя">{children}</span>;

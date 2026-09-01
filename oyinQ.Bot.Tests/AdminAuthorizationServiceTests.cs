@@ -16,6 +16,25 @@ public sealed class AdminAuthorizationServiceTests
         await using var fixture = CreateFixture(superAdmins: new HashSet<long> { 1 });
         Assert.True(await fixture.Service.CanAdministerCommunityAsync(1, "club-a", default));
         Assert.True(await fixture.Service.CanAdministerCommunityAsync(1, "club-b", default));
+        Assert.Empty(fixture.Telegram.VerificationCalls);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_ListsConfiguredAndObservedGroupsWithoutMembershipChecks()
+    {
+        await using var fixture = CreateFixture(superAdmins: new HashSet<long> { 1 });
+        fixture.Db.KnownTelegramChats.Add(new KnownTelegramChat
+        {
+            TelegramChatId = -2000, Title = "Новая группа", IsBotPresent = true,
+            FirstSeenAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var chats = await fixture.Service.GetAdminPanelChatsAsync(1, default);
+
+        Assert.Equal(3, chats.Count);
+        Assert.Contains(chats, x => x.TelegramChatId == -2000 && x.CommunityKey is null);
+        Assert.Empty(fixture.Telegram.VerificationCalls);
     }
 
     [Fact]
@@ -143,6 +162,47 @@ public sealed class AdminAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task SuperAdmin_CanApproveEligibleAdminWithoutBeingMemberOfTargetChat()
+    {
+        await using var fixture = CreateFixture(superAdmins: new HashSet<long> { 1 });
+        fixture.Telegram.Allow("club-a", 20, "Alice", "alice");
+
+        var candidates = await fixture.Service.ListEligibleGroupAdminsAsync(1, "club-a", default);
+        Assert.Equal(20, Assert.Single(candidates).TelegramUserId);
+        await fixture.Service.GrantEligibleGroupAdminAsync(1, "club-a", 20, default);
+
+        Assert.True(await fixture.Service.CanAdministerCommunityAsync(20, "club-a", default));
+        Assert.False(await fixture.Service.CanAdministerCommunityAsync(20, "club-b", default));
+        Assert.DoesNotContain(fixture.Telegram.VerificationCalls, x => x.UserId == 1);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_CannotApproveUserWhoIsNotCurrentTelegramAdmin()
+    {
+        await using var fixture = CreateFixture(superAdmins: new HashSet<long> { 1 });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.Service.GrantEligibleGroupAdminAsync(1, "club-a", 20, default));
+    }
+
+    [Fact]
+    public async Task RemovedBotChat_IsNotListedAsActiveAdminTarget()
+    {
+        await using var fixture = CreateFixture(superAdmins: new HashSet<long> { 1 });
+        fixture.Db.KnownTelegramChats.Add(new KnownTelegramChat
+        {
+            TelegramChatId = -1001, Title = "Removed", IsBotPresent = false,
+            FirstSeenAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var chats = await fixture.Service.GetAdminPanelChatsAsync(1, default);
+
+        Assert.DoesNotContain(chats, x => x.TelegramChatId == -1001);
+        Assert.Contains(chats, x => x.TelegramChatId == -1002);
+    }
+
+    [Fact]
     public async Task ScopedExport_DoesNotContainAnotherCommunity()
     {
         await using var fixture = CreateFixture();
@@ -215,12 +275,27 @@ public sealed class AdminAuthorizationServiceTests
     private sealed class FakeTelegramVerifier(AppDbContext db) : ITelegramChatAdministratorVerifier
     {
         private readonly HashSet<(long ChatId, long UserId)> _admins = [];
+        private readonly Dictionary<(long ChatId, long UserId), EligibleGroupAdministrator> _profiles = [];
 
-        public void Allow(string key, long userId) => _admins.Add((ChatId(key), userId));
-        public void AllowChat(long chatId, long userId) => _admins.Add((chatId, userId));
+        public List<(long ChatId, long UserId)> VerificationCalls { get; } = [];
+
+        public void Allow(string key, long userId, string? name = null, string? username = null) =>
+            AllowChat(ChatId(key), userId, name, username);
+        public void AllowChat(long chatId, long userId, string? name = null, string? username = null)
+        {
+            _admins.Add((chatId, userId));
+            _profiles[(chatId, userId)] = new(userId, name, username);
+        }
         public void Deny(string key, long userId) => _admins.Remove((ChatId(key), userId));
         public Task<bool> IsAdministratorAsync(long telegramChatId, long telegramUserId,
-            CancellationToken cancellationToken) => Task.FromResult(_admins.Contains((telegramChatId, telegramUserId)));
+            CancellationToken cancellationToken)
+        {
+            VerificationCalls.Add((telegramChatId, telegramUserId));
+            return Task.FromResult(_admins.Contains((telegramChatId, telegramUserId)));
+        }
+        public Task<IReadOnlyList<EligibleGroupAdministrator>> GetAdministratorsAsync(long telegramChatId,
+            CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<EligibleGroupAdministrator>>(
+                _profiles.Where(x => x.Key.ChatId == telegramChatId).Select(x => x.Value).ToArray());
         private long ChatId(string key) => db.OyinQCommunities.Single(x => x.Key == key).TelegramChatId;
     }
 }

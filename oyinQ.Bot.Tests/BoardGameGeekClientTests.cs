@@ -234,7 +234,7 @@ public sealed class BoardGameGeekClientTests
     }
 
     [Fact]
-    public async Task GetItemsByIdsAsync_UsesBggTypesAndOfficialExpansionParents()
+    public async Task GetItemsByIdsAsync_UsesSingleMixedTypeRequestAndOfficialExpansionParents()
     {
         var requests = new List<string>();
         var handler = new StubHttpMessageHandler(request =>
@@ -242,22 +242,18 @@ public sealed class BoardGameGeekClientTests
             Assert.Equal("/xmlapi2/thing", request.RequestUri!.AbsolutePath);
             Assert.Contains("id=10,20", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
             requests.Add(request.RequestUri.Query);
-            return request.RequestUri.Query.Contains("type=boardgameexpansion", StringComparison.Ordinal)
-                ? XmlResponse(HttpStatusCode.OK, """
+            Assert.DoesNotContain("type=", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
+            return XmlResponse(HttpStatusCode.OK, """
                   <items>
+                  <item type="boardgame" id="10">
+                    <name type="primary" value="Base" />
+                    <minplayers value="2" /><maxplayers value="4" />
+                  </item>
                   <item type="boardgameexpansion" id="20">
                     <name type="primary" value="Expansion" />
                     <link type="boardgameexpansion" id="10" value="Base" inbound="true" />
                     <link type="boardgameexpansion" id="30" value="Child" />
                   </item>
-                  </items>
-                  """)
-                : XmlResponse(HttpStatusCode.OK, """
-                  <items>
-                    <item type="boardgame" id="10">
-                      <name type="primary" value="Base" />
-                      <minplayers value="2" /><maxplayers value="4" />
-                    </item>
                   </items>
                   """);
         });
@@ -268,9 +264,26 @@ public sealed class BoardGameGeekClientTests
         var expansion = items.Single(item => item.Game.BggId == 20);
         Assert.True(expansion.IsExpansion);
         Assert.Equal([10L], expansion.ParentBggIds);
-        Assert.Equal(2, requests.Count);
-        Assert.Contains(requests, query => query.Contains("type=boardgame&", StringComparison.Ordinal));
-        Assert.Contains(requests, query => query.Contains("type=boardgameexpansion", StringComparison.Ordinal));
+        Assert.Single(requests);
+    }
+
+    [Fact]
+    public async Task GetItemsByIdsAsync_NeverSendsMoreThanTwentyIdsPerThingRequest()
+    {
+        var batchSizes = new List<int>();
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            var query = request.RequestUri!.Query.TrimStart('?').Split('&')
+                .Single(x => x.StartsWith("id=", StringComparison.Ordinal));
+            var ids = Uri.UnescapeDataString(query[3..]).Split(',', StringSplitOptions.RemoveEmptyEntries);
+            batchSizes.Add(ids.Length);
+            return XmlResponse(HttpStatusCode.OK, "<items />");
+        });
+
+        await CreateClient(handler).GetItemsByIdsAsync(Enumerable.Range(1, 21).Select(x => (long)x).ToArray(),
+            default);
+
+        Assert.Equal([20, 1], batchSizes);
     }
 
     private static BoardGameGeekClient CreateClient(HttpMessageHandler handler)

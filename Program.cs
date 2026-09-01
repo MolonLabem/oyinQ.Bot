@@ -172,6 +172,21 @@ await using (var scope = app.Services.CreateAsyncScope())
 
     await dbContext.SaveChangesAsync();
 
+    var knownChatIds = await dbContext.KnownTelegramChats
+        .Select(value => value.TelegramChatId).ToHashSetAsync();
+    var configuredChats = await dbContext.OyinQCommunities.AsNoTracking()
+        .Where(value => !knownChatIds.Contains(value.TelegramChatId))
+        .Select(value => new { value.TelegramChatId, value.Name }).ToArrayAsync();
+    dbContext.KnownTelegramChats.AddRange(configuredChats.Select(value => new KnownTelegramChat
+    {
+        TelegramChatId = value.TelegramChatId,
+        Title = value.Name,
+        IsBotPresent = true,
+        FirstSeenAt = now,
+        UpdatedAt = now
+    }));
+    await dbContext.SaveChangesAsync();
+
     var missingClubs = await dbContext.OyinQCommunities
         .Where(value => value.Mode == BotMode.Club && value.Club == null)
         .ToArrayAsync();

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
-import type { AdminCamp, AdminClub, AdminOverview, Administrator, ClubCollectionState, ClubGame, PeerTicket } from "../../api/types";
-import { Badge, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import type { AdminCamp, AdminClub, AdminOverview, Administrator, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket } from "../../api/types";
+import { Badge, BggAttribution, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useAsync } from "../../hooks/useAsync";
@@ -70,6 +70,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
         ) : (
           <Export isSuperAdmin={isSuperAdmin} />
         )}
+        <BggAttribution />
       </div>
     </div>
   );
@@ -78,6 +79,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
 function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id: number) => void; manageAdmins: (key: string, name: string) => void; view: "clubs" | "camps"; isSuperAdmin: boolean }) {
   const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
   const [create, setCreate] = useState<"club" | "camp">();
+  const [createChat, setCreateChat] = useState<LockedAdminCommunity>();
   const [editing, setEditing] = useState<AdminClub>();
   const [editingCamp, setEditingCamp] = useState<AdminCamp>();
   const [mutationError, setMutationError] = useState<string>();
@@ -85,10 +87,11 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
     () =>
       telegram.back(Boolean(create || editing || editingCamp), () => {
         setCreate(undefined);
+        setCreateChat(undefined);
         setEditing(undefined);
         setEditingCamp(undefined);
       }),
-    [create, editing, editingCamp],
+    [create, createChat, editing, editingCamp],
   );
   async function updateCamp(id: number, status: string) {
     setMutationError(undefined);
@@ -101,8 +104,10 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
   if (create === "club")
     return (
       <CreateClub
+        knownChat={createChat}
         done={() => {
           setCreate(undefined);
+          setCreateChat(undefined);
           state.reload();
         }}
       />
@@ -111,8 +116,10 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
     return (
       <CreateCamp
         overview={state.data}
+        knownChat={createChat}
         done={() => {
           setCreate(undefined);
+          setCreateChat(undefined);
           state.reload();
         }}
       />
@@ -139,7 +146,8 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
         }}
       />
     );
-  const locked = state.data?.lockedCommunities.filter((item) => item.mode === (view === "clubs" ? "Club" : "Camp")) ?? [];
+  const locked = state.data?.lockedCommunities.filter((item) =>
+    !item.communityKey && isSuperAdmin ? true : item.mode === (view === "clubs" ? "Club" : "Camp")) ?? [];
   return (
     <Page
       title={view === "clubs" ? "Клубы" : "Кэмпы"}
@@ -160,10 +168,21 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
       ) : (
         <>
           {locked.map((item) => (
-            <Card key={item.communityKey}>
+            <Card key={`${item.telegramChatId}-${view}`}>
               <h3>{item.name}</h3>
-              <Notice kind="warning">Вы являетесь администратором этого чата, но доступ к управлению OyinQ ещё не выдан.</Notice>
-              <Badge tone="neutral">🔒 Доступ не выдан</Badge>
+              {item.communityKey ? (
+                <>
+                  <Notice kind="warning">Вы являетесь администратором этого чата, но доступ к управлению OyinQ ещё не выдан.</Notice>
+                  <Badge tone="neutral">🔒 Доступ не выдан</Badge>
+                </>
+              ) : (
+                <>
+                  <Notice>Бот уже видит эту Telegram-группу. Настройте её в OyinQ без необходимости вступать в группу.</Notice>
+                  <button className="primary" onClick={() => { setCreateChat(item); setCreate(view === "clubs" ? "club" : "camp"); }}>
+                    {view === "clubs" ? "Создать клуб" : "Создать кэмп"}
+                  </button>
+                </>
+              )}
             </Card>
           ))}
           {view === "clubs" ? (
@@ -434,8 +453,8 @@ async function changeCamp(id: number, status: string, name: string, reload: () =
   reload();
 }
 
-function CreateClub({ done }: { done: () => void }) {
-  const [name, setName] = useState("");
+function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; done: () => void }) {
+  const [name, setName] = useState(knownChat?.name ?? "");
   const [zone, setZone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [selection, setSelection] = useState<PeerTicket>();
   const [busy, setBusy] = useState(false);
@@ -454,14 +473,15 @@ function CreateClub({ done }: { done: () => void }) {
     }
   }
   async function create() {
-    if (!selection) return;
+    if (!selection && !knownChat) return;
     setBusy(true);
     setError(undefined);
     try {
       const result = await api<CommunityCreated>(
         "/admin/clubs",
         json("POST", {
-          selectionId: selection.publicId,
+          selectionId: selection?.publicId,
+          knownTelegramChatId: knownChat?.telegramChatId,
           name,
           timeZoneId: zone,
         }),
@@ -481,7 +501,7 @@ function CreateClub({ done }: { done: () => void }) {
   return (
     <Page title="Новый клуб" actions={<button onClick={done}>Назад</button>}>
       <Card>
-        {!selection ? (
+        {!selection && !knownChat ? (
           <>
             <Notice>Сначала выберите Telegram-группу. Бот и вы должны быть её администраторами.</Notice>
             <button className="primary" disabled={busy} onClick={choose}>
@@ -491,7 +511,7 @@ function CreateClub({ done }: { done: () => void }) {
         ) : (
           <>
             <Notice kind="success">
-              Выбрана группа: <strong>{selection.result?.chat?.title ?? "Telegram-группа"}</strong>
+              Выбрана группа: <strong>{knownChat?.name ?? selection?.result?.chat?.title ?? "Telegram-группа"}</strong>
             </Notice>
             <Field label="Название" hint="Можно изменить название, полученное из Telegram">
               <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
@@ -502,14 +522,14 @@ function CreateClub({ done }: { done: () => void }) {
             <h2>Проверка</h2>
             <dl className="review-list">
               <dt>Группа</dt>
-              <dd>{selection.result?.chat?.title ?? "Выбрана"}</dd>
+              <dd>{knownChat?.name ?? selection?.result?.chat?.title ?? "Выбрана"}</dd>
               <dt>Название</dt>
               <dd>{name || "Будет взято из Telegram"}</dd>
               <dt>Часовой пояс</dt>
               <dd>{zone}</dd>
             </dl>
             <div className="row">
-              <button onClick={() => setSelection(undefined)}>Выбрать другую</button>
+              {!knownChat && <button onClick={() => setSelection(undefined)}>Выбрать другую</button>}
               <button className="primary" disabled={busy || !zone.trim()} onClick={create}>
                 {busy ? "Создаём…" : "Создать клуб"}
               </button>
@@ -522,8 +542,8 @@ function CreateClub({ done }: { done: () => void }) {
   );
 }
 
-function CreateCamp({ overview, done }: { overview?: AdminOverview; done: () => void }) {
-  const [name, setName] = useState("");
+function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; knownChat?: LockedAdminCommunity; done: () => void }) {
+  const [name, setName] = useState(knownChat?.name ?? "");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [source, setSource] = useState<number | "">("");
@@ -558,14 +578,15 @@ function CreateCamp({ overview, done }: { overview?: AdminOverview; done: () => 
     }
   }
   async function create() {
-    if (!selection) return;
+    if (!selection && !knownChat) return;
     setBusy(true);
     setError(undefined);
     try {
       const result = await api<CommunityCreated>(
         "/admin/camps",
         json("POST", {
-          selectionId: selection.publicId,
+          selectionId: selection?.publicId,
+          knownTelegramChatId: knownChat?.telegramChatId,
           name,
           startDate: start,
           endDate: end,
@@ -613,12 +634,12 @@ function CreateCamp({ overview, done }: { overview?: AdminOverview; done: () => 
           <TimeZoneSelect value={zone} onChange={setZone} />
         </Field>
         {sourceClub && <Notice>Коллекция «{sourceClub.name}» будет скопирована один раз. Последующие изменения клуба кэмп не затронут.</Notice>}
-        {selection && (
+        {(selection || knownChat) && (
           <>
             <h2>Проверка</h2>
             <dl className="review-list">
               <dt>Группа</dt>
-              <dd>{selection.result?.chat?.title ?? "Выбрана"}</dd>
+              <dd>{knownChat?.name ?? selection?.result?.chat?.title ?? "Выбрана"}</dd>
               <dt>Даты</dt>
               <dd>
                 {formatDate(start)} — {formatDate(end)}
@@ -632,9 +653,9 @@ function CreateCamp({ overview, done }: { overview?: AdminOverview; done: () => 
         )}
         {error && <Notice kind="danger">{error}</Notice>}
         <div className="row">
-          {selection && <button onClick={() => setSelection(undefined)}>Выбрать другую группу</button>}
-          <button className="primary" disabled={busy || !start || !end || !zone.trim()} onClick={selection ? create : choose}>
-            {busy ? "Ожидаем Telegram…" : selection ? "Создать кэмп" : "Выбрать группу"}
+          {selection && !knownChat && <button onClick={() => setSelection(undefined)}>Выбрать другую группу</button>}
+          <button className="primary" disabled={busy || !start || !end || !zone.trim()} onClick={selection || knownChat ? create : choose}>
+            {busy ? "Ожидаем Telegram…" : selection || knownChat ? "Создать кэмп" : "Выбрать группу"}
           </button>
         </div>
       </Card>
@@ -644,6 +665,7 @@ function CreateCamp({ overview, done }: { overview?: AdminOverview; done: () => 
 
 function Administrators({ communityKey, communityName, back }: { communityKey: string; communityName: string; back: () => void }) {
   const state = useAsync(() => api<Administrator[]>(`/admin/communities/${communityKey}/administrators`), [communityKey]);
+  const candidates = useAsync(() => api<EligibleAdministrator[]>(`/admin/communities/${communityKey}/administrator-candidates`), [communityKey]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   async function add() {
@@ -670,6 +692,20 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
       setError(e instanceof Error ? e.message : String(e));
     }
   }
+  async function approve(candidate: EligibleAdministrator) {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api(`/admin/communities/${communityKey}/administrators/${candidate.telegramUserId}`, { method: "POST" });
+      telegram.success("Доступ выдан");
+      state.reload();
+      candidates.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Page
       title="Администраторы"
@@ -685,6 +721,30 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
     >
       <Notice>Доступ можно выдать только действующему администратору этого чата Telegram. Если его роль в Telegram будет снята, доступ OyinQ прекратится сразу.</Notice>
       {error && <Notice kind="danger">{error}</Notice>}
+      <h2>Можно выдать доступ</h2>
+      {candidates.loading ? (
+        <Loading />
+      ) : candidates.error ? (
+        <Notice kind="warning">{candidates.error}</Notice>
+      ) : !candidates.data?.length ? (
+        <Empty>Новых администраторов Telegram для одобрения нет.</Empty>
+      ) : (
+        <div className="stack">
+          {candidates.data.map((candidate) => (
+            <Card key={candidate.telegramUserId}>
+              <div className="row">
+                <div>
+                  <h3>{candidate.displayName ?? "Пользователь Telegram"}</h3>
+                  {candidate.telegramUsername && <p>@{candidate.telegramUsername}</p>}
+                  <small className="muted">ID {candidate.telegramUserId}</small>
+                </div>
+                <button className="primary" disabled={busy} onClick={() => approve(candidate)}>Выдать доступ</button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      <h2>Одобренные администраторы</h2>
       {state.loading ? (
         <Loading />
       ) : state.error ? (

@@ -194,29 +194,22 @@ public sealed class BoardGameGeekClient(
         {
             if (offset > 0) await Task.Delay(ThingBatchDelay, cancellationToken);
             var batch = ids.Skip(offset).Take(ThingBatchSize).ToArray();
-            var expansionDocument = await GetXmlAsync(
-                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgameexpansion&stats=1",
+            var document = await GetXmlAsync(
+                $"/xmlapi2/thing?id={string.Join(',', batch)}&stats=1",
                 cancellationToken,
                 acceptedAttempts: ThingAttempts,
                 transientAttempts: ThingAttempts);
-            foreach (var item in expansionDocument.Root?.Elements("item") ?? [])
+            foreach (var item in document.Root?.Elements("item") ?? [])
             {
-                var game = ParseThing(item, "boardgameexpansion");
-                if (game is null) continue;
-                result.Add(new BggCollectionItem(game, true, ReadExpansionParentIds(item)));
-            }
-
-            var baseDocument = await GetXmlAsync(
-                $"/xmlapi2/thing?id={string.Join(',', batch)}&type=boardgame&stats=1",
-                cancellationToken,
-                acceptedAttempts: ThingAttempts,
-                transientAttempts: ThingAttempts);
-            foreach (var item in baseDocument.Root?.Elements("item") ?? [])
-            {
-                var game = ParseThing(item);
-                if (game is null || result.Any(value => value.Game.BggId == game.BggId && value.IsExpansion))
+                var type = ((string?)item.Attribute("type"))?.Trim();
+                var isExpansion = string.Equals(type, "boardgameexpansion",
+                    StringComparison.OrdinalIgnoreCase);
+                if (!isExpansion && !string.Equals(type, "boardgame", StringComparison.OrdinalIgnoreCase))
                     continue;
-                result.Add(new BggCollectionItem(game, false, []));
+                var game = ParseThing(item, isExpansion ? "boardgameexpansion" : "boardgame");
+                if (game is not null)
+                    result.Add(new BggCollectionItem(game, isExpansion,
+                        isExpansion ? ReadExpansionParentIds(item) : []));
             }
         }
 

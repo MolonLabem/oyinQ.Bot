@@ -114,3 +114,5 @@ input[type="date"], input[type="datetime-local"] { color-scheme: light; }
   .provider-list li { display: grid; gap: 3px; }.provider-list li span:last-child { text-align: left; }
 }
 .privacy-link { display: block; min-height: 32px; margin: 26px auto 4px; padding: 4px 8px; border: 0; background: transparent; box-shadow: none; color: var(--muted); font-size: .78rem; text-decoration: underline; text-underline-offset: 3px; }
+.bgg-attribution { display: block; width: fit-content; margin: 24px auto 8px; opacity: .82; }
+.bgg-attribution img { display: block; width: 138px; max-width: 100%; height: auto; }

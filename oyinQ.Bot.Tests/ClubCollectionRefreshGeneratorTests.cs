@@ -21,6 +21,7 @@ public sealed class ClubCollectionRefreshGeneratorTests
             """);
 
         Assert.Equal([10L, 20L], result.BggIds.Order());
+        Assert.Equal(3, result.ValidEntries);
         Assert.Equal(2, result.InvalidEntries);
     }
 

@@ -13,8 +13,10 @@ namespace oyinQ.Bot.Features.MiniApp;
 
 internal sealed record CreatePeerSelectionRequest(string Purpose, string? CommunityKey);
 internal sealed record PeerSelectionTokenRequest(Guid SelectionId, string CommunityKey);
-internal sealed record CreateClubRequest(Guid SelectionId, string? Name, string TimeZoneId);
-internal sealed record CreateCampRequest(Guid SelectionId, string? Name, DateOnly StartDate, DateOnly EndDate,
+internal sealed record CreateClubRequest(Guid? SelectionId, long? KnownTelegramChatId, string? Name,
+    string TimeZoneId);
+internal sealed record CreateCampRequest(Guid? SelectionId, long? KnownTelegramChatId, string? Name,
+    DateOnly StartDate, DateOnly EndDate,
     long? SourceClubId, string? TimeZoneId);
 internal sealed record UpdateCommunityRequest(string Name, string TimeZoneId, bool IsActive);
 internal sealed record UpdateCampRequest(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
@@ -29,6 +31,9 @@ internal static class AdminEndpoints
         var admin = group.MapGroup("/admin");
         admin.MapGet("/overview", OverviewAsync);
         admin.MapGet("/communities/{communityKey}/administrators", AdministratorsAsync);
+        admin.MapGet("/communities/{communityKey}/administrator-candidates", AdministratorCandidatesAsync);
+        admin.MapPost("/communities/{communityKey}/administrators/{telegramUserId:long}",
+            AddAdministratorCandidateAsync);
         admin.MapPost("/peer-selections", CreatePeerSelectionAsync);
         admin.MapGet("/peer-selections/{publicId:guid}", GetPeerSelectionAsync);
         admin.MapPost("/peer-selections/{publicId:guid}/fallback", SendFallbackAsync);
@@ -96,6 +101,35 @@ internal static class AdminEndpoints
                 communityKey, cancellationToken)) return Results.Forbid();
         return Results.Ok(await authorization.ListGroupAdminsAsync(identity.TelegramUserId, communityKey,
             cancellationToken));
+    }
+
+    private static async Task<IResult> AdministratorCandidatesAsync(HttpRequest request, string communityKey,
+        TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
+        CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            return Results.Ok(await authorization.ListEligibleGroupAdminsAsync(identity.TelegramUserId,
+                communityKey, cancellationToken));
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> AddAdministratorCandidateAsync(HttpRequest request, string communityKey,
+        long telegramUserId, TelegramMiniAppAuthenticator authenticator,
+        IAdminAuthorizationService authorization, CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            await authorization.GrantEligibleGroupAdminAsync(identity.TelegramUserId, communityKey,
+                telegramUserId, cancellationToken);
+            return Results.NoContent();
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> CreatePeerSelectionAsync(HttpRequest request,
@@ -184,6 +218,7 @@ internal static class AdminEndpoints
     }
 
     private static async Task<IResult> CreateClubAsync(HttpRequest request, CreateClubRequest body,
+        AppDbContext dbContext,
         TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
         TelegramPeerSelectionService selections, ManagedCommunityService communities,
         ITelegramCommunityOnboardingService onboarding,
@@ -193,12 +228,13 @@ internal static class AdminEndpoints
         if (identity is null) return Results.Forbid();
         try
         {
-            var selected = await selections.ConsumeAsync(body.SelectionId, identity.TelegramUserId,
-                TelegramPeerSelectionPurpose.CreateClubChat, cancellationToken);
-            var chat = selected.Chat ?? throw new InvalidOperationException("Telegram не вернул группу.");
+            var chat = await ResolveSelectedChatAsync(body.SelectionId, body.KnownTelegramChatId,
+                identity.TelegramUserId, TelegramPeerSelectionPurpose.CreateClubChat, dbContext, selections,
+                cancellationToken);
             var club = await communities.CreateClubAsync(new(
                 string.IsNullOrWhiteSpace(body.Name) ? chat.Title ?? "Новый клуб" : body.Name.Trim(),
-                chat.TelegramChatId, body.TimeZoneId, identity.TelegramUserId), cancellationToken);
+                chat.TelegramChatId, body.TimeZoneId, identity.TelegramUserId,
+                RequireCreatorTelegramAdmin: false), cancellationToken);
             var delivery = await onboarding.SendAsync(chat.TelegramChatId, cancellationToken);
             return Results.Created($"/api/miniapp/admin/clubs/{club.Id}", new
             {
@@ -248,9 +284,9 @@ internal static class AdminEndpoints
         if (identity is null) return Results.Forbid();
         try
         {
-            var selected = await selections.ConsumeAsync(body.SelectionId, identity.TelegramUserId,
-                TelegramPeerSelectionPurpose.CreateCampChat, cancellationToken);
-            var chat = selected.Chat ?? throw new InvalidOperationException("Telegram не вернул группу.");
+            var chat = await ResolveSelectedChatAsync(body.SelectionId, body.KnownTelegramChatId,
+                identity.TelegramUserId, TelegramPeerSelectionPurpose.CreateCampChat, dbContext, selections,
+                cancellationToken);
             var timeZone = body.TimeZoneId?.Trim();
             if (string.IsNullOrWhiteSpace(timeZone) && body.SourceClubId is { } sourceClubId)
                 timeZone = await dbContext.Clubs.Where(x => x.Id == sourceClubId)
@@ -259,7 +295,7 @@ internal static class AdminEndpoints
             var camp = await communities.CreateCampAsync(new(
                 string.IsNullOrWhiteSpace(body.Name) ? chat.Title ?? "Новый кэмп" : body.Name.Trim(),
                 chat.TelegramChatId, timeZone, identity.TelegramUserId, body.SourceClubId,
-                body.StartDate, body.EndDate), cancellationToken);
+                body.StartDate, body.EndDate, RequireCreatorTelegramAdmin: false), cancellationToken);
             var delivery = await onboarding.SendAsync(chat.TelegramChatId, cancellationToken);
             return Results.Created($"/api/miniapp/admin/camps/{camp.Id}", new
             {
@@ -270,6 +306,28 @@ internal static class AdminEndpoints
             });
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<SelectedTelegramChat> ResolveSelectedChatAsync(Guid? selectionId,
+        long? knownTelegramChatId, long superAdminTelegramUserId, TelegramPeerSelectionPurpose purpose,
+        AppDbContext dbContext, TelegramPeerSelectionService selections, CancellationToken cancellationToken)
+    {
+        if (knownTelegramChatId is { } chatId)
+        {
+            if (selectionId is not null)
+                throw new InvalidOperationException("Укажите один источник Telegram-группы.");
+            var known = await dbContext.KnownTelegramChats.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.TelegramChatId == chatId && x.IsBotPresent, cancellationToken)
+                ?? throw new InvalidOperationException("Бот больше не состоит в выбранной Telegram-группе.");
+            if (await dbContext.OyinQCommunities.AsNoTracking()
+                    .AnyAsync(x => x.TelegramChatId == chatId, cancellationToken))
+                throw new InvalidOperationException("Эта Telegram-группа уже настроена в OyinQ.");
+            return new SelectedTelegramChat(known.TelegramChatId, known.Title, known.Username);
+        }
+        if (selectionId is null) throw new InvalidOperationException("Выберите Telegram-группу.");
+        var selected = await selections.ConsumeAsync(selectionId.Value, superAdminTelegramUserId, purpose,
+            cancellationToken);
+        return selected.Chat ?? throw new InvalidOperationException("Telegram не вернул группу.");
     }
 
     private static async Task<IResult> CopyClubCollectionAsync(HttpRequest request, long clubId,

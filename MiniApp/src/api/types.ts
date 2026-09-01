@@ -30,3 +30,4 @@ export type LockedAdminCommunity = { communityKey?: string; telegramChatId: numb
 export type AdminClub = { id: number; communityKey: string; name: string; telegramTitle: string; timeZoneId: string; isActive: boolean; isApproved: true; gameCount: number; collectionRevision: number; updatedAt: string; gatherings: number };
 export type AdminCamp = { id: number; communityKey: string; name: string; telegramTitle: string; timeZoneId: string; isApproved: true; status: string; startDate?: string; endDate?: string; sourceClubId?: number; sourceClubName?: string; registrations: number; contributions: number; gatherings: number };
 export type Administrator = { telegramUserId: number; displayName?: string; telegramUsername?: string; grantedByTelegramUserId: number; createdAt: string };
+export type EligibleAdministrator = { telegramUserId: number; displayName?: string; telegramUsername?: string };
