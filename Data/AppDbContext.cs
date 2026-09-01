@@ -31,7 +31,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.ToTable("OyinQCommunities");
             entity.HasKey(x => x.Key);
-            entity.HasIndex(x => x.TelegramChatId).IsUnique();
+            entity.HasIndex(x => x.TelegramChatId).IsUnique()
+                .HasFilter("\"DeletedAt\" IS NULL");
             entity.HasAlternateKey(x => new { x.Key, x.Mode });
             entity.Property(x => x.Key).HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(160);
@@ -60,6 +61,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.TelegramChatId).ValueGeneratedNever();
             entity.Property(x => x.Title).HasMaxLength(256);
             entity.Property(x => x.Username).HasMaxLength(64);
+            entity.Property(x => x.TelegramPhotoFileId).HasMaxLength(256);
             entity.HasIndex(x => x.IsBotPresent);
         });
 

@@ -1,5 +1,5 @@
 export type CommunityMode = "Club" | "Camp";
-export type Community = { key: string; name: string; mode: CommunityMode; timeZoneId: string };
+export type Community = { key: string; name: string; mode: CommunityMode; timeZoneId: string; avatarUrl?: string };
 export type Bootstrap = { canOpenAdminPanel: boolean; isSuperAdmin: boolean; communities: Community[] };
 export type Capabilities = { boardGameGeekAvailable: boolean; boardGameGeekUnavailableReason?: string };
 export type Profile = { preferredDisplayName?: string; telegramDisplayName: string; telegramUsername?: string };
@@ -29,6 +29,9 @@ export type AdminOverview = { clubs: AdminClub[]; camps: AdminCamp[]; lockedComm
 export type LockedAdminCommunity = { communityKey?: string; telegramChatId: number; name: string; mode: CommunityMode; isActive: boolean; isApproved: false };
 export type AdminClub = { id: number; communityKey: string; name: string; telegramTitle: string; timeZoneId: string; isActive: boolean; isApproved: true; gameCount: number; collectionRevision: number; updatedAt: string; gatherings: number };
 export type AdminCamp = { id: number; communityKey: string; name: string; telegramTitle: string; timeZoneId: string; isApproved: true; status: string; startDate?: string; endDate?: string; sourceClubId?: number; sourceClubName?: string; registrations: number; contributions: number; gatherings: number };
+export type CampAdminParticipant = { participantId: number; displayName: string; city?: string; selectedDates: string[]; needsAccommodation: boolean; telegramUsername?: string; contactUrl?: string };
+export type CampAdminParticipants = { campId: number; campName: string; participants: CampAdminParticipant[] };
+export type CampParticipantDmResult = { messageCount: number; participantCount: number };
 export type Administrator = { telegramUserId: number; displayName?: string; telegramUsername?: string; grantedByTelegramUserId: number; createdAt: string };
 export type EligibleAdministrator = { telegramUserId: number; displayName?: string; telegramUsername?: string };
 export type PostingTopicSettings = { isForum: boolean; messageThreadId: number | null; topicName: string | null; needsSelection: boolean; knownTopics: { messageThreadId: number; name: string; isClosed: boolean }[] };

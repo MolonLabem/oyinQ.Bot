@@ -49,7 +49,7 @@ public static class CampRules
         {
             CampStatus.Draft => next is CampStatus.Active or CampStatus.Cancelled,
             CampStatus.Active => next is CampStatus.Closed or CampStatus.Cancelled,
-            CampStatus.Closed => next == CampStatus.Cancelled,
+            CampStatus.Closed => false,
             CampStatus.Cancelled => false,
             _ => false
         };

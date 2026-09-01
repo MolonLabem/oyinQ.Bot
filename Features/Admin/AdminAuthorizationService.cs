@@ -81,11 +81,11 @@ public sealed class AdminAuthorizationService(
         CancellationToken cancellationToken)
     {
         if (IsSuperAdmin(telegramUserId))
-            return await dbContext.OyinQCommunities.AsNoTracking().AnyAsync(x => x.Key == communityKey,
+            return await dbContext.OyinQCommunities.AsNoTracking().AnyAsync(x => x.Key == communityKey && x.DeletedAt == null,
                 cancellationToken);
 
         var target = await dbContext.OyinQCommunities.AsNoTracking()
-            .Where(x => x.Key == communityKey)
+            .Where(x => x.Key == communityKey && x.DeletedAt == null)
             .Select(x => new
             {
                 x.TelegramChatId,
@@ -121,6 +121,7 @@ public sealed class AdminAuthorizationService(
     {
         var superAdmin = IsSuperAdmin(telegramUserId);
         var chats = await dbContext.OyinQCommunities.AsNoTracking()
+            .Where(x => x.DeletedAt == null)
             .OrderBy(x => x.Name)
             .Select(x => new
             {
@@ -259,6 +260,7 @@ public sealed class AdminAuthorizationService(
     private async Task<long[]> KnownChatIdsAsync(CancellationToken cancellationToken)
     {
         var configured = await dbContext.OyinQCommunities.AsNoTracking()
+            .Where(x => x.DeletedAt == null)
             .Select(x => x.TelegramChatId).ToArrayAsync(cancellationToken);
         var observed = await dbContext.KnownTelegramChats.AsNoTracking()
             .Where(x => x.IsBotPresent).Select(x => x.TelegramChatId).ToArrayAsync(cancellationToken);

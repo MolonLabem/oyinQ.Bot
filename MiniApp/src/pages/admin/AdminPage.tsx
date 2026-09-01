@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
-import type { AdminCamp, AdminClub, AdminOverview, Administrator, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
-import { Badge, BggAttribution, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
+import { Badge, BggAttribution, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useAsync } from "../../hooks/useAsync";
@@ -9,8 +9,9 @@ import { telegram } from "../../telegram/webApp";
 import { campStatusLabel, formatDate, plural } from "../../app/format";
 import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
 import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
+import { canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
 
-type Section = "clubs" | "camps" | "administrators" | "export" | "collection";
+type Section = "clubs" | "camps" | "administrators" | "export" | "collection" | "participants";
 type CommunityCreated = {
   id: number;
   telegramOnboardingSent: boolean;
@@ -21,7 +22,11 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
   const [section, setSection] = useState<Section>("clubs");
   const [clubId, setClubId] = useState<number>();
   const [adminChat, setAdminChat] = useState<{ key: string; name: string }>();
-  useEffect(() => telegram.back(section === "collection" || section === "administrators", () => setSection("clubs")), [section]);
+  const [participantCamp, setParticipantCamp] = useState<{ id: number; name: string }>();
+  useEffect(
+    () => telegram.back(section === "collection" || section === "administrators" || section === "participants", () => setSection(section === "participants" ? "camps" : "clubs")),
+    [section],
+  );
   if (section === "collection" && clubId) return <ClubCollection clubId={clubId} bggAvailable={bggAvailable} back={() => setSection("clubs")} />;
   const nav = [
     { id: "clubs", label: "Клубы", icon: "♣" },
@@ -65,7 +70,13 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
               setSection("collection");
             }}
             manageAdmins={openAdmins}
+            manageParticipants={(camp) => {
+              setParticipantCamp({ id: camp.id, name: camp.name });
+              setSection("participants");
+            }}
           />
+        ) : section === "participants" && participantCamp ? (
+          <CampParticipants campId={participantCamp.id} campName={participantCamp.name} back={() => setSection("camps")} />
         ) : section === "administrators" && adminChat ? (
           <Administrators communityKey={adminChat.key} communityName={adminChat.name} back={() => setSection("clubs")} />
         ) : (
@@ -77,7 +88,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
   );
 }
 
-function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id: number) => void; manageAdmins: (key: string, name: string) => void; view: "clubs" | "camps"; isSuperAdmin: boolean }) {
+function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAdmin }: { manage: (id: number) => void; manageAdmins: (key: string, name: string) => void; manageParticipants?: (camp: AdminCamp) => void; view: "clubs" | "camps"; isSuperAdmin: boolean }) {
   const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
   const [create, setCreate] = useState<"club" | "camp">();
   const [createChat, setCreateChat] = useState<LockedAdminCommunity>();
@@ -100,6 +111,17 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
       await changeCamp(id, status, state.data?.camps.find((camp) => camp.id === id)?.name ?? "кэмп", state.reload);
     } catch (e) {
       setMutationError(e instanceof Error ? e.message : String(e));
+    }
+  }
+  async function deleteCommunity(kind: CommunityKind, id: number, name: string) {
+    if (!(await telegram.confirm(deletionConfirmation(kind, name)))) return;
+    setMutationError(undefined);
+    try {
+      await api(`/admin/${kind}/${id}`, json("DELETE"));
+      telegram.success(kind === "clubs" ? "Клуб удалён из OyinQ" : "Кэмп удалён из OyinQ");
+      state.reload();
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : String(error));
     }
   }
   if (create === "club")
@@ -205,6 +227,7 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
                       <button onClick={() => manage(club.id)}>Коллекция</button>
                       <button onClick={() => setEditing(club)}>Настройки</button>
                       <button onClick={() => manageAdmins(club.communityKey, club.name)}>Администраторы</button>
+                      {canDeleteCommunity(isSuperAdmin) && <button className="danger ghost" onClick={() => deleteCommunity("clubs", club.id, club.name)}>Удалить клуб</button>}
                     </div>
                     <details className="technical">
                       <summary>Техническая информация</summary>
@@ -236,6 +259,7 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
                     <Badge tone={camp.status === "Active" ? "success" : "neutral"}>{campStatusLabel(camp.status)}</Badge>
                   </div>
                   <div className="row">
+                    <button onClick={() => manageParticipants?.(camp)}>Участники</button>
                     <button onClick={() => setEditingCamp(camp)}>Настройки</button>
                     <button onClick={() => manageAdmins(camp.communityKey, camp.name)}>Администраторы</button>
                     {camp.status === "Draft" && (
@@ -244,17 +268,81 @@ function Communities({ manage, manageAdmins, view, isSuperAdmin }: { manage: (id
                       </button>
                     )}
                     {camp.status === "Active" && <button onClick={() => updateCamp(camp.id, "Closed")}>Закрыть</button>}
-                    {camp.status !== "Cancelled" && (
+                    {canCancelCamp(camp.status) && (
                       <button className="danger ghost" onClick={() => updateCamp(camp.id, "Cancelled")}>
                         Отменить
                       </button>
                     )}
+                    {canDeleteCommunity(isSuperAdmin) && <button className="danger ghost" onClick={() => deleteCommunity("camps", camp.id, camp.name)}>Удалить кэмп</button>}
                   </div>
                 </Card>
               ))}
             </div>
           )}
         </>
+      )}
+    </Page>
+  );
+}
+
+function CampParticipants({ campId, campName, back }: { campId: number; campName: string; back: () => void }) {
+  const state = useAsync(() => api<CampAdminParticipants>(`/admin/camps/${campId}/participants`), [campId]);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string>();
+  async function sendToMe() {
+    setSending(true);
+    setSendError(undefined);
+    try {
+      const result = await api<CampParticipantDmResult>(`/admin/camps/${campId}/participants/send-to-me`, json("POST"));
+      telegram.success(result.participantCount
+        ? `Список отправлен: ${plural(result.participantCount, "участник", "участника", "участников")}`
+        : "Пустой список отправлен");
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  }
+  return (
+    <Page
+      title="Участники кэмпа"
+      subtitle={state.data?.campName ?? campName}
+      actions={<button onClick={back}>Назад</button>}
+    >
+      <Card>
+        <div className="row">
+          <div>
+            <strong>Список в личный чат</strong>
+            <p className="muted">Бот отправит эти данные вам в Telegram.</p>
+          </div>
+          <button className="primary" disabled={sending || state.loading || Boolean(state.error)} onClick={sendToMe}>
+            {sending ? "Отправляем…" : "Отправить мне"}
+          </button>
+        </div>
+        {sendError && <Notice kind="danger">{sendError}</Notice>}
+      </Card>
+      {state.loading ? (
+        <Loading />
+      ) : state.error ? (
+        <ErrorState message={state.error} retry={state.reload} />
+      ) : !state.data?.participants.length ? (
+        <Empty>Пока никто не зарегистрировался.</Empty>
+      ) : (
+        <div className="admin-entity-grid">
+          {state.data.participants.map((participant) => (
+            <Card key={participant.participantId}>
+              <div className="row">
+                <h3><ContactLink url={participant.contactUrl}>{participant.displayName}</ContactLink></h3>
+                <Badge tone={participant.needsAccommodation ? "warning" : "neutral"}>
+                  {participant.needsAccommodation ? "Нужно жильё" : "Жильё не нужно"}
+                </Badge>
+              </div>
+              {participant.telegramUsername && <p className="muted">@{participant.telegramUsername}</p>}
+              <p><strong>Город:</strong> {participant.city || "не указан"}</p>
+              <p><strong>Даты:</strong> {participant.selectedDates.length ? participant.selectedDates.map(formatDate).join(", ") : "не указаны"}</p>
+            </Card>
+          ))}
+        </div>
       )}
     </Page>
   );

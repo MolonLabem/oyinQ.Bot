@@ -68,6 +68,10 @@ builder.Services.AddSingleton<ITelegramChatAdministratorVerifier, TelegramChatAd
 builder.Services.AddSingleton<ITelegramChatForumCapabilityResolver, TelegramChatForumCapabilityResolver>();
 builder.Services.AddScoped<ICommunityStore, CommunityStore>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();
+builder.Services.AddScoped<CampParticipantAdminService>();
+builder.Services.AddScoped<CommunityDeletionService>();
+builder.Services.AddScoped<TelegramCommunityPhotoService>();
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<PostingTopicService>();
 builder.Services.AddScoped<CommunityContextResolver>();
 builder.Services.AddScoped<ManagedCommunityService>();
@@ -131,9 +135,10 @@ await using (var scope = app.Services.CreateAsyncScope())
     var existingCommunityKeys = existingCommunities
         .Select(value => value.Key)
         .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var existingCommunityChatIds = existingCommunities
+    var existingCommunityChatIds = await dbContext.OyinQCommunities
+        .Where(value => value.DeletedAt == null)
         .Select(value => value.TelegramChatId)
-        .ToHashSet();
+        .ToHashSetAsync();
     var now = DateTimeOffset.UtcNow;
     foreach (var community in communityOptions.Communities.Where(value =>
                  !existingCommunityKeys.Contains(value.Key)
@@ -184,7 +189,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     var knownChatIds = await dbContext.KnownTelegramChats
         .Select(value => value.TelegramChatId).ToHashSetAsync();
     var configuredChats = await dbContext.OyinQCommunities.AsNoTracking()
-        .Where(value => !knownChatIds.Contains(value.TelegramChatId))
+        .Where(value => value.DeletedAt == null && !knownChatIds.Contains(value.TelegramChatId))
         .Select(value => new { value.TelegramChatId, value.Name }).ToArrayAsync();
     dbContext.KnownTelegramChats.AddRange(configuredChats.Select(value => new KnownTelegramChat
     {
@@ -197,7 +202,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     await dbContext.SaveChangesAsync();
 
     var missingClubs = await dbContext.OyinQCommunities
-        .Where(value => value.Mode == BotMode.Club && value.Club == null)
+        .Where(value => value.DeletedAt == null && value.Mode == BotMode.Club && value.Club == null)
         .ToArrayAsync();
     dbContext.Clubs.AddRange(missingClubs.Select(value => new Club
     {
@@ -208,7 +213,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         UpdatedAt = now
     }));
     var missingCamps = await dbContext.OyinQCommunities
-        .Where(value => value.Mode == BotMode.Camp && value.Camp == null)
+        .Where(value => value.DeletedAt == null && value.Mode == BotMode.Camp && value.Camp == null)
         .ToArrayAsync();
     foreach (var community in missingCamps) community.IsActive = false;
     dbContext.Camps.AddRange(missingCamps.Select(value => new Camp

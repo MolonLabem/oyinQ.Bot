@@ -7,6 +7,7 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Catalog;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
@@ -22,17 +23,25 @@ internal static class CommunityEndpoints
 
     private static async Task<IResult> GetCommunitiesAsync(HttpRequest request,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        IAdminAuthorizationService authorization, CancellationToken cancellationToken)
+        IAdminAuthorizationService authorization, TelegramCommunityPhotoService photos,
+        CancellationToken cancellationToken)
     {
         var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
         if (identity is null) return Results.Unauthorized();
         var communities = await resolver.ResolveAuthorizedAsync(identity.TelegramUserId, cancellationToken);
         var canOpenAdminPanel = await authorization.CanOpenAdminPanelAsync(identity.TelegramUserId, cancellationToken);
+        var items = new List<object>();
+        foreach (var community in communities)
+            items.Add(new
+            {
+                community.Key, community.Name, Mode = community.Mode.ToString(), community.TimeZoneId,
+                AvatarUrl = await photos.GetDataUrlAsync(community.TelegramChatId, cancellationToken)
+            });
         return Results.Ok(new
         {
             CanOpenAdminPanel = canOpenAdminPanel,
             IsSuperAdmin = authorization.IsSuperAdmin(identity.TelegramUserId),
-            Communities = communities.Select(x => new { x.Key, x.Name, Mode = x.Mode.ToString(), x.TimeZoneId })
+            Communities = items
         });
     }
 

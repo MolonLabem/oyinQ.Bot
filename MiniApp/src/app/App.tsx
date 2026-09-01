@@ -10,6 +10,7 @@ import { GatheringsPage } from "../pages/gatherings/GatheringsPage";
 import { ProfilePage } from "../pages/profile/ProfilePage";
 import { telegram } from "../telegram/webApp";
 import { fullscreenLabel } from "../pages/camp/registrationLogic";
+import { shouldShowCommunityPhoto } from "./communityAvatarState";
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
@@ -37,7 +38,15 @@ export function App() {
 }
 
 function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {
-  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><span className={`mode-icon ${c.mode.toLowerCase()}`}>{c.mode === "Club" ? "♣" : "⛺"}</span><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}<BggAttribution /><PrivacyLink /></Page>;
+  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><CommunityAvatar community={c} /><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}<BggAttribution /><PrivacyLink /></Page>;
+}
+
+export function CommunityAvatar({ community }: { community: Community }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [community.avatarUrl]);
+  return shouldShowCommunityPhoto(community.avatarUrl, failed)
+    ? <img className="community-avatar" src={community.avatarUrl} alt="" onError={() => setFailed(true)} />
+    : <span className={`mode-icon ${community.mode.toLowerCase()}`}>{community.mode === "Club" ? "♣" : "⛺"}</span>;
 }
 
 function PrivacyLink() {

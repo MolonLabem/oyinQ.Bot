@@ -8,13 +8,14 @@ public sealed class AppDbContextMigrationTests
 {
     private const string CleanBaselineMigration = "20260901073247_CleanBaseline";
     private const string ForumPostingTopicsMigration = "20260901125924_ForumPostingTopics";
+    private const string CommunityDeletionMigration = "20260901133621_CommunityDeletionAndTelegramPhotos";
 
     [Fact]
     public void Migrations_ContainCleanBaselineAndAdditiveForumTopicConfiguration()
     {
         using var dbContext = CreateDbContext();
 
-        Assert.Equal([CleanBaselineMigration, ForumPostingTopicsMigration], dbContext.Database.GetMigrations());
+        Assert.Equal([CleanBaselineMigration, ForumPostingTopicsMigration, CommunityDeletionMigration], dbContext.Database.GetMigrations());
     }
 
     [Fact]
@@ -87,6 +88,13 @@ public sealed class AppDbContextMigrationTests
             topics!.FindPrimaryKey()!.Properties.Select(x => x.Name));
         Assert.True(dbContext.Model.FindEntityType(typeof(OyinQCommunity))?
             .FindProperty(nameof(OyinQCommunity.PostingMessageThreadId))?.IsNullable);
+        Assert.True(dbContext.Model.FindEntityType(typeof(OyinQCommunity))?
+            .FindProperty(nameof(OyinQCommunity.DeletedAt))?.IsNullable);
+        Assert.Equal(256, dbContext.Model.FindEntityType(typeof(KnownTelegramChat))?
+            .FindProperty(nameof(KnownTelegramChat.TelegramPhotoFileId))?.GetMaxLength());
+        Assert.Contains(dbContext.Model.FindEntityType(typeof(OyinQCommunity))!.GetIndexes(), index =>
+            index.IsUnique && index.GetFilter() == "\"DeletedAt\" IS NULL"
+            && index.Properties.Select(x => x.Name).SequenceEqual([nameof(OyinQCommunity.TelegramChatId)]));
         Assert.Contains(permission!.GetIndexes(), index => index.IsUnique
             && index.Properties.Select(x => x.Name).SequenceEqual(
                 [nameof(ChatAdminPermission.TelegramUserId), nameof(ChatAdminPermission.CommunityKey)]));

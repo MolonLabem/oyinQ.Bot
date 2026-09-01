@@ -44,13 +44,78 @@ internal static class AdminEndpoints
         admin.MapDelete("/communities/{communityKey}/administrators/{telegramUserId:long}", RemoveAdministratorAsync);
         admin.MapPost("/clubs", CreateClubAsync);
         admin.MapPut("/clubs/{clubId:long}", UpdateClubAsync);
+        admin.MapDelete("/clubs/{clubId:long}", DeleteClubAsync);
         admin.MapPost("/clubs/{clubId:long}/collection/from-club", CopyClubCollectionAsync);
         admin.MapPost("/camps", CreateCampAsync);
         admin.MapPut("/camps/{campId:long}", UpdateCampAsync);
+        admin.MapDelete("/camps/{campId:long}", DeleteCampAsync);
+        admin.MapGet("/camps/{campId:long}/participants", CampParticipantsAsync);
+        admin.MapPost("/camps/{campId:long}/participants/send-to-me", SendCampParticipantsToMeAsync);
         admin.MapPost("/camps/{campId:long}/base-collection/from-club", CopyCampCollectionAsync);
         admin.MapPost("/camps/{campId:long}/status", ChangeCampStatusAsync);
         admin.MapGet("/exports/statistics.zip", ExportAsync);
         return group;
+    }
+
+    private static async Task<IResult> CampParticipantsAsync(HttpRequest request, long campId,
+        TelegramMiniAppAuthenticator authenticator, CampParticipantAdminService participants,
+        CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try { return Results.Ok(await participants.GetAsync(identity.TelegramUserId, campId, cancellationToken)); }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static Task<IResult> DeleteClubAsync(HttpRequest request, long clubId,
+        TelegramMiniAppAuthenticator authenticator, CommunityDeletionService deletion,
+        GatheringPublicationService publication, GatheringNotificationService notifications,
+        CancellationToken cancellationToken) =>
+        DeleteCommunityAsync(request, authenticator,
+            (actor, token) => deletion.DeleteClubAsync(actor, clubId, token), publication, notifications,
+            cancellationToken);
+
+    private static Task<IResult> DeleteCampAsync(HttpRequest request, long campId,
+        TelegramMiniAppAuthenticator authenticator, CommunityDeletionService deletion,
+        GatheringPublicationService publication, GatheringNotificationService notifications,
+        CancellationToken cancellationToken) =>
+        DeleteCommunityAsync(request, authenticator,
+            (actor, token) => deletion.DeleteCampAsync(actor, campId, token), publication, notifications,
+            cancellationToken);
+
+    private static async Task<IResult> DeleteCommunityAsync(HttpRequest request,
+        TelegramMiniAppAuthenticator authenticator,
+        Func<long, CancellationToken, Task<CommunityDeletionResult>> delete,
+        GatheringPublicationService publication, GatheringNotificationService notifications,
+        CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            var result = await delete(identity.TelegramUserId, cancellationToken);
+            foreach (var gatheringId in result.CancelledGatheringIds)
+            {
+                await publication.PublishAsync(gatheringId, cancellationToken);
+                await notifications.NotifyCancellationAsync(gatheringId, cancellationToken);
+            }
+            return Results.Ok(new { result.AlreadyDeleted, result.Name });
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> SendCampParticipantsToMeAsync(HttpRequest request, long campId,
+        TelegramMiniAppAuthenticator authenticator, CampParticipantAdminService participants,
+        CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            return Results.Ok(await participants.SendToActorAsync(identity.TelegramUserId, campId,
+                cancellationToken));
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
     private static async Task<IResult> PostingTopicAsync(HttpRequest request, string communityKey,
@@ -352,7 +417,7 @@ internal static class AdminEndpoints
                 .SingleOrDefaultAsync(x => x.TelegramChatId == chatId && x.IsBotPresent, cancellationToken)
                 ?? throw new InvalidOperationException("Бот больше не состоит в выбранной Telegram-группе.");
             if (await dbContext.OyinQCommunities.AsNoTracking()
-                    .AnyAsync(x => x.TelegramChatId == chatId, cancellationToken))
+                    .AnyAsync(x => x.TelegramChatId == chatId && x.DeletedAt == null, cancellationToken))
                 throw new InvalidOperationException("Эта Telegram-группа уже настроена в OyinQ.");
             return new SelectedTelegramChat(known.TelegramChatId, known.Title, known.Username);
         }

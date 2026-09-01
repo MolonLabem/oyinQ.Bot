@@ -7,6 +7,8 @@ public sealed class KnownTelegramChat
     public string? Username { get; set; }
     public bool IsForum { get; set; }
     public bool IsBotPresent { get; set; } = true;
+    public string? TelegramPhotoFileId { get; set; }
+    public DateTimeOffset? TelegramPhotoUpdatedAt { get; set; }
     public DateTimeOffset FirstSeenAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

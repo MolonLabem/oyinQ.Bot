@@ -67,7 +67,7 @@ public sealed class PostingTopicService(
         if (message.Chat.IsForum != true || message.MessageThreadId is not { } threadId)
             throw new InvalidOperationException("Отправьте команду из нужной темы форума.");
         var communityKey = await dbContext.OyinQCommunities.AsNoTracking()
-            .Where(x => x.TelegramChatId == message.Chat.Id)
+            .Where(x => x.TelegramChatId == message.Chat.Id && x.DeletedAt == null)
             .Select(x => x.Key).SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException("Эта группа не подключена к OyinQ.");
         await ObserveAsync(message, cancellationToken);
@@ -100,7 +100,8 @@ public sealed class PostingTopicService(
         if (message.ForumTopicClosed is not null)
         {
             var community = await dbContext.OyinQCommunities.SingleOrDefaultAsync(x =>
-                x.TelegramChatId == message.Chat.Id && x.PostingMessageThreadId == threadId, cancellationToken);
+                x.TelegramChatId == message.Chat.Id && x.DeletedAt == null
+                    && x.PostingMessageThreadId == threadId, cancellationToken);
             if (community is not null)
             {
                 community.PostingMessageThreadId = null;
@@ -132,7 +133,8 @@ public sealed class PostingTopicService(
         if (!current.Value)
         {
             var community = await dbContext.OyinQCommunities.SingleOrDefaultAsync(
-                x => x.TelegramChatId == telegramChatId && x.PostingMessageThreadId != null, cancellationToken);
+                x => x.TelegramChatId == telegramChatId && x.DeletedAt == null
+                    && x.PostingMessageThreadId != null, cancellationToken);
             if (community is not null)
             {
                 community.PostingMessageThreadId = null;
@@ -145,7 +147,7 @@ public sealed class PostingTopicService(
     }
 
     private async Task<Target> TargetAsync(string communityKey, CancellationToken cancellationToken) =>
-        await dbContext.OyinQCommunities.AsNoTracking().Where(x => x.Key == communityKey)
+        await dbContext.OyinQCommunities.AsNoTracking().Where(x => x.Key == communityKey && x.DeletedAt == null)
             .Select(x => new Target(x.TelegramChatId, x.PostingMessageThreadId, x.PostingTopicInvalidatedAt))
             .SingleOrDefaultAsync(cancellationToken)
         ?? throw new KeyNotFoundException("Сообщество не найдено.");

@@ -58,7 +58,6 @@ public sealed class CampRulesTests
     [InlineData(CampStatus.Draft, CampStatus.Cancelled)]
     [InlineData(CampStatus.Active, CampStatus.Closed)]
     [InlineData(CampStatus.Active, CampStatus.Cancelled)]
-    [InlineData(CampStatus.Closed, CampStatus.Cancelled)]
     public void Lifecycle_AllowsOnlyForwardTransitions(CampStatus current, CampStatus next) =>
         CampRules.ValidateTransition(current, next);
 
@@ -66,6 +65,7 @@ public sealed class CampRulesTests
     [InlineData(CampStatus.Active, CampStatus.Draft)]
     [InlineData(CampStatus.Closed, CampStatus.Active)]
     [InlineData(CampStatus.Cancelled, CampStatus.Active)]
+    [InlineData(CampStatus.Closed, CampStatus.Cancelled)]
     public void Lifecycle_RejectsBackwardTransitions(CampStatus current, CampStatus next) =>
         Assert.Throws<InvalidOperationException>(() => CampRules.ValidateTransition(current, next));
 

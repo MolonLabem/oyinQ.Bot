@@ -56,10 +56,10 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         if (oldChatId == newChatId) return new(false, null);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var community = await dbContext.OyinQCommunities
-            .FromSqlInterpolated($"SELECT * FROM \"OyinQCommunities\" WHERE \"TelegramChatId\" = {oldChatId} FOR UPDATE")
+            .FromSqlInterpolated($"SELECT * FROM \"OyinQCommunities\" WHERE \"TelegramChatId\" = {oldChatId} AND \"DeletedAt\" IS NULL FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
         var newBindingKey = await dbContext.OyinQCommunities.AsNoTracking()
-            .Where(x => x.TelegramChatId == newChatId).Select(x => x.Key)
+            .Where(x => x.TelegramChatId == newChatId && x.DeletedAt == null).Select(x => x.Key)
             .SingleOrDefaultAsync(cancellationToken);
         var action = ClassifyChatMigration(community?.Key, newBindingKey);
         if (community is null)
@@ -223,7 +223,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var validation = await chatValidator.ValidateAsync(chatId, administratorId, requireAdministrator,
             cancellationToken);
         if (!validation.IsUsable) throw new InvalidOperationException(validation.Error ?? "Группа недоступна.");
-        if (await dbContext.OyinQCommunities.AnyAsync(x => x.TelegramChatId == chatId, cancellationToken))
+        if (await dbContext.OyinQCommunities.AnyAsync(x => x.TelegramChatId == chatId && x.DeletedAt == null, cancellationToken))
             throw new InvalidOperationException("Эта Telegram-группа уже назначена клубу или кэмпу.");
         return validation;
     }

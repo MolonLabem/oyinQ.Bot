@@ -185,6 +185,8 @@ public sealed class TelegramUpdateHandler(
                 dbContext.KnownTelegramChats.Add(new KnownTelegramChat
                 {
                     TelegramChatId = newChatId, Title = oldKnown?.Title, Username = oldKnown?.Username,
+                    TelegramPhotoFileId = oldKnown?.TelegramPhotoFileId,
+                    TelegramPhotoUpdatedAt = oldKnown?.TelegramPhotoUpdatedAt,
                     IsBotPresent = true, FirstSeenAt = now, UpdatedAt = now
                 });
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -214,13 +216,16 @@ public sealed class TelegramUpdateHandler(
         known.Title = chat.Title;
         known.Username = chat.Username;
         known.IsForum = chat.IsForum;
+        if (update.Message?.NewChatPhoto is { Length: > 0 } || update.Message?.DeleteChatPhoto == true)
+            known.TelegramPhotoUpdatedAt = null;
         known.IsBotPresent = update.MyChatMember is not { } membership
             || membership.NewChatMember.Status is not ChatMemberStatus.Left and not ChatMemberStatus.Kicked;
         known.UpdatedAt = now;
         if (!known.IsForum)
         {
             var community = await dbContext.OyinQCommunities.SingleOrDefaultAsync(
-                x => x.TelegramChatId == chat.Id && x.PostingMessageThreadId != null, cancellationToken);
+                x => x.TelegramChatId == chat.Id && x.DeletedAt == null
+                    && x.PostingMessageThreadId != null, cancellationToken);
             if (community is not null)
             {
                 community.PostingMessageThreadId = null;
@@ -271,7 +276,8 @@ public sealed class TelegramUpdateHandler(
         CancellationToken cancellationToken)
     {
         var community = await dbContext.OyinQCommunities.AsNoTracking()
-            .SingleOrDefaultAsync(value => value.TelegramChatId == groupChatId, cancellationToken);
+            .SingleOrDefaultAsync(value => value.TelegramChatId == groupChatId
+                && value.DeletedAt == null, cancellationToken);
         var isAdministrator = await adminAuthorization.CanOpenAdminPanelAsync(telegramUserId, cancellationToken);
         string? runtimeUsername = null;
         try

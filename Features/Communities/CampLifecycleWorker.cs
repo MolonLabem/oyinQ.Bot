@@ -34,7 +34,7 @@ public sealed class CampLifecycleWorker(
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = timeProvider.GetUtcNow();
         var candidates = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat)
-            .Where(x => x.Status == CampStatus.Active && x.EndDate != null)
+            .Where(x => x.BotChat.DeletedAt == null && x.Status == CampStatus.Active && x.EndDate != null)
             .OrderBy(x => x.EndDate).Select(x => new { x.Id, Camp = x, x.BotChat.TimeZoneId })
             .ToArrayAsync(cancellationToken);
         var candidate = candidates.FirstOrDefault(x => CampParticipationPolicy.HasEnded(x.Camp,
