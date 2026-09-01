@@ -52,7 +52,7 @@ public sealed class BoardGameGeekClientTests
     }
 
     [Fact]
-    public async Task GetOwnedCollectionAsync_RequestsBaseGames_AndRejectsExpansionThing()
+    public async Task GetOwnedBaseGamesAsync_RequestsBaseGames_AndRejectsExpansionThing()
     {
         var requests = new List<Uri>();
         var handler = new StubHttpMessageHandler(request =>
@@ -109,7 +109,7 @@ public sealed class BoardGameGeekClientTests
 
         var client = CreateClient(handler);
 
-        var games = await client.GetOwnedCollectionAsync("test-user", CancellationToken.None);
+        var games = await client.GetOwnedBaseGamesAsync("test-user", CancellationToken.None);
 
         var game = Assert.Single(games);
         Assert.Equal(1, game.BggId);
@@ -118,31 +118,6 @@ public sealed class BoardGameGeekClientTests
         Assert.Equal("https://cf.geekdo-images.com/full.jpg", game.ImageUrl);
         Assert.DoesNotContain(games, value => value.BggId == 2);
         Assert.Equal(2, requests.Count);
-    }
-
-    [Fact]
-    public async Task GetGameAsync_WhenBggClassifiesItemAsExpansion_ReturnsNull()
-    {
-        var handler = new StubHttpMessageHandler(request =>
-        {
-            Assert.Equal("/xmlapi2/thing", request.RequestUri!.AbsolutePath);
-            Assert.Contains("type=boardgame", request.RequestUri.Query, StringComparison.Ordinal);
-            return XmlResponse(
-                HttpStatusCode.OK,
-                """
-                <items>
-                  <item type="boardgameexpansion" id="2">
-                    <name type="primary" value="Expansion" />
-                  </item>
-                </items>
-                """);
-        });
-
-        var client = CreateClient(handler);
-
-        var game = await client.GetGameAsync(2, CancellationToken.None);
-
-        Assert.Null(game);
     }
 
     [Fact]

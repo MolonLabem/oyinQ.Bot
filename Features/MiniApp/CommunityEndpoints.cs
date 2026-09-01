@@ -30,7 +30,6 @@ internal static class CommunityEndpoints
         var canOpenAdminPanel = await authorization.CanOpenAdminPanelAsync(identity.TelegramUserId, cancellationToken);
         return Results.Ok(new
         {
-            IsAdministrator = canOpenAdminPanel,
             CanOpenAdminPanel = canOpenAdminPanel,
             IsSuperAdmin = authorization.IsSuperAdmin(identity.TelegramUserId),
             Communities = communities.Select(x => new { x.Key, x.Name, Mode = x.Mode.ToString(), x.TimeZoneId })
@@ -44,8 +43,7 @@ internal static class CommunityEndpoints
         return Results.Ok(new
         {
             BoardGameGeekAvailable = bggOptions.Value.IsAvailable,
-            BoardGameGeekUnavailableReason = bggOptions.Value.IsAvailable ? null : "BGG временно отключён администратором.",
-            PreparedPeerSelection = true
+            BoardGameGeekUnavailableReason = bggOptions.Value.IsAvailable ? null : "BGG временно отключён администратором."
         });
     }
 

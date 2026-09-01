@@ -8,8 +8,6 @@ public sealed class AdministrationOptions
 
     public IReadOnlySet<long> SuperAdminTelegramUserIds { get; init; } = new HashSet<long>();
 
-    public IReadOnlySet<long> BootstrapTelegramUserIds { get; init; } = new HashSet<long>();
-
     public static AdministrationOptions FromConfiguration(IConfiguration configuration)
     {
         var superAdmins = ParseIds(configuration[$"{SectionName}:SuperAdminTelegramUserIds"],
@@ -24,8 +22,7 @@ public sealed class AdministrationOptions
 
         return new AdministrationOptions
         {
-            SuperAdminTelegramUserIds = superAdmins,
-            BootstrapTelegramUserIds = legacyBootstrap
+            SuperAdminTelegramUserIds = superAdmins
         };
     }
 

@@ -17,11 +17,9 @@ public sealed record GatheringCardPresentation(
     string RulesText,
     string LocalDateTime,
     int ConfirmedPlayers,
-    int DesiredPlayers,
     int MaximumPlayers,
     string StatusText,
-    string TypeName,
-    IReadOnlyList<string> CategoryNames);
+    string TypeName);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -32,9 +30,6 @@ public sealed record GatheringDetailPresentation(
     string RulesText,
     string OrganizerName,
     string LocalDateTime,
-    int MinimumPlayers,
-    int DesiredPlayers,
-    int MaximumPlayers,
     int ConfirmedPlayers,
     IReadOnlyList<string> Expansions,
     string StatusText);
@@ -61,11 +56,9 @@ public sealed class GatheringPresentationService
             RulesText(gathering.CanTeachRules),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             ConfirmedPlayers(gathering),
-            gathering.DesiredPlayers,
             gathering.MaximumPlayers,
             StatusText(gathering.Status),
-            metadata.TypeName,
-            metadata.CategoryNames.Take(2).ToArray());
+            metadata.TypeName);
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
@@ -80,9 +73,6 @@ public sealed class GatheringPresentationService
             RulesText(gathering.CanTeachRules),
             DisplayName(gathering.OrganizerParticipant),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
-            gathering.MinimumPlayers,
-            gathering.DesiredPlayers,
-            gathering.MaximumPlayers,
             ConfirmedPlayers(gathering),
             gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray(),
             StatusText(gathering.Status));
@@ -136,25 +126,7 @@ public sealed class GatheringPresentationService
     }
 
     private static GatheringGameSnapshot ResolveSnapshot(GameGathering gathering)
-    {
-        if (!string.IsNullOrWhiteSpace(gathering.GameSnapshotJson))
-        {
-            return GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
-        }
-
-        var game = gathering.Game
-            ?? throw new InvalidOperationException("Gathering has neither a game snapshot nor a legacy game.");
-        return new GatheringGameSnapshot(
-            GatheringGameSnapshot.CurrentVersion,
-            game.BggId,
-            game.Name,
-            game.ThumbnailImageUrl,
-            game.ImageUrl,
-            game.MinPlayers,
-            game.MaxPlayers,
-            game.BestPlayers,
-            gathering.Expansions.Select(value => new Features.Collections.ClubCollectionExpansion(value.BggId, value.Name)).ToArray());
-    }
+        => GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
 
     private static int ConfirmedPlayers(GameGathering gathering) =>
         1 + gathering.Participants.Count(value => value.Status == GatheringParticipationStatus.Confirmed);

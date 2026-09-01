@@ -50,19 +50,6 @@ public static class GatheringRules
         };
     }
 
-    public static void UpdatePresentation(
-        GameGathering gathering,
-        string? description,
-        bool canTeachRules,
-        DateTimeOffset now)
-    {
-        ArgumentNullException.ThrowIfNull(gathering);
-        EnsureEditable(gathering, now);
-        gathering.Description = NormalizeDescription(description);
-        gathering.CanTeachRules = canTeachRules;
-        gathering.UpdatedAt = now.ToUniversalTime();
-    }
-
     public static void ValidatePlayerLimits(int minimumPlayers, int desiredPlayers, int maximumPlayers)
     {
         if (minimumPlayers < 1)

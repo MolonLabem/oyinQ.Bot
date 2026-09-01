@@ -18,10 +18,4 @@ public static class GatheringAccessPolicy
         && gathering.StartsAtUtc > now.ToUniversalTime()
         && gathering.Status is not GatheringStatus.Completed and not GatheringStatus.Cancelled;
 
-    public static bool CanManage(
-        GameGathering gathering,
-        string communityKey,
-        long telegramUserId) =>
-        string.Equals(gathering.CommunityKey, communityKey, StringComparison.Ordinal)
-        && gathering.OrganizerParticipant.TelegramUserId == telegramUserId;
 }

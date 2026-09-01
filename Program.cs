@@ -17,12 +17,6 @@ using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
 
-if (args.Any(x => string.Equals(x, "--generate-rollmove-recovery", StringComparison.OrdinalIgnoreCase)))
-{
-    Environment.ExitCode = await RollMoveRecoveryGenerator.RunAsync(builder.Configuration, args);
-    return;
-}
-
 if (args.Any(x => string.Equals(x, "--refresh-club-collection", StringComparison.OrdinalIgnoreCase)))
 {
     Environment.ExitCode = await ClubCollectionRefreshGenerator.RunAsync(builder.Configuration, args);

@@ -101,7 +101,7 @@ public sealed class GatheringTelegramPublisher(
         }
 
         var parameter = MiniAppStartParameter.ForGathering(community.Key, gathering.PublicId);
-        var url = $"https://t.me/{bot.Username}?start={parameter}";
+        var url = TelegramBotDeepLinks.BuildStart(bot.Username, parameter);
         return new InlineKeyboardMarkup([
             [InlineKeyboardButton.WithUrl("Открыть сбор", url)]
         ]);

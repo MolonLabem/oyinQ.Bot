@@ -22,8 +22,3 @@ public sealed record ExternalGame(
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     GameType Type = GameType.Other);
-
-public sealed record ExternalCollectionStep(
-    IReadOnlyList<ExternalGame> Games,
-    int NextOffset,
-    int Total);

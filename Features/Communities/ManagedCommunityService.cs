@@ -164,13 +164,17 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             throw new InvalidOperationException("Название кэмпа некорректно.");
         var timeZone = CommunityOptions.RequireTimeZone(command.TimeZoneId);
         var duration = CampRules.InclusiveDuration(command.StartDate, command.EndDate);
-        var camp = await dbContext.Camps.Include(x => x.BotChat).Include(x => x.Registrations)
+        var camp = await dbContext.Camps.Include(x => x.BotChat)
+            .Include(x => x.Registrations).ThenInclude(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
         CommunityTimeZonePolicy.EnsureChangeAllowed(camp.BotChat.TimeZoneId, command.TimeZoneId,
             await dbContext.GameGatherings.AnyAsync(x => x.CommunityKey == camp.BotChatKey,
                 cancellationToken));
-        if (camp.Registrations.Any(x => x.DaysStaying > duration))
+        foreach (var registration in camp.Registrations)
+            CampRules.EnsureRegistrationDatesWithinRange(
+                registration.SelectedDays.Select(x => x.Date), command.StartDate, command.EndDate);
+        if (camp.Registrations.Any(x => x.SelectedDays.Count == 0 && x.DaysStaying > duration))
             throw new InvalidOperationException("Новый диапазон короче уже подтверждённого срока проживания участника.");
         var gatheringStarts = await dbContext.GameGatherings.AsNoTracking()
             .Where(x => x.CommunityKey == camp.BotChatKey && x.Status != GatheringStatus.Cancelled)

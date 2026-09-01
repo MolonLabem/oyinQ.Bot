@@ -7,6 +7,25 @@ namespace oyinQ.Bot.Tests;
 public sealed class CampRulesTests
 {
     [Fact]
+    public void EnsureRegistrationDatesWithinRange_RejectsDateOutsideNewRange()
+    {
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            CampRules.EnsureRegistrationDatesWithinRange(
+                [new DateOnly(2026, 9, 2), new DateOnly(2026, 9, 5)],
+                new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 4)));
+
+        Assert.Contains("подтверждённых дней", error.Message);
+    }
+
+    [Fact]
+    public void EnsureRegistrationDatesWithinRange_AcceptsInclusiveBoundaries()
+    {
+        CampRules.EnsureRegistrationDatesWithinRange(
+            [new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 4)],
+            new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 4));
+    }
+
+    [Fact]
     public void RegistrationDisplayNameFallsBackToTelegramBeforeFirstRegistration()
     {
         Assert.Equal("Sardar", CampParticipantPresentation.RegistrationDisplayName(null, null, " Sardar "));
@@ -21,11 +40,6 @@ public sealed class CampRulesTests
         Assert.Equal(1, CampRules.InclusiveDuration(new(2026, 8, 29), new(2026, 8, 29)));
         Assert.Equal(4, CampRules.InclusiveDuration(new(2026, 8, 29), new(2026, 9, 1)));
     }
-
-    [Fact]
-    public void RegistrationDays_CannotExceedInclusiveDuration() =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => CampRules.ValidateRegistrationDays(
-            4, new(2026, 8, 29), new(2026, 8, 31)));
 
     [Fact]
     public void SelectedDates_AreDistinctOrderedAndInsideCamp()

@@ -85,19 +85,6 @@ public sealed class BoardGameGeekClient(
 
     private static string NormalizeSearch(string value) => value.Trim().ToLowerInvariant();
 
-    public async Task<ExternalGame?> GetGameAsync(
-        long bggId,
-        CancellationToken cancellationToken)
-    {
-        if (bggId <= 0)
-        {
-            return null;
-        }
-
-        var games = await FetchThingsAsync([bggId], cancellationToken);
-        return games.GetValueOrDefault(bggId);
-    }
-
     public async Task<BggGameDetails?> GetGameDetailsAsync(
         long bggId,
         CancellationToken cancellationToken)
@@ -138,11 +125,6 @@ public sealed class BoardGameGeekClient(
 
         return new BggGameDetails(game, expansions);
     }
-
-    public async Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
-        string username,
-        CancellationToken cancellationToken)
-        => await GetOwnedBaseGamesAsync(username, cancellationToken);
 
     public async Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(
         string username,
@@ -240,37 +222,6 @@ public sealed class BoardGameGeekClient(
 
         return result.OrderByDescending(item => item.IsExpansion)
             .DistinctBy(item => item.Game.BggId).ToArray();
-    }
-
-    public async Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
-        string username,
-        int offset,
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(username);
-        ArgumentOutOfRangeException.ThrowIfNegative(offset);
-        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
-
-        var collection = await FetchCollectionAsync(username, "boardgame", "boardgameexpansion", cancellationToken);
-        var slice = collection.Skip(offset).Take(limit).ToArray();
-        if (slice.Length == 0)
-        {
-            return new ExternalCollectionStep([], Math.Min(offset, collection.Count), collection.Count);
-        }
-
-        var enriched = await FetchThingsAsync(
-            slice.Select(item => item.BggId).ToArray(),
-            cancellationToken);
-        var games = slice
-            .Where(item => enriched.ContainsKey(item.BggId))
-            .Select(item => Merge(item, enriched[item.BggId]))
-            .ToArray();
-
-        return new ExternalCollectionStep(
-            games,
-            Math.Min(offset + slice.Length, collection.Count),
-            collection.Count);
     }
 
     private async Task<IReadOnlyList<CollectionItem>> FetchCollectionAsync(

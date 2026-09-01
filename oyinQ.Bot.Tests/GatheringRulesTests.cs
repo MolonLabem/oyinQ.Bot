@@ -41,15 +41,6 @@ public sealed class GatheringRulesTests
             GatheringRules.NormalizeDescription(new string('я', GatheringRules.DescriptionMaxLength + 1)));
 
     [Fact]
-    public void UpdatePresentation_RejectsCompletedGathering()
-    {
-        var gathering = new GameGathering { Status = GatheringStatus.Completed };
-
-        Assert.Throws<InvalidOperationException>(() =>
-            GatheringRules.UpdatePresentation(gathering, "Описание", true, DateTimeOffset.UtcNow));
-    }
-
-    [Fact]
     public void Create_RejectsStartInPast()
     {
         var now = new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero);

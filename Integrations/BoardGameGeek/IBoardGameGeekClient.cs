@@ -28,34 +28,19 @@ public interface IBoardGameGeekClient
         string query,
         CancellationToken cancellationToken);
 
-    Task<ExternalGame?> GetGameAsync(
-        long bggId,
-        CancellationToken cancellationToken);
-
     Task<BggGameDetails?> GetGameDetailsAsync(
         long bggId,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(
+    Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(
         string username,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(
-        string username,
-        CancellationToken cancellationToken) => GetOwnedCollectionAsync(username, cancellationToken);
-
     Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(
         string username,
-        CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<BggOwnedExpansion>>([]);
+        CancellationToken cancellationToken);
 
     Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(
         IReadOnlyCollection<long> bggIds,
-        CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<BggCollectionItem>>([]);
-
-    Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(
-        string username,
-        int offset,
-        int limit,
         CancellationToken cancellationToken);
 }

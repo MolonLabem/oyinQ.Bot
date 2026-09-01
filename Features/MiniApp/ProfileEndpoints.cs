@@ -48,7 +48,6 @@ internal static class ProfileEndpoints
 
     private static object Present(Participant participant) => new
     {
-        DisplayName = ParticipantPresentation.GetDisplayName(participant),
         participant.PreferredDisplayName,
         TelegramDisplayName = participant.DisplayName,
         participant.TelegramUsername

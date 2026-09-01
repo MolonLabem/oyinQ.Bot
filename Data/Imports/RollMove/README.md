@@ -27,7 +27,7 @@ The historical BGG-account enrichment resolved 219 base games and 121 expansions
 ## Operator workflow
 
 1. Resolve the remaining 22 review-only rows separately; do not infer IDs from translated names alone.
-2. Keep the server-side `BGG_API_TOKEN` outside source control. The BGG account password is never used or stored by OyinQ.
+2. Keep the server-side `BoardGameGeek__ApiToken` outside source control. The BGG account password is never used or stored by OyinQ.
 3. Use the explicit BGG username import in Mini App administration when adding an account to a Club. It is additive: current games and selected expansions are retained.
 4. Refresh the current-version recovery snapshot with a server-side BGG token:
 

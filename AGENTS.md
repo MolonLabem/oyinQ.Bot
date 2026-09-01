@@ -41,6 +41,8 @@ Gathering lists expose Upcoming and History. Due gatherings that meet minimum at
 
 Gathering list semantics belong to `GatheringListQuery`, not Telegram callbacks or React filtering. Upcoming means `StartsAtUtc > now` plus `Recruiting`, `Ready`, `Full`, or `Closed`. Unfiltered History contains persisted `Completed` or `Cancelled` rows regardless of scheduled time, plus due active-status rows (`StartsAtUtc <= now`) during the short interval before the lifecycle worker completes or deletes them; the `completed` and `cancelled` history filters remain status-exact. History is ordered by scheduled time descending; Upcoming is ordered ascending, with `Id` as the stable pagination tie-breaker. Apply status/date filtering and ordering before pagination. Client view or history-filter changes reset to page 1 and must not reuse an in-flight response from the previous selection. Legacy `GameSession.SessionStatus` (`Recruiting`, `Full`, `Closed`) has no cancelled/history meaning and must not be used for current gathering views.
 
+Persist and transport gathering instants as UTC. Interpret Mini App `datetime-local` values in the selected community's validated IANA timezone, and render or validate those values in the same timezone; never depend on the browser or server machine timezone.
+
 ## Integrations and background work
 
 BGG is the only external board-game provider. `BoardGameGeek:ApiToken` is server-only and optional; missing credentials must degrade gracefully. BGG failures disable only operations that require new provider data, return concise local copy, and log technical details server-side; stored catalogs, contributions, and gatherings remain usable. Tests use fake HTTP and never call live BGG. Expansion relationships come only from inbound BGG `boardgameexpansion` links.
@@ -66,7 +68,7 @@ Northflank provides `PORT`; do not require it as application configuration. Keep
 
 ## Retained legacy schema
 
-Runtime code must not use legacy `GameSession`, `GameSessionParticipant`, `CollectionImport`, `GameInterest`, global `GameCopy`, legacy participant registration fields, or `GameGathering.GameId`. Their entities and EF mappings intentionally remain because production data was retained by migration `20260828183821_ClubCampContextsAndGatheringSnapshots`. Do not delete those tables/columns or enum values without a separately reviewed, deterministic production-data migration and backup. Historical migration/designer matches are expected.
+Runtime code must not use legacy `GameSession`, `GameSessionParticipant`, `CollectionImport`, `GameInterest`, global `GameCopy`, `ParticipantConversationState`, legacy participant registration fields, or `GameGathering.GameId`. Their entities and EF mappings intentionally remain because production data was retained by migration `20260828183821_ClubCampContextsAndGatheringSnapshots`. Do not delete those tables/columns or enum values without a separately reviewed, deterministic production-data migration and backup. Historical migration/designer matches are expected.
 
 `Club.BggUsername` is also retained only for migration compatibility. Runtime Club collection authority is PostgreSQL `CollectionJson`; never restore full-account Club BGG synchronization.
 

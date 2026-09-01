@@ -92,38 +92,16 @@ public sealed class ClubCampDomainTests
     }
 
     [Fact]
-    public void ImportSelection_DefaultsToAll_AndExpansionSelectionIsIndependent()
+    public async Task ArbitraryBggGatheringSelection_NormalizesInvalidPlayerRange()
     {
-        CampImportSelectionItem[] imported =
-        [
-            new(10, CampContributionItemType.BaseGame, null, "Base", false),
-            new(20, CampContributionItemType.Expansion, 10, "Expansion", false)
-        ];
+        using var dbContext = CreateDbContext();
+        var service = new GatheringGameSelectionService(dbContext, new FakeBggClient(0, 0));
 
-        var selected = CampContributionSelectionService.SelectAll(imported);
-        var baseOff = selected.Select(value => value.BggId == 10 ? value with { Selected = false } : value).ToArray();
+        var snapshot = await service.FromArbitraryBggAsync(42, [], default);
 
-        Assert.All(selected, value => Assert.True(value.Selected));
-        Assert.True(baseOff.Single(value => value.BggId == 20).Selected);
-        Assert.True(CampContributionSelectionService.NeedsMissingBaseWarning(baseOff[1], baseOff));
-        Assert.True(CampBggImportService.BuildGroups(baseOff).Single().ShowMissingBaseWarning);
-    }
-
-    [Fact]
-    public void MultipleContributorsBecomeOneLogicalCatalogItem_AndKeepContributors()
-    {
-        CampGameContribution[] values =
-        [
-            new() { BggId = 10, ItemType = CampContributionItemType.BaseGame, ParticipantId = 1,
-                SnapshotJson = CampContributionSnapshotSerializer.Serialize(new(1, "Brass", null, null, 2, 4, null)) },
-            new() { BggId = 10, ItemType = CampContributionItemType.BaseGame, ParticipantId = 2,
-                SnapshotJson = CampContributionSnapshotSerializer.Serialize(new(1, "Brass", null, null, 2, 4, null)) }
-        ];
-
-        var item = Assert.Single(CampContributionSelectionService.MergeContributions(values));
-
-        Assert.Equal("Brass", item.Name);
-        Assert.Equal([1L, 2L], item.ContributorParticipantIds);
+        Assert.Equal(1, snapshot.MinPlayers);
+        Assert.Equal(12, snapshot.MaxPlayers);
+        Assert.True(snapshot.PlayerRangeDefaulted);
     }
 
     [Fact]
@@ -134,9 +112,6 @@ public sealed class ClubCampDomainTests
 
         Assert.False(GatheringAccessPolicy.RequiresRegistration(BotMode.Club));
         Assert.True(GatheringAccessPolicy.RequiresRegistration(BotMode.Camp));
-        Assert.True(GatheringAccessPolicy.CanManage(gathering, "club-a", 7));
-        Assert.False(GatheringAccessPolicy.CanManage(gathering, "club-b", 7));
-        Assert.False(GatheringAccessPolicy.CanManage(gathering, "club-a", 8));
     }
 
     [Fact]
@@ -167,11 +142,11 @@ public sealed class ClubCampDomainTests
             .UseNpgsql("Host=localhost;Database=oyinq_model_test;Username=test;Password=test")
             .Options);
 
-    private sealed class FakeBggClient : IBoardGameGeekClient
+    private sealed class FakeBggClient(int? minimumPlayers = 2, int? maximumPlayers = 4) : IBoardGameGeekClient
     {
         public Task<BggGameDetails?> GetGameDetailsAsync(long bggId, CancellationToken cancellationToken) =>
             Task.FromResult<BggGameDetails?>(new(
-                new ExternalGame(bggId, "Transient", 2, 4, "3", null,
+                new ExternalGame(bggId, "Transient", minimumPlayers, maximumPlayers, "3", null,
                     "https://example/thumb", "https://example/image",
                     Types: ["Thematic"], Categories: ["Adventure"], Description: "Description",
                     Subdomains: [new(5496, "Thematic Games")],
@@ -180,8 +155,8 @@ public sealed class ClubCampDomainTests
                 [new BggExpansion(99, "Expansion")]));
 
         public Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(string query, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ExternalGame?> GetGameAsync(long bggId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<IReadOnlyList<ExternalGame>> GetOwnedCollectionAsync(string username, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ExternalCollectionStep> GetOwnedCollectionStepAsync(string username, int offset, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string username, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string username, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> bggIds, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

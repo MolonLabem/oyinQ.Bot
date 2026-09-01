@@ -35,14 +35,6 @@ public static class TelegramBotDeepLinks
         return $"https://t.me/{username}?start={Uri.EscapeDataString(startParameter)}";
     }
 
-    public static string BuildMainMiniApp(string runtimeUsername, string? startParameter = null)
-    {
-        var username = NormalizeUsername(runtimeUsername);
-        return string.IsNullOrWhiteSpace(startParameter)
-            ? $"https://t.me/{username}?startapp"
-            : $"https://t.me/{username}?startapp={Uri.EscapeDataString(startParameter)}";
-    }
-
     private static string NormalizeUsername(string runtimeUsername)
     {
         var username = runtimeUsername?.Trim().TrimStart('@');

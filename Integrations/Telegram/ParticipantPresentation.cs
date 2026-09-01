@@ -33,12 +33,6 @@ public static class ParticipantPresentation
             : name;
     }
 
-    public static string? GetPublicProfileUrl(Participant participant)
-    {
-        var username = participant.TelegramUsername?.Trim().TrimStart('@');
-        return string.IsNullOrWhiteSpace(username) ? null : $"https://t.me/{Uri.EscapeDataString(username)}?profile";
-    }
-
     public static string? GetContactUrl(Participant participant) =>
         GetContactUrl(participant.TelegramUserId, participant.TelegramUsername);
 

@@ -42,8 +42,12 @@ public sealed class GatheringPresentationServiceTests
     public void MissingImagesAreRepresentedAsNull()
     {
         var gathering = CreateGathering(canTeachRules: false);
-        gathering.Game!.ThumbnailImageUrl = null;
-        gathering.Game.ImageUrl = null;
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
+        {
+            ThumbnailImageUrl = null,
+            ImageUrl = null
+        });
         var service = new GatheringPresentationService();
 
         var card = service.BuildCard(gathering, Community);
@@ -81,12 +85,18 @@ public sealed class GatheringPresentationServiceTests
         Description = "Новичкам тоже можно.",
         CanTeachRules = canTeachRules,
         Status = GatheringStatus.Ready,
-        Game = new Game
-        {
-            Name = "Terraforming Mars",
-            ThumbnailImageUrl = "https://images.example/thumb.jpg",
-            ImageUrl = "https://images.example/large.jpg"
-        },
+        GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(new GatheringGameSnapshot(
+            GatheringGameSnapshot.CurrentVersion,
+            167791,
+            "Terraforming Mars",
+            "https://images.example/thumb.jpg",
+            "https://images.example/large.jpg",
+            1,
+            5,
+            "4",
+            [],
+            "catalog",
+            [])),
         OrganizerParticipant = new Participant { DisplayName = "Sardar" },
         Participants =
         [

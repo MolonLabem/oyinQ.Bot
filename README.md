@@ -9,6 +9,7 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 - Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`. Administrators can add a whole BGG Owned collection by username through a persisted additive job; it never removes existing games or selected expansions.
 - Camps have inclusive local dates, lifecycle status, scoped `CampRegistration` with exact `CampRegistrationDays`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`. `DaysStaying` is derived compatibility data, not attendance authority.
 - Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL.
+- Gathering instants are stored and transported as UTC. The Mini App interprets and validates `datetime-local` values in the selected community's validated IANA time zone, never in the browser or server machine time zone.
 - Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.
 - BGG is the only external board-game provider. Missing BGG credentials visibly disable search/add/import without disabling stored collections, contributions, or gatherings.
 - Telegram user/chat assignment uses prepared native peer selectors. Raw Telegram IDs are not accepted by normal administration APIs.
@@ -128,7 +129,7 @@ Do not set `Telegram__UseLongPolling` in production. Do not manually set `PORT` 
 
 ## Database compatibility
 
-Migration `20260828183821_ClubCampContextsAndGatheringSnapshots` is additive and must be reviewed with a production backup. The EF model intentionally retains legacy `Games`, `GameCopies`, `GameInterests`, `CollectionImports`, `GameSessions`, `GameSessionParticipants`, the old participant registration columns, and nullable `GameGathering.GameId`. Runtime code no longer reads or writes those paths. They remain mapped so production data is not silently dropped; retirement needs a separately reviewed data audit/migration.
+Migration `20260828183821_ClubCampContextsAndGatheringSnapshots` is additive and must be reviewed with a production backup. The EF model intentionally retains legacy `Games`, `GameCopies`, `GameInterests`, `CollectionImports`, `GameSessions`, `GameSessionParticipants`, `ParticipantConversationStates`, the old participant registration columns, and nullable `GameGathering.GameId`. Runtime code no longer reads or writes those paths. They remain mapped so production data is not silently dropped; retirement needs a separately reviewed data audit/migration.
 
 Migration `20260828230514_PersistAdministrators` created the retained legacy `OyinQAdministrators` table. It is no longer a runtime authorization source.
 

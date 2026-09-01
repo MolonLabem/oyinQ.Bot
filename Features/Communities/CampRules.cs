@@ -11,12 +11,13 @@ public static class CampRules
         return endDate.DayNumber - startDate.DayNumber + 1;
     }
 
-    public static void ValidateRegistrationDays(int daysStaying, DateOnly startDate, DateOnly endDate)
+    public static void EnsureRegistrationDatesWithinRange(
+        IEnumerable<DateOnly> selectedDates,
+        DateOnly startDate,
+        DateOnly endDate)
     {
-        var duration = InclusiveDuration(startDate, endDate);
-        if (daysStaying < 1 || daysStaying > duration)
-            throw new ArgumentOutOfRangeException(nameof(daysStaying),
-                $"Количество дней должно быть от 1 до {duration}.");
+        if (selectedDates.Any(date => date < startDate || date > endDate))
+            throw new InvalidOperationException("Новый диапазон не включает один или несколько подтверждённых дней участника.");
     }
 
     public static IReadOnlyList<DateOnly> ValidateSelectedDates(IReadOnlyCollection<DateOnly> values,

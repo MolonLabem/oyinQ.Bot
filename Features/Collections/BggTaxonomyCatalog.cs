@@ -85,9 +85,6 @@ public static class BggTaxonomyCatalog
         GameType.Children => "Children's Games", GameType.Customizable => "Customizable Games", _ => "Other"
     };
 
-    public static GameType InferLegacyType(IReadOnlyCollection<string>? types)
-        => InferLegacyTypes(types).FirstOrDefault(GameType.Other);
-
     public static IReadOnlyList<GameType> InferLegacyTypes(IReadOnlyCollection<string>? types)
     {
         var normalized = (types ?? []).Select(x => x.Trim().ToLowerInvariant()).ToArray();

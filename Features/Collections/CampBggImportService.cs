@@ -117,34 +117,4 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
             .ToArray();
     }
 
-    public static IReadOnlyList<CampImportSelectionGroup> BuildGroups(
-        IReadOnlyCollection<CampImportSelectionItem> items)
-    {
-        var expansions = items.Where(value => value.ItemType == CampContributionItemType.Expansion).ToArray();
-        var groups = items.Where(value => value.ItemType == CampContributionItemType.BaseGame)
-            .Select(baseGame =>
-            {
-                var nested = expansions.Where(value => value.ParentBggId == baseGame.BggId).ToArray();
-                return new CampImportSelectionGroup(
-                    baseGame,
-                    nested,
-                    nested.Any(value => CampContributionSelectionService.NeedsMissingBaseWarning(value, items)));
-            })
-            .ToList();
-
-        foreach (var orphan in expansions.Where(value => value.ParentBggId is null
-                     || items.All(baseGame => baseGame.ItemType != CampContributionItemType.BaseGame
-                         || baseGame.BggId != value.ParentBggId)))
-        {
-            var syntheticParent = new CampImportSelectionItem(
-                orphan.ParentBggId ?? 0,
-                CampContributionItemType.BaseGame,
-                null,
-                "Базовая игра не найдена в коллекции",
-                false);
-            groups.Add(new CampImportSelectionGroup(syntheticParent, [orphan], orphan.Selected));
-        }
-
-        return groups;
-    }
 }

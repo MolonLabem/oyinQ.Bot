@@ -128,19 +128,6 @@ public sealed class FinalConsistencyTests
     }
 
     [Fact]
-    public void MultiParentMissingBaseWarning_AcceptsAnySelectedParent()
-    {
-        var expansion = new CampImportSelectionItem(30, CampContributionItemType.Expansion, 10,
-            "Expansion", true, ParentBggIds: [10, 20]);
-        var selectedParent = new CampImportSelectionItem(20, CampContributionItemType.BaseGame, null,
-            "Base", true);
-
-        Assert.False(CampContributionSelectionService.NeedsMissingBaseWarning(expansion, [selectedParent]));
-        Assert.True(CampContributionSelectionService.NeedsMissingBaseWarning(expansion,
-            [selectedParent with { Selected = false }]));
-    }
-
-    [Fact]
     public void UnderfilledNotification_CapturesOrganizerAndConfirmedParticipantsOnly()
     {
         var organizer = new Participant { TelegramUserId = 1, DisplayName = "Организатор" };
@@ -189,17 +176,6 @@ public sealed class FinalConsistencyTests
     public void TelegramChatMigration_ClassifiesUnmanagedReplayUpdateAndCollision(
         string? oldKey, string? newKey, ManagedChatMigrationAction expected) =>
         Assert.Equal(expected, ManagedCommunityService.ClassifyChatMigration(oldKey, newKey));
-
-    [Fact]
-    public void RecoveryEnrichment_RejectsMembershipOrExpansionChanges()
-    {
-        var original = new ClubCollectionDocument(2, [Game(10, "Base") with
-            { Expansions = [new ClubCollectionExpansion(30, "Expansion")] }]);
-        var changed = new ClubCollectionDocument(2, [Game(10, "Base")]);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            RollMoveRecoveryGenerator.EnsureMembershipUnchanged(original, changed));
-    }
 
     [Fact]
     public void Model_EnforcesActiveJobInvariantsAndPersistsLeaseAndConfirmation()

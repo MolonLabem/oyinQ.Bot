@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { Bootstrap, Capabilities, Community } from "../api/types";
 import { Navigation } from "../components/Navigation";
-import { Card, ErrorState, Loading, Notice, Page } from "../components/Ui";
+import { ErrorState, Loading, Notice, Page } from "../components/Ui";
 import { AdminPage } from "../pages/admin/AdminPage";
 import { CampRegistrationGate, MyGamesPage } from "../pages/camp/MyGamesPage";
 import { GamesPage } from "../pages/games/GamesPage";
@@ -26,13 +26,13 @@ export function App() {
   if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
   if (adminMode) return bootstrap.canOpenAdminPanel ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} isSuperAdmin={bootstrap.isSuperAdmin} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна администраторам зарегистрированных чатов OyinQ.</Notice></Page>;
-  if (!community) return <CommunityPicker communities={bootstrap.communities} choose={setCommunityKey} admin={bootstrap.isAdministrator} />;
+  if (!community) return <CommunityPicker communities={bootstrap.communities} choose={setCommunityKey} admin={bootstrap.canOpenAdminPanel} />;
   const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }, { id: "profile", label: "Профиль", icon: "👤" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "profile", label: "Профиль", icon: "👤" }];
   const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";
   const fullscreenActionLabel = fullscreenLabel(fullscreen);
   const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("mine"); };
   const content = activeTab === "gatherings" ? <GatheringsPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} /> : activeTab === "games" ? <GamesPage community={community} /> : activeTab === "profile" ? <ProfilePage community={community} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
-  const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} isAdministrator={bootstrap.isAdministrator}>{content}</CampRegistrationGate> : content;
+  const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} canOpenAdminPanel={bootstrap.canOpenAdminPanel}>{content}</CampRegistrationGate> : content;
   return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</div></header>{telegram.canFullscreen && <div className="display-tools"><button className="fullscreen-action" aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}>{fullscreenActionLabel}</button></div>}<div className="content">{gatedContent}<PrivacyLink /></div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
 }
 

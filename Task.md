@@ -2,11 +2,10 @@
 
 `AGENTS.md` is the architecture source of truth. This file records only current follow-up work.
 
-- Validate the full additive migration batch through `20260830210951_FinalConsistencyAndReliability` against a production backup before deployment. Review duplicate active-job reconciliation before applying the new partial unique indexes.
-- Deploy the additive chat-authorization migrations with the owner in `Administration__SuperAdminTelegramUserIds`, then grant normal administrators from each chat's `Администраторы` section.
+- Validate the full additive migration chain through `20260901053721_TrackKnownTelegramChats` against a production backup before deployment. Review duplicate active-job reconciliation, the exact-date migration's deliberate lack of inferred dates, and the chat-authorization backfills before applying it.
+- Deploy with the owner in `Administration__SuperAdminTelegramUserIds`, then grant normal administrators from each chat's `Администраторы` section.
 - Observe live Telegram webhook, Mini App authentication, BGG, and PostgreSQL behavior after deployment; mocked tests do not prove external integrations.
-- Audit retained legacy database rows (`GameSessions`, `CollectionImports`, `GameInterests`, `GameCopies`, and participant legacy registration fields) with production data owners before designing a destructive retirement migration.
-- Review `20260831002206_ExactCampAttendanceDates` against a PostgreSQL backup before production. Existing registrations intentionally receive no inferred dates and must be completed by their owners.
+- Audit retained legacy database rows (`GameSessions`, `CollectionImports`, `GameInterests`, `GameCopies`, `ParticipantConversationStates`, and participant legacy registration fields) with production data owners before designing a destructive retirement migration.
 - Live-test prepared Mini App peer selection and the native DM fallback against supported Telegram clients; mocked/static checks do not prove client behavior.
 - Observe Camp BGG import and Club metadata-refresh leases, retries, callback duplicate resolution, cancellation, and large-collection duration against live BGG before tuning worker intervals.
 - Review future `Data/Imports/RollMove/club-collection.v2.json` refreshes by running `dotnet run --project oyinQ.Bot.csproj -- --refresh-club-collection` with `BoardGameGeek__ApiToken`; compare source-ID omissions and BGG-classified expansion parents before committing the artifact.

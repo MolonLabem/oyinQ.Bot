@@ -71,10 +71,11 @@ public sealed class GatheringManagementService(
 
     private static void ValidateGamePlayerLimits(GatheringGameSnapshot snapshot, int minimum, int maximum)
     {
-        if (snapshot.MinPlayers is { } gameMinimum && minimum < gameMinimum)
-            throw new InvalidOperationException($"Для «{snapshot.Name}» минимум игроков — {gameMinimum}.");
-        if (snapshot.MaxPlayers is { } gameMaximum && maximum > gameMaximum)
-            throw new InvalidOperationException($"Для «{snapshot.Name}» максимум игроков — {gameMaximum}.");
+        var gameRange = PlayerCountRange.Normalize(snapshot.MinPlayers, snapshot.MaxPlayers);
+        if (minimum < gameRange.Minimum)
+            throw new InvalidOperationException($"Для «{snapshot.Name}» минимум игроков — {gameRange.Minimum}.");
+        if (maximum > gameRange.Maximum)
+            throw new InvalidOperationException($"Для «{snapshot.Name}» максимум игроков — {gameRange.Maximum}.");
     }
 
     public async Task<GameGathering> ChangeLifecycleAsync(Guid publicId, string communityKey,

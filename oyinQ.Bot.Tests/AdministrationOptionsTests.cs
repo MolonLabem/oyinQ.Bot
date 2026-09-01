@@ -6,7 +6,7 @@ namespace oyinQ.Bot.Tests;
 public sealed class AdministrationOptionsTests
 {
     [Fact]
-    public void FromConfiguration_ParsesCommaSeparatedBootstrapIds()
+    public void FromConfiguration_DoesNotPromoteMultipleLegacyBootstrapIds()
     {
         var configuration = new ConfigurationManager
         {
@@ -15,7 +15,7 @@ public sealed class AdministrationOptionsTests
 
         var options = AdministrationOptions.FromConfiguration(configuration);
 
-        Assert.Equal([42L, 99L], options.BootstrapTelegramUserIds.Order());
+        Assert.Empty(options.SuperAdminTelegramUserIds);
     }
 
     [Fact]
@@ -23,7 +23,6 @@ public sealed class AdministrationOptionsTests
     {
         var options = AdministrationOptions.FromConfiguration(new ConfigurationManager());
 
-        Assert.Empty(options.BootstrapTelegramUserIds);
         Assert.Empty(options.SuperAdminTelegramUserIds);
     }
 

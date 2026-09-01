@@ -11,12 +11,7 @@ public sealed class CommunityContextResolver(
     ICommunityStore communityStore,
     ICommunityMembershipVerifier membershipVerifier)
 {
-    public async Task<BotCommunity?> ResolveByChatIdAsync(
-        long telegramChatId,
-        CancellationToken cancellationToken) =>
-        await communityStore.FindByChatIdAsync(telegramChatId, cancellationToken);
-
-    public async Task<BotCommunity?> ResolveConfiguredByKeyAsync(
+    private async Task<BotCommunity?> ResolveConfiguredByKeyAsync(
         string? communityKey,
         CancellationToken cancellationToken) =>
         string.IsNullOrWhiteSpace(communityKey)

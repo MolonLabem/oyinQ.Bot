@@ -17,9 +17,6 @@ public sealed record CampImportSelectionItem(long BggId, CampContributionItemTyp
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     IReadOnlyList<long>? ParentBggIds = null);
 
-public sealed record CampImportSelectionGroup(CampImportSelectionItem BaseGame,
-    IReadOnlyList<CampImportSelectionItem> Expansions, bool ShowMissingBaseWarning);
-
 public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemType ItemType,
     IReadOnlyList<long> ParentBggIds, CampContributionSnapshot Snapshot, int CopyCount,
     IReadOnlyList<CampCatalogProvider> Providers)
@@ -34,32 +31,11 @@ public sealed record CampCatalogProvider(long? ParticipantId, string DisplayName
     CampContributionSource? Source, CampBringCommitment Commitment = CampBringCommitment.Available,
     bool IsCurrentUser = false, string? ContactUrl = null);
 
-public sealed class CampContributionSelectionService(AppDbContext dbContext, CampParticipationPolicy participationPolicy)
+public sealed class CampContributionSelectionService(
+    AppDbContext dbContext,
+    CampParticipationPolicy participationPolicy,
+    TimeProvider timeProvider)
 {
-    public static IReadOnlyList<EffectiveCampCatalogItem> MergeContributions(
-        IEnumerable<CampGameContribution> contributions) => contributions
-        .GroupBy(x => new { x.BggId, x.ItemType })
-        .Select(group => new EffectiveCampCatalogItem(group.Key.BggId, group.Key.ItemType,
-            ParentIds(group), RichestSnapshot(group.Select(value => value.ReadSnapshot())),
-            group.Select(x => x.ParticipantId).Distinct().Count(),
-            group.Select(x => new CampCatalogProvider(x.ParticipantId,
-                $"Participant {x.ParticipantId}", null, x.Source, x.Commitment)).ToArray()))
-        .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
-
-    public static IReadOnlyList<CampImportSelectionItem> SelectAll(IEnumerable<CampImportSelectionItem> items) =>
-        items.Select(value => value with { Selected = true }).ToArray();
-
-    public static bool NeedsMissingBaseWarning(CampImportSelectionItem expansion,
-        IReadOnlyCollection<CampImportSelectionItem> items)
-    {
-        if (expansion.ItemType != CampContributionItemType.Expansion || !expansion.Selected)
-            return false;
-        var parents = expansion.ParentBggIds is { Count: > 0 }
-            ? expansion.ParentBggIds : expansion.ParentBggId is { } parentId ? [parentId] : [];
-        return parents.Count > 0 && !items.Any(value => value.ItemType == CampContributionItemType.BaseGame
-            && parents.Contains(value.BggId) && value.Selected);
-    }
-
     public async Task ConfirmImportAsync(long campId, long participantId, CampBggImportDraft draft,
         IReadOnlyCollection<long> selectedBaseGameIds, IReadOnlyCollection<long> selectedExpansionIds,
         DateTimeOffset now, CancellationToken cancellationToken)
@@ -192,7 +168,7 @@ public sealed class CampContributionSelectionService(AppDbContext dbContext, Cam
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
             cancellationToken) ?? throw new KeyNotFoundException("Игра отсутствует в вашем списке.");
         contribution.Commitment = commitment;
-        contribution.UpdatedAt = DateTimeOffset.UtcNow;
+        contribution.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

@@ -47,7 +47,7 @@ public sealed class CommunityOptionsTests
     }
 
     [Fact]
-    public async Task Resolver_ResolvesConfiguredChats_AndRejectsUnknownContext()
+    public async Task Resolver_ResolvesAuthorizedCommunities_AndRejectsUnknownContext()
     {
         BotCommunity[] communities = [
             new("club", "Клуб", -1001, BotMode.Club, "UTC"),
@@ -57,9 +57,6 @@ public sealed class CommunityOptionsTests
             new StubCommunityStore(communities),
             new StubMembershipVerifier(true));
 
-        Assert.Equal(BotMode.Club, (await resolver.ResolveByChatIdAsync(-1001, default))?.Mode);
-        Assert.Equal(BotMode.Camp, (await resolver.ResolveByChatIdAsync(-1002, default))?.Mode);
-        Assert.Null(await resolver.ResolveByChatIdAsync(-9999, default));
         Assert.Null(await resolver.ResolveAuthorizedAsync("forged", 42, default));
         Assert.Equal(2, (await resolver.ResolveAuthorizedAsync(42, default)).Count);
     }
@@ -100,9 +97,6 @@ public sealed class CommunityOptionsTests
 
     private sealed class StubCommunityStore(IReadOnlyList<BotCommunity> communities) : ICommunityStore
     {
-        public Task<BotCommunity?> FindByChatIdAsync(long telegramChatId, CancellationToken cancellationToken) =>
-            Task.FromResult(communities.SingleOrDefault(value => value.TelegramChatId == telegramChatId));
-
         public Task<BotCommunity?> FindByKeyAsync(string communityKey, CancellationToken cancellationToken) =>
             Task.FromResult(communities.SingleOrDefault(value => value.Key == communityKey));
 

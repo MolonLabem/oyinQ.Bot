@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { plural } from "./format";
+import { currentLocalMinute, formatLocalDateTimeInput, isFutureLocalDateTime, plural } from "./format";
 import { buildCatalogQuery, toggleValue } from "./catalogQuery";
-import { defaultImportSelection, isImportItemSelectable } from "../pages/camp/importSelection";
+import { defaultImportSelection, expansionBelongsToBase, isImportItemSelectable } from "../pages/camp/importSelection";
 import type { ImportDraftItem } from "../api/types";
 import { fullscreenLabel, registrationSubmitEnabled, toggleRegistrationDate } from "../pages/camp/registrationLogic";
 
@@ -36,6 +36,23 @@ describe("Russian product helpers", () => {
     expect(defaultImportSelection([item({ selectedByDefault: true }),
       item({ bggId: 2, selectedByDefault: true, skipReason: "AlreadyAddedManually" })]))
       .toEqual(new Set(["BaseGame-1"]));
+  });
+
+  it("keeps every provider-reported expansion parent in import grouping", () => {
+    const expansion: ImportDraftItem = { bggId: 30, itemType: "Expansion", parentBggId: 10,
+      parentBggIds: [10, 20], snapshot: { name: "Expansion" }, selectedByDefault: true,
+      isOverridable: false };
+    expect(expansionBelongsToBase(expansion, 10)).toBe(true);
+    expect(expansionBelongsToBase(expansion, 20)).toBe(true);
+    expect(expansionBelongsToBase(expansion, 99)).toBe(false);
+  });
+
+  it("compares gathering input in the community timezone", () => {
+    const now = new Date("2026-09-01T00:30:00Z");
+    expect(currentLocalMinute("Asia/Qyzylorda", now)).toBe("2026-09-01T05:30");
+    expect(isFutureLocalDateTime("2026-09-01T05:31", "Asia/Qyzylorda", now)).toBe(true);
+    expect(isFutureLocalDateTime("2026-09-01T05:30", "Asia/Qyzylorda", now)).toBe(false);
+    expect(formatLocalDateTimeInput("2026-09-01T05:31")).toContain("05:31");
   });
 
   it("adds, sorts, and removes exact registration dates immutably", () => {

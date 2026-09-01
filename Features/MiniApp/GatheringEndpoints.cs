@@ -18,8 +18,6 @@ internal sealed record UpdateGatheringRequest(string CommunityKey, string Starts
 internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null);
 internal sealed record GatheringListItemResponse(
     GatheringCardPresentation Card,
-    string Status,
-    string PublicationStatus,
     bool IsOrganizer);
 internal sealed record GatheringListPageResponse(
     IReadOnlyCollection<GatheringListItemResponse> Items,
@@ -69,8 +67,6 @@ internal static class GatheringEndpoints
         var hasNext = values.Length > GatheringPageSize;
         var items = values.Take(GatheringPageSize).Select(x => new GatheringListItemResponse(
             presentation.BuildCard(x, access.Community),
-            x.Status.ToString(),
-            x.PublicationStatus.ToString(),
             x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)).ToArray();
         return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
     }

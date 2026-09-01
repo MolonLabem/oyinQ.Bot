@@ -40,14 +40,15 @@ public sealed class GatheringGameSelectionService(
             .ToArray();
         EnsureKnownExpansions(expansions, selectedExpansionIds);
         var game = details.Game;
+        var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
         return new GatheringGameSnapshot(
             GatheringGameSnapshot.CurrentVersion,
             game.BggId,
             game.Name,
             game.ThumbnailImageUrl,
             game.ImageUrl,
-            game.MinPlayers,
-            game.MaxPlayers,
+            players.Minimum,
+            players.Maximum,
             game.BestPlayers,
             expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
             "bgg",
@@ -60,7 +61,8 @@ public sealed class GatheringGameSelectionService(
             BggTaxonomyCatalog.ResolveType(game.Type, game.Subdomains, game.Types,
                 game.CategoryItems, game.Categories),
             game.CategoryItems,
-            game.Mechanics);
+            game.Mechanics,
+            players.WasDefaulted);
     }
 
     public async Task<GatheringGameSnapshot> FromCampCatalogAsync(
