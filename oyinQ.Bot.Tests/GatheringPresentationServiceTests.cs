@@ -120,6 +120,7 @@ public sealed class GatheringPresentationServiceTests
         Assert.Contains("📖 Правила объясню", announcement.HtmlText);
         Assert.Contains("🏷 Стратегия", announcement.HtmlText);
         Assert.Contains("Дополнения:", announcement.HtmlText);
+        Assert.Contains("⏳ Лист ожидания: 1", announcement.HtmlText);
         Assert.Equal("https://images.example/large.jpg", announcement.ImageUrl);
     }
 

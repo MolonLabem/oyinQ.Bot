@@ -61,6 +61,51 @@ public sealed class GatheringTelegramPublisherTests
         Assert.DoesNotContain("boardgamegeek.com", handler.Bodies.Last());
     }
 
+    [Fact]
+    public async Task UnchangedPhotoCaption_IsSuccessfulWithoutTextFallback()
+    {
+        var handler = new RecordingHandler((method, _) => method == "editMessageCaption"
+            ? Error("Bad Request: message is not modified")
+            : null);
+        var publisher = Publisher(handler);
+
+        await publisher.UpdateAsync(Gathering(),
+            new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC"), default);
+
+        Assert.Equal(1, handler.Methods.Count(method => method == "editMessageCaption"));
+        Assert.DoesNotContain("editMessageText", handler.Methods);
+    }
+
+    [Fact]
+    public async Task TextAnnouncement_FallsBackOnlyWhenCaptionIsUnavailable()
+    {
+        var handler = new RecordingHandler((method, _) => method == "editMessageCaption"
+            ? Error("Bad Request: there is no caption in the message to edit")
+            : null);
+        var publisher = Publisher(handler);
+
+        await publisher.UpdateAsync(Gathering(),
+            new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC"), default);
+
+        Assert.Contains("editMessageCaption", handler.Methods);
+        Assert.Contains("editMessageText", handler.Methods);
+    }
+
+    private static GatheringTelegramPublisher Publisher(HttpMessageHandler handler)
+    {
+        var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO",
+            new HttpClient(handler));
+        return new GatheringTelegramPublisher(new RejectingGroupSender(), bot,
+            new GatheringPresentationService(), NullLogger<GatheringTelegramPublisher>.Instance);
+    }
+
+    private static HttpResponseMessage Error(string description) => new(HttpStatusCode.BadRequest)
+    {
+        Content = new StringContent(
+            JsonSerializer.Serialize(new { ok = false, error_code = 400, description }),
+            Encoding.UTF8, "application/json")
+    };
+
     private static GameGathering Gathering() => new()
     {
         PublicId = Guid.NewGuid(), CommunityKey = "club", TelegramChatId = -1001, TelegramMessageId = 777,
@@ -89,7 +134,8 @@ public sealed class GatheringTelegramPublisherTests
             ReplyMarkup? markup, CancellationToken token) { Attempts++; throw new InvalidOperationException(); }
     }
 
-    private sealed class RecordingHandler : HttpMessageHandler
+    private sealed class RecordingHandler(
+        Func<string, int, HttpResponseMessage?>? response = null) : HttpMessageHandler
     {
         public List<string> Methods { get; } = [];
         public List<string> Bodies { get; } = [];
@@ -100,6 +146,7 @@ public sealed class GatheringTelegramPublisherTests
             var method = request.RequestUri!.Segments.Last();
             Methods.Add(method);
             Bodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
+            if (response?.Invoke(method, Methods.Count) is { } configured) return configured;
             var body = method == "getMe"
                 ? "{\"ok\":true,\"result\":{\"id\":123456,\"is_bot\":true,\"first_name\":\"OyinQ\",\"username\":\"oyinq_test_bot\"}}"
                 : "{\"ok\":true,\"result\":{\"message_id\":777,\"date\":0,\"chat\":{\"id\":-1001,\"type\":\"supergroup\"}}}";

@@ -2,6 +2,7 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Gatherings;
 using Telegram.Bot;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -74,21 +75,41 @@ public sealed class GatheringTelegramPublisher(
                 replyMarkup: keyboard,
                 cancellationToken: cancellationToken);
         }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        catch (ApiRequestException exception) when (IsMessageNotModified(exception))
+        {
+            return;
+        }
+        catch (ApiRequestException exception) when (IsCaptionUnavailable(exception))
         {
             logger.LogDebug(
                 exception,
                 "Gathering {GatheringPublicId} announcement is not a photo; updating it as text.",
                 gathering.PublicId);
-            await botClient.EditMessageText(
-                chatId,
-                messageId,
-                announcement.HtmlText,
-                parseMode: ParseMode.Html,
-                replyMarkup: keyboard,
-                cancellationToken: cancellationToken);
+            try
+            {
+                await botClient.EditMessageText(
+                    chatId,
+                    messageId,
+                    announcement.HtmlText,
+                    parseMode: ParseMode.Html,
+                    replyMarkup: keyboard,
+                    cancellationToken: cancellationToken);
+            }
+            catch (ApiRequestException textException) when (IsMessageNotModified(textException))
+            {
+                return;
+            }
         }
     }
+
+    private static bool IsMessageNotModified(ApiRequestException exception) =>
+        exception.ErrorCode == 400
+        && exception.Message.Contains("message is not modified", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCaptionUnavailable(ApiRequestException exception) =>
+        exception.ErrorCode == 400
+        && (exception.Message.Contains("there is no caption", StringComparison.OrdinalIgnoreCase)
+            || exception.Message.Contains("not a media message", StringComparison.OrdinalIgnoreCase));
 
     private async Task<InlineKeyboardMarkup> BuildKeyboardAsync(
         GameGathering gathering,

@@ -137,6 +137,14 @@ public sealed class GatheringPresentationService
                 text.AppendLine($"• {WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>");
         }
 
+        var waitlistedCount = gathering.Participants.Count(value =>
+            value.Status == GatheringParticipationStatus.Waitlisted);
+        if (waitlistedCount > 0)
+        {
+            text.AppendLine();
+            text.AppendLine($"⏳ Лист ожидания: {waitlistedCount}");
+        }
+
         var description = Truncate(gathering.Description, AnnouncementDescriptionLength);
         if (description is not null)
         {
