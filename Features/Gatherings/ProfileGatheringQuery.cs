@@ -10,5 +10,5 @@ public static class ProfileGatheringQuery
                 && (x.OrganizerParticipantId == participantId
                     || x.Participants.Any(p => p.ParticipantId == participantId
                         && p.Status == GatheringParticipationStatus.Confirmed))),
-            GatheringListView.Upcoming, GatheringHistoryFilter.All, now);
+            GatheringListScope.Upcoming, now);
 }

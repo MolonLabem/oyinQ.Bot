@@ -110,7 +110,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         }
         var gatherings = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
-                && GatheringLifecycle.ActiveStatuses.Contains(x.Status)
+                && GatheringLifecycle.ScheduledStatuses.Contains(x.Status)
                 && (x.OrganizerParticipantId == participantId
                     || x.Participants.Any(p => p.ParticipantId == participantId
                         && (p.Status == GatheringParticipationStatus.Confirmed
@@ -154,7 +154,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
     {
         var values = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == communityKey && x.StartsAtUtc > now
-                && GatheringLifecycle.ActiveStatuses.Contains(x.Status)
+                && GatheringLifecycle.ScheduledStatuses.Contains(x.Status)
                 && (x.OrganizerParticipantId == participantId
                     || x.Participants.Any(p => p.ParticipantId == participantId
                         && (p.Status == GatheringParticipationStatus.Confirmed

@@ -54,7 +54,7 @@ public sealed class CampLifecycleWorker(
         }
         var future = await dbContext.GameGatherings.AsNoTracking().CountAsync(x =>
             x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
-                && GatheringLifecycle.ActiveStatuses.Contains(x.Status),
+                && GatheringLifecycle.ScheduledStatuses.Contains(x.Status),
             cancellationToken);
         if (future > 0)
         {

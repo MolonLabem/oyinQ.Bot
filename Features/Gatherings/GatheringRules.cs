@@ -47,9 +47,9 @@ public static class GatheringRules
             {
                 BggId = value.BggId,
                 Name = value.Name
-            }).ToArray()
+            }).ToList()
         };
-        GatheringCapacity.RecalculateStatus(gathering);
+        GatheringCapacity.SynchronizeScheduledStatus(gathering);
         return gathering;
     }
 
@@ -66,7 +66,7 @@ public static class GatheringRules
         }
     }
 
-    public static void Update(
+    public static IReadOnlyList<GameGatheringParticipant> Update(
         GameGathering gathering,
         DateTimeOffset startsAt,
         int minimumPlayers,
@@ -101,8 +101,10 @@ public static class GatheringRules
         gathering.MaximumPlayers = maximumPlayers;
         gathering.Description = NormalizeDescription(description);
         gathering.CanTeachRules = canTeachRules;
-        GatheringCapacity.RecalculateStatus(gathering);
+        var promoted = GatheringCapacity.PromoteWaitlistedToCapacity(gathering);
+        GatheringCapacity.SynchronizeScheduledStatus(gathering);
         gathering.UpdatedAt = now.ToUniversalTime();
+        return promoted;
     }
 
     public static void Close(GameGathering gathering, DateTimeOffset now)
@@ -124,13 +126,13 @@ public static class GatheringRules
             throw new InvalidOperationException("Возобновить можно только закрытую запись.");
         if (gathering.StartsAtUtc <= now.ToUniversalTime())
             throw new InvalidOperationException("Нельзя возобновить запись на прошедший сбор.");
-        GatheringCapacity.RecalculateStatus(gathering, preserveClosed: false);
+        gathering.Status = GatheringCapacity.CalculateOpenStatus(gathering);
         gathering.UpdatedAt = now.ToUniversalTime();
     }
 
     public static void Cancel(GameGathering gathering, string? reason, DateTimeOffset now)
     {
-        if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
+        if (GatheringLifecycle.IsTerminal(gathering.Status))
             throw new InvalidOperationException("Сбор уже завершён или отменён.");
         if (gathering.StartsAtUtc <= now.ToUniversalTime())
             throw new InvalidOperationException("Наступивший сбор нельзя отменить вручную.");
@@ -165,7 +167,7 @@ public static class GatheringRules
         membership.WithdrawnAt = now.ToUniversalTime();
         membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
         var promoted = shouldPromote ? GatheringCapacity.PromoteFirstWaitlisted(gathering) : null;
-        GatheringCapacity.RecalculateStatus(gathering);
+        GatheringCapacity.SynchronizeScheduledStatus(gathering);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
         return promoted;
@@ -186,7 +188,7 @@ public static class GatheringRules
 
     private static void EnsureEditable(GameGathering gathering, DateTimeOffset now)
     {
-        if (!GatheringLifecycle.IsActive(gathering.Status))
+        if (!GatheringLifecycle.IsScheduled(gathering.Status))
         {
             throw new InvalidOperationException("Завершённый или отменённый сбор нельзя изменить.");
         }

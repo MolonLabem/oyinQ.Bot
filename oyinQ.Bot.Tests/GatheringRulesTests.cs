@@ -91,4 +91,58 @@ public sealed class GatheringRulesTests
         Assert.False(GatheringAccessPolicy.CanJoin(gathering, false, false, now.AddMinutes(1)));
         Assert.False(GatheringAccessPolicy.CanLeave(gathering, false, true, now));
     }
+
+    [Fact]
+    public void OrganizerActions_AreCanonicalBackendDecisions()
+    {
+        var now = new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
+        var gathering = new GameGathering
+        { StartsAtUtc = now.AddHours(1), Status = GatheringStatus.Ready };
+
+        Assert.True(GatheringAccessPolicy.CanClose(gathering, true, now));
+        Assert.False(GatheringAccessPolicy.CanReopen(gathering, true, now));
+        Assert.True(GatheringAccessPolicy.CanCancel(gathering, true, now));
+
+        gathering.Status = GatheringStatus.Closed;
+        Assert.False(GatheringAccessPolicy.CanClose(gathering, true, now));
+        Assert.True(GatheringAccessPolicy.CanReopen(gathering, true, now));
+
+        gathering.Status = GatheringStatus.Completed;
+        Assert.False(GatheringAccessPolicy.CanClose(gathering, true, now));
+        Assert.False(GatheringAccessPolicy.CanReopen(gathering, true, now));
+        Assert.False(GatheringAccessPolicy.CanCancel(gathering, true, now));
+    }
+
+    [Fact]
+    public void IncreasingCapacity_PromotesWaitlistInOrder()
+    {
+        var now = new DateTimeOffset(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
+        var gathering = GatheringRules.Create("club",
+            new GatheringGameSnapshot(1, 10, "Игра", null, null, 1, 4, null, []), 1,
+            now.AddDays(1), 1, 2, 2, null, true, now);
+        gathering.Participants.Add(new GameGatheringParticipant
+        {
+            Id = 10, Status = GatheringParticipationStatus.Confirmed, JoinedAt = now,
+            Participant = new Participant { TelegramUserId = 10, DisplayName = "Подтверждён" }
+        });
+        var first = new GameGatheringParticipant
+        {
+            Id = 11, Status = GatheringParticipationStatus.Waitlisted, JoinedAt = now.AddMinutes(1),
+            Participant = new Participant { TelegramUserId = 11, DisplayName = "Первый" }
+        };
+        var second = new GameGatheringParticipant
+        {
+            Id = 12, Status = GatheringParticipationStatus.Waitlisted, JoinedAt = now.AddMinutes(2),
+            Participant = new Participant { TelegramUserId = 12, DisplayName = "Второй" }
+        };
+        gathering.Participants.Add(first);
+        gathering.Participants.Add(second);
+
+        var promoted = GatheringRules.Update(gathering, gathering.StartsAtUtc, 1, 3, 4,
+            null, true, [], now);
+
+        Assert.Equal([first, second], promoted);
+        Assert.All(promoted, x => Assert.Equal(GatheringParticipationStatus.Confirmed, x.Status));
+        Assert.Equal(GatheringStatus.Full, gathering.Status);
+    }
 }

@@ -18,6 +18,15 @@ public static class GatheringAccessPolicy
     public static bool CanManage(GameGathering gathering, bool isOrganizer, DateTimeOffset now) =>
         isOrganizer && GatheringLifecycle.IsUpcoming(gathering, now);
 
+    public static bool CanClose(GameGathering gathering, bool isOrganizer, DateTimeOffset now) =>
+        CanManage(gathering, isOrganizer, now) && gathering.Status != GatheringStatus.Closed;
+
+    public static bool CanReopen(GameGathering gathering, bool isOrganizer, DateTimeOffset now) =>
+        CanManage(gathering, isOrganizer, now) && gathering.Status == GatheringStatus.Closed;
+
+    public static bool CanCancel(GameGathering gathering, bool isOrganizer, DateTimeOffset now) =>
+        CanManage(gathering, isOrganizer, now);
+
     public static void RequireOrganizer(GameGathering gathering, long telegramUserId)
     {
         if (gathering.OrganizerParticipant.TelegramUserId != telegramUserId)

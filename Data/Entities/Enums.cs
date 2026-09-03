@@ -2,10 +2,12 @@ namespace oyinQ.Bot.Data.Entities;
 
 public enum GatheringStatus
 {
+    // Scheduled enrollment states. Capacity owns Recruiting/Ready/Full; Closed is an organizer override.
     Recruiting = 0,
     Ready = 1,
     Full = 2,
     Closed = 3,
+    // Terminal lifecycle states. GatheringLifecycle owns these transitions.
     Completed = 4,
     Cancelled = 5
 }

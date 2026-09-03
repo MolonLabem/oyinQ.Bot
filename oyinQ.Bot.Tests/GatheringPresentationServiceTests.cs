@@ -28,6 +28,9 @@ public sealed class GatheringPresentationServiceTests
         Assert.True(detail.CanTeachRules);
         Assert.Equal("Стратегия", card.TypeName);
         Assert.Equal("Стратегия", detail.TypeName);
+        Assert.Equal(["Стратегия"], detail.TypeNames);
+        Assert.Equal(["Научная фантастика"], detail.CategoryNames);
+        Assert.Equal(["Совместная игра"], detail.MechanicNames);
         Assert.Equal(167791, card.BggId);
         Assert.Equal("https://boardgamegeek.com/boardgame/167791", card.BggUrl);
         Assert.Equal(card.BggUrl, detail.BggUrl);
@@ -142,7 +145,9 @@ public sealed class GatheringPresentationServiceTests
             [],
             "catalog",
             [],
-            Type: GameType.Strategy)),
+            Type: GameType.Strategy,
+            Categories: [new GameTaxonomyItem(1016, "Science Fiction")],
+            Mechanics: [new GameTaxonomyItem(2023, "Cooperative Game")])),
         OrganizerParticipant = new Participant { DisplayName = "Sardar" },
         Participants =
         [

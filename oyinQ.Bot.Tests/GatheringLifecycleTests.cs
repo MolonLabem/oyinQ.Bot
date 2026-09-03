@@ -16,8 +16,15 @@ public sealed class GatheringLifecycleTests
     [InlineData(GatheringStatus.Closed, true)]
     [InlineData(GatheringStatus.Completed, false)]
     [InlineData(GatheringStatus.Cancelled, false)]
-    public void ActiveStatusSet_IsCanonical(GatheringStatus status, bool expected) =>
-        Assert.Equal(expected, GatheringLifecycle.IsActive(status));
+    public void ScheduledStatusSet_IsCanonical(GatheringStatus status, bool expected) =>
+        Assert.Equal(expected, GatheringLifecycle.IsScheduled(status));
+
+    [Fact]
+    public void EveryPersistedStatus_IsExactlyScheduledOrTerminal()
+    {
+        foreach (var status in Enum.GetValues<GatheringStatus>())
+            Assert.NotEqual(GatheringLifecycle.IsScheduled(status), GatheringLifecycle.IsTerminal(status));
+    }
 
     [Fact]
     public void OrganizerManagement_UsesCanonicalUpcomingLifecycle()

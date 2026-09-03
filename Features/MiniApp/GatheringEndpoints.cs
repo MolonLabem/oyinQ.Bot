@@ -25,9 +25,7 @@ internal sealed record GatheringListPageResponse(
     IReadOnlyCollection<GatheringListItemResponse> Items,
     int Page,
     bool HasPrevious,
-    bool HasNext,
-    string View,
-    string HistoryFilter);
+    bool HasNext);
 
 internal static class GatheringEndpoints
 {
@@ -52,6 +50,7 @@ internal static class GatheringEndpoints
 
     private static async Task<IResult> ListAsync(HttpRequest request,
         [FromQuery(Name = "community")] string community,
+        [FromQuery(Name = "scope")] string? scope,
         [FromQuery(Name = "view")] string? view,
         [FromQuery(Name = "status")] string? status,
         [FromQuery(Name = "page")] int? page,
@@ -62,16 +61,16 @@ internal static class GatheringEndpoints
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
-        if (!GatheringListQuery.TryParse(view, status, out var parsedView, out var parsedFilter))
-            return MiniAppEndpointSupport.Problem("invalid_gathering_view",
-                "Поддерживаются view=upcoming или view=history; фильтры истории: completed, cancelled.", 400);
+        if (!GatheringListQuery.TryParse(scope, view, status, out var parsedScope))
+            return MiniAppEndpointSupport.Problem("invalid_gathering_scope",
+                "Поддерживаются scope=upcoming, history, completed или cancelled.", 400);
         var pageNumber = page ?? 1;
         if (pageNumber < 1 || pageNumber > int.MaxValue / GatheringPageSize)
             return MiniAppEndpointSupport.Problem("invalid_gathering_page", "Номер страницы должен быть больше нуля.", 400);
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         var query = dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
             .Include(x => x.Participants).Include(x => x.Guests).Include(x => x.OrganizerParticipant);
-        var values = await GatheringListQuery.Apply(query, parsedView, parsedFilter, timeProvider.GetUtcNow())
+        var values = await GatheringListQuery.Apply(query, parsedScope, timeProvider.GetUtcNow())
             .Skip((pageNumber - 1) * GatheringPageSize)
             .Take(GatheringPageSize + 1)
             .ToArrayAsync(cancellationToken);
@@ -79,14 +78,7 @@ internal static class GatheringEndpoints
         var items = values.Take(GatheringPageSize).Select(x => new GatheringListItemResponse(
             presentation.BuildCard(x, access.Community),
             x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)).ToArray();
-        return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext,
-            parsedView == GatheringListView.Upcoming ? "upcoming" : "history",
-            parsedFilter switch
-            {
-                GatheringHistoryFilter.Completed => "completed",
-                GatheringHistoryFilter.Cancelled => "cancelled",
-                _ => "all"
-            }));
+        return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
     }
 
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
@@ -121,7 +113,9 @@ internal static class GatheringEndpoints
             Status = gathering.Status.ToString(),
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanEdit = canManage,
-            CanChangeLifecycle = canManage,
+            CanClose = GatheringAccessPolicy.CanClose(gathering, manages, now),
+            CanReopen = GatheringAccessPolicy.CanReopen(gathering, manages, now),
+            CanCancel = GatheringAccessPolicy.CanCancel(gathering, manages, now),
             CanManageGuests = canManage,
             HasStarted = gathering.StartsAtUtc <= now,
             CanJoin = GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
@@ -193,9 +187,11 @@ internal static class GatheringEndpoints
         try
         {
             var startsAt = ParseLocal(body.StartsAtLocal, access.Community.TimeZoneId);
-            await management.UpdateAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
+            var result = await management.UpdateAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
                 new(startsAt, body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
                     body.Description, body.CanTeachRules, body.SelectedExpansionIds ?? []), cancellationToken);
+            foreach (var promotion in result.Promotions)
+                await publication.NotifyPromotionAsync(promotion, publicId, cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);
             return Results.NoContent();
         }

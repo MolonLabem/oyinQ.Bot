@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
@@ -15,6 +16,8 @@ public sealed record CreateGatheringCommand(string CommunityKey, string GameSour
 public sealed record UpdateGatheringCommand(DateTimeOffset StartsAt, int MinimumPlayers,
     int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules,
     IReadOnlyCollection<long> SelectedExpansionIds);
+public sealed record GatheringUpdateResult(GameGathering Gathering,
+    IReadOnlyList<GatheringPromotion> Promotions);
 
 public sealed class GatheringManagementService(
     AppDbContext dbContext,
@@ -47,26 +50,36 @@ public sealed class GatheringManagementService(
         return gathering;
     }
 
-    public async Task<GameGathering> UpdateAsync(Guid publicId, string communityKey, long telegramUserId,
+    public async Task<GatheringUpdateResult> UpdateAsync(Guid publicId, string communityKey, long telegramUserId,
         UpdateGatheringCommand command, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         GatheringRules.EnsureFutureStart(command.StartsAt, now);
-        var gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
-        var timeChanged = gathering.StartsAtUtc != command.StartsAt.ToUniversalTime();
-        var community = await dbContext.OyinQCommunities.AsNoTracking().SingleAsync(x => x.Key == communityKey,
-            cancellationToken);
-        await EnsureCommunityMutationAllowedAsync(community.ToBotCommunity(), telegramUserId,
-            command.StartsAt, cancellationToken);
-        ValidateGamePlayerLimits(GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson),
-            command.MinimumPlayers, command.MaximumPlayers);
-        GatheringRules.Update(gathering, command.StartsAt, command.MinimumPlayers, command.DesiredPlayers,
-            command.MaximumPlayers, command.Description, command.CanTeachRules,
-            command.SelectedExpansionIds, now);
-        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        GameGathering gathering;
+        IReadOnlyList<GameGatheringParticipant> promoted;
+        bool timeChanged;
+        await using (var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken))
+        {
+            gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
+            timeChanged = gathering.StartsAtUtc != command.StartsAt.ToUniversalTime();
+            var community = await dbContext.OyinQCommunities.AsNoTracking()
+                .SingleAsync(x => x.Key == communityKey, cancellationToken);
+            await EnsureCommunityMutationAllowedAsync(community.ToBotCommunity(), telegramUserId,
+                command.StartsAt, cancellationToken);
+            ValidateGamePlayerLimits(GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson),
+                command.MinimumPlayers, command.MaximumPlayers);
+            promoted = GatheringRules.Update(gathering, command.StartsAt, command.MinimumPlayers,
+                command.DesiredPlayers, command.MaximumPlayers, command.Description, command.CanTeachRules,
+                command.SelectedExpansionIds, now);
+            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
         if (timeChanged) await notifications.NotifyTimeChangedAsync(publicId, cancellationToken);
-        return gathering;
+        return new(gathering, promoted.Select(x => new GatheringPromotion(
+            x.Participant.TelegramUserId,
+            x.Participant.PreferredDisplayName ?? x.Participant.DisplayName)).ToArray());
     }
 
     private static void ValidateGamePlayerLimits(GatheringGameSnapshot snapshot, int minimum, int maximum)
@@ -81,18 +94,24 @@ public sealed class GatheringManagementService(
     public async Task<GameGathering> ChangeLifecycleAsync(Guid publicId, string communityKey,
         long telegramUserId, string action, string? reason, CancellationToken cancellationToken)
     {
-        var gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
+        GameGathering gathering;
         var now = timeProvider.GetUtcNow();
         var cancelled = false;
-        switch (action.ToLowerInvariant())
+        await using (var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken))
         {
-            case "close": GatheringRules.Close(gathering, now); break;
-            case "reopen": GatheringRules.Reopen(gathering, now); break;
-            case "cancel": GatheringRules.Cancel(gathering, reason, now); cancelled = true; break;
-            default: throw new InvalidOperationException("Неизвестное действие со сбором.");
+            gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
+            switch (action.ToLowerInvariant())
+            {
+                case "close": GatheringRules.Close(gathering, now); break;
+                case "reopen": GatheringRules.Reopen(gathering, now); break;
+                case "cancel": GatheringRules.Cancel(gathering, reason, now); cancelled = true; break;
+                default: throw new InvalidOperationException("Неизвестное действие со сбором.");
+            }
+            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
-        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
-        await dbContext.SaveChangesAsync(cancellationToken);
         if (cancelled) await notifications.NotifyCancellationAsync(publicId, cancellationToken);
         return gathering;
     }
@@ -100,11 +119,8 @@ public sealed class GatheringManagementService(
     private async Task<GameGathering> RequireManagedAsync(Guid publicId, string communityKey,
         long telegramUserId, CancellationToken cancellationToken)
     {
-        var gathering = await dbContext.GameGatherings
-            .Include(x => x.OrganizerParticipant).Include(x => x.Participants).ThenInclude(x => x.Participant)
-            .Include(x => x.Expansions).Include(x => x.Guests)
-            .SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == communityKey,
-                cancellationToken) ?? throw new KeyNotFoundException("Сбор не найден.");
+        var gathering = await GatheringWriteStore.LockAsync(dbContext, publicId, communityKey,
+            cancellationToken);
         GatheringAccessPolicy.RequireOrganizer(gathering, telegramUserId);
         return gathering;
     }

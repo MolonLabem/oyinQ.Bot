@@ -6,10 +6,11 @@ import { GameMeta, GamePicker } from "../../components/GamePicker";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { currentLocalMinute, formatLocalDateTimeInput, isFutureLocalDateTime } from "../../app/format";
-import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringListResponseMatches, initialGatheringListState, type GatheringHistoryFilter, type GatheringListState, type GatheringListView } from "./gatheringListState";
+import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringHistoryFilter, gatheringListView, initialGatheringListState, type GatheringHistoryFilter, type GatheringListState, type GatheringListView } from "./gatheringListState";
 import { normalizePlayerCountRange } from "./playerCountRange";
 import { gatheringDateTimeBounds, isWithinCampDateRange, revalidateGatheringStart } from "./gatheringDateRange";
 import { GatheringBggLink, GatheringCollectionAction, GatheringTypeTag } from "./GatheringGameMetadata";
+import { GameTaxonomy } from "../../components/GameTaxonomy";
 
 export function GatheringsPage({ community, bggAvailable, initialGatheringId, onInitialConsumed, editRegistration, openCollection, backFromInitial }: { community: Community; bggAvailable: boolean; initialGatheringId?: string; onInitialConsumed: () => void; editRegistration: () => void; openCollection: (bggId: number, gatheringId: string) => void; backFromInitial?: () => void }) {
   const [screen, setScreen] = useState<"list" | "create" | "detail">(initialGatheringId ? "detail" : "list");
@@ -19,19 +20,18 @@ export function GatheringsPage({ community, bggAvailable, initialGatheringId, on
   useEffect(() => telegram.back(screen !== "list", () => { if (screen === "detail" && initialBack) initialBack(); else { setScreen("list"); setSelected(undefined); } }), [screen, initialBack]);
   useEffect(() => { if (initialGatheringId) onInitialConsumed(); }, []);
   if (screen === "create") return <CreateGathering community={community} bggAvailable={bggAvailable} onDone={() => setScreen("list")} editRegistration={editRegistration} />;
-  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => { if (initialBack) initialBack(); else setScreen("list"); }} onCancelled={() => { setListState({ view: "history", historyFilter: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} openCollection={bggId => openCollection(bggId, selected)} />;
+  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => { if (initialBack) initialBack(); else setScreen("list"); }} onCancelled={() => { setListState({ scope: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} openCollection={bggId => openCollection(bggId, selected)} />;
   return <GatheringList community={community} listState={listState} setListState={setListState} open={id => { setSelected(id); setScreen("detail"); }} create={() => setScreen("create")} />;
 }
 
 function GatheringList({ community, listState, setListState, open, create }: { community: Community; listState: GatheringListState; setListState: (state: GatheringListState) => void; open: (id: string) => void; create: () => void }) {
-  const { view, historyFilter, page } = listState;
-  const state = useAsync(async () => {
-    const response = await api<GatheringListPage>(`/gatherings?${buildGatheringListQuery(community.key, listState)}`, { cache: "no-store" });
-    if (!gatheringListResponseMatches(listState, response)) {
-      throw new Error("Список сборов устарел. Обновите его ещё раз.");
-    }
-    return response;
-  }, [community.key, view, historyFilter, page]);
+  const { scope, page } = listState;
+  const view = gatheringListView(scope);
+  const historyFilter = gatheringHistoryFilter(scope);
+  const state = useAsync(() => api<GatheringListPage>(
+    `/gatherings?${buildGatheringListQuery(community.key, listState)}`,
+    { cache: "no-store" }
+  ), [community.key, scope, page]);
   const selectView = (next: GatheringListView) => setListState(changeGatheringView(listState, next));
   const selectHistoryFilter = (next: GatheringHistoryFilter) => setListState(changeGatheringHistoryFilter(listState, next));
   return <Page title="Сборы" subtitle={community.name} actions={<button className="primary" onClick={create}>Создать сбор</button>}>
@@ -101,12 +101,49 @@ function GatheringDetails({ community, id, onBack, onCancelled, editRegistration
   if (state.loading) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<button onClick={onBack}>Назад</button>}><ErrorState message={state.error ?? "Сбор не найден"} /></Page>;
   const value = state.data;
   if (editing && value.canEdit) return <EditGathering community={community} id={id} value={value} done={() => { setEditing(false); state.reload(); }} cancel={() => setEditing(false)} />;
-  return <Page title={value.gathering.gameName} subtitle={value.gathering.localDateTime} actions={<button onClick={onBack}>Назад</button>}>
-    <Card><div className="media"><Cover src={value.gathering.imageUrl} name={value.gathering.gameName} /><div><GatheringTypeTag typeName={value.gathering.typeName} /><p>{value.gathering.rulesText}</p>{value.gathering.description && <p className="gathering-note">«{value.gathering.description}»</p>}<Badge tone="accent">{value.gathering.statusText}</Badge><div className="gathering-game-actions"><GatheringBggLink bggUrl={value.gathering.bggUrl} /><GatheringCollectionAction bggId={value.gathering.bggId} open={openCollection} /></div></div></div>{value.waitlistPosition && <Notice kind="warning">Вы в листе ожидания, позиция {value.waitlistPosition}.</Notice>}</Card>
+  const organizer = value.confirmedParticipants.find(participant => participant.isOrganizer);
+  const freeSeats = Math.max(0, value.maximumPlayers - value.gathering.occupiedSeats);
+  const occupiedPercent = Math.min(100, Math.round(value.gathering.occupiedSeats / value.maximumPlayers * 100));
+  const typeNames = value.gathering.typeNames?.length
+    ? value.gathering.typeNames
+    : value.gathering.typeName ? [value.gathering.typeName] : [];
+  return <Page title={value.gathering.gameName} titleHref={value.gathering.bggUrl} subtitle={value.gathering.localDateTime} actions={<button onClick={onBack}>Назад</button>}>
+    <Card className="gathering-overview">
+      <div className="gathering-detail-hero">
+        <Cover src={value.gathering.imageUrl} name={value.gathering.gameName} />
+        <div className="gathering-summary">
+          <div className="gathering-status-row"><Badge tone="accent">{value.gathering.statusText}</Badge><GatheringTypeTag typeName={value.gathering.typeName} /></div>
+          <div className="gathering-key-facts">
+            <div><span aria-hidden>📅</span><span><small>Когда</small><strong>{value.gathering.localDateTime}</strong></span></div>
+            <div><span aria-hidden>👥</span><span><small>Игроки</small><strong>{value.gathering.occupiedSeats} из {value.maximumPlayers}</strong></span></div>
+            <div><span aria-hidden>{freeSeats > 0 ? "✨" : "⏳"}</span><span><small>Запись</small><strong>{freeSeats > 0 ? `Свободно мест: ${freeSeats}` : value.canJoin ? "Лист ожидания" : "Мест нет"}</strong></span></div>
+          </div>
+          <div className="seat-meter" role="progressbar" aria-label="Занятые места" aria-valuemin={0} aria-valuemax={value.maximumPlayers} aria-valuenow={value.gathering.occupiedSeats}><span style={{ width: `${occupiedPercent}%` }} /></div>
+          <p className="capacity-caption">Минимум {value.minimumPlayers} · оптимально {value.desiredPlayers} · максимум {value.maximumPlayers}</p>
+          {organizer && <p className="gathering-organizer"><span className="muted">Организатор</span> <ContactLink url={organizer.contactUrl}>{organizer.name}</ContactLink></p>}
+          <p className="gathering-rules">{value.canTeachRules ? "📖 " : "🎯 "}{value.gathering.rulesText}</p>
+        </div>
+      </div>
+      {value.gathering.expansions.length > 0 && <div className="gathering-expansions"><strong>Дополнения</strong><div className="tag-list">{value.gathering.expansions.map(name => <span className="tag" key={name}>{name}</span>)}</div></div>}
+      {value.gathering.description && <section className="gathering-description"><h2>От организатора</h2><div className="gathering-description-scroll">{value.gathering.description}</div></section>}
+      {value.waitlistPosition && <Notice kind="warning">Вы в листе ожидания, позиция {value.waitlistPosition}.</Notice>}
+    </Card>
     {value.publicationStatus === "Failed" && <Notice kind="danger"><p>Не удалось опубликовать объявление в Telegram. Сам сбор сохранён.</p>{value.canRetryPublication && <button disabled={busy} onClick={() => action("publication/retry")}>Повторить публикацию</button>}</Notice>}
-    <Card><h2>Организатор</h2>{value.confirmedParticipants.filter(p => p.isOrganizer).map((p, i) => <p key={`${p.name}-${i}`}><ContactLink url={p.contactUrl}>{p.name}</ContactLink></p>)}<h2>Участники</h2>{value.confirmedParticipants.some(p => !p.isOrganizer) || value.guestParticipants.length ? <ul className="participant-roster">{value.confirmedParticipants.filter(p => !p.isOrganizer).map((p, i) => <li key={`${p.name}-${i}`}><ContactLink url={p.contactUrl}>{p.name}</ContactLink></li>)}{value.guestParticipants.map(guest => <li key={guest.id}>{editingGuestId === guest.id ? <div className="inline-form"><input value={editingGuestName} maxLength={80} onChange={event => setEditingGuestName(event.target.value)} /><button disabled={busy || !editingGuestName.trim()} onClick={() => guestAction("PUT", guest.id, editingGuestName)}>Сохранить</button><button onClick={() => setEditingGuestId(undefined)}>Отмена</button></div> : <div className="row"><span>{guest.displayName} <Badge tone="neutral">Гость</Badge></span>{value.canManageGuests && <span className="guest-actions"><button onClick={() => { setEditingGuestId(guest.id); setEditingGuestName(guest.displayName); }}>Изменить</button><button className="danger ghost" disabled={busy} onClick={async () => { if (await telegram.confirm(`Удалить гостя «${guest.displayName}»?`)) await guestAction("DELETE", guest.id); }}>Удалить</button></span>}</div>}</li>)}</ul> : <p className="muted">Пока никто не присоединился.</p>}{value.canManageGuests && <div className="inline-form guest-form"><input value={guestName} maxLength={80} placeholder="Имя или описание гостя" onChange={event => setGuestName(event.target.value)} /><button disabled={busy || !guestName.trim()} onClick={() => guestAction("POST", undefined, guestName)}>Добавить гостя</button></div>}{value.waitlistedParticipants.length > 0 && <><h2>Лист ожидания</h2><ol>{value.waitlistedParticipants.map(p => <li key={`${p.position}-${p.name}`}><ContactLink url={p.contactUrl}>{p.name}</ContactLink></li>)}</ol></>}</Card>
+    {value.hasStarted && <Notice>Время сбора наступило. Запись закрыта автоматически; изменить время или открыть запись снова нельзя.</Notice>}
+    {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Редактировать регистрацию</button>}</Notice>}
+    <div className="action-bar gathering-detail-actions">{value.canJoin && <button className="primary" disabled={busy} onClick={() => action("join")}>{freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}{value.canLeave && <button className="danger" disabled={busy} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button>}{value.canEdit && <button onClick={() => setEditing(true)}>Изменить сбор</button>}{value.canClose && <button disabled={busy} onClick={() => action("close")}>Закрыть запись</button>}{value.canReopen && <button disabled={busy} onClick={() => action("reopen")}>Открыть запись</button>}{value.canCancel && <button className="danger ghost" onClick={() => setCancelling(true)}>Отменить сбор</button>}</div>
     {cancelling && <Card className="form-grid"><h2>Отмена сбора</h2><Field label="Причина" hint="Необязательно; участники увидят её в уведомлении"><textarea maxLength={500} value={cancellationReason} onChange={event => setCancellationReason(event.target.value)} /></Field><div className="row"><button onClick={() => setCancelling(false)}>Оставить сбор</button><button className="danger" disabled={busy} onClick={async () => { if (await telegram.confirm("Отменить сбор? Возобновить его будет нельзя.")) await action("cancel", cancellationReason.trim() || undefined); }}>{busy ? "Отменяем…" : "Подтвердить отмену"}</button></div></Card>}
-    {value.hasStarted && <Notice>Время сбора наступило. Запись закрыта автоматически; изменить время или открыть запись снова нельзя.</Notice>}{error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Редактировать регистрацию</button>}</Notice>}<div className="action-bar">{value.canJoin && <button className="primary" disabled={busy} onClick={() => action("join")}>Присоединиться</button>}{value.canLeave && <button className="danger" disabled={busy} onClick={() => action("leave")}>Отказаться от места</button>}{value.canEdit && <button className="primary" onClick={() => setEditing(true)}>Изменить сбор</button>}{value.canChangeLifecycle && <>{value.status !== "Closed" && <button disabled={busy} onClick={() => action("close")}>Закрыть запись</button>}{value.status === "Closed" && <button onClick={() => action("reopen")}>Открыть запись</button>}<button className="danger" onClick={() => setCancelling(true)}>Отменить сбор</button></>}</div>
+    <Card className="gathering-players">
+      <div className="row gathering-section-heading"><h2>Кто играет</h2><Badge tone="neutral">{value.gathering.occupiedSeats} / {value.maximumPlayers}</Badge></div>
+      <ul className="participant-roster gathering-roster">
+        {value.confirmedParticipants.map((participant, index) => <li key={`${participant.name}-${index}`}><span className="participant-marker" aria-hidden>{participant.isOrganizer ? "★" : index + 1}</span><span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink>{participant.isOrganizer && <small>Организатор</small>}</span></li>)}
+        {value.guestParticipants.map(guest => <li key={guest.id}>{editingGuestId === guest.id ? <div className="inline-form"><input value={editingGuestName} maxLength={80} onChange={event => setEditingGuestName(event.target.value)} /><button disabled={busy || !editingGuestName.trim()} onClick={() => guestAction("PUT", guest.id, editingGuestName)}>Сохранить</button><button onClick={() => setEditingGuestId(undefined)}>Отмена</button></div> : <div className="row guest-row"><span className="participant-marker" aria-hidden>●</span><span className="guest-name">{guest.displayName} <Badge tone="neutral">Гость</Badge></span>{value.canManageGuests && <span className="guest-actions"><button onClick={() => { setEditingGuestId(guest.id); setEditingGuestName(guest.displayName); }}>Изменить</button><button className="danger ghost" disabled={busy} onClick={async () => { if (await telegram.confirm(`Удалить гостя «${guest.displayName}»?`)) await guestAction("DELETE", guest.id); }}>Удалить</button></span>}</div>}</li>)}
+      </ul>
+      {value.canManageGuests && <div className="inline-form guest-form"><input value={guestName} maxLength={80} placeholder="Имя или описание гостя" onChange={event => setGuestName(event.target.value)} /><button disabled={busy || !guestName.trim()} onClick={() => guestAction("POST", undefined, guestName)}>Добавить гостя</button></div>}
+      {value.waitlistedParticipants.length > 0 && <section className="gathering-waitlist"><h3>Лист ожидания <span>{value.waitlistedParticipants.length}</span></h3><ol>{value.waitlistedParticipants.map(participant => <li key={`${participant.position}-${participant.name}`}><span>{participant.position}</span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink></li>)}</ol></section>}
+    </Card>
+    {value.gathering.bggId && <div className="gathering-secondary-actions"><GatheringCollectionAction bggId={value.gathering.bggId} open={openCollection} /></div>}
+    <GameTaxonomy className="gathering-taxonomy" typeNames={typeNames} categoryNames={value.gathering.categoryNames} mechanicNames={value.gathering.mechanicNames} />
   </Page>;
 }
 

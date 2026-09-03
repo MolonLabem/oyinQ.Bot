@@ -2,9 +2,9 @@ import { type ReactNode, useEffect, useState } from "react";
 import { successEventName } from "../telegram/webApp";
 import { telegram } from "../telegram/webApp";
 
-export function Page({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
+export function Page({ title, titleHref, subtitle, actions, children }: { title: string; titleHref?: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [title]);
-  return <main className="page"><header className="page-header"><div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{actions}</header>{children}</main>;
+  return <main className="page"><header className="page-header"><div><h1>{titleHref ? <a className="page-title-link" href={titleHref} target="_blank" rel="noreferrer">{title}</a> : title}</h1>{subtitle && <p>{subtitle}</p>}</div>{actions}</header>{children}</main>;
 }
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <section className={`card ${className}`}>{children}</section>; }
 export function Loading({ label = "Загрузка…" }: { label?: string }) { return <div className="stack" aria-live="polite"><div className="skeleton" /><div className="skeleton short" /><span className="muted">{label}</span></div>; }

@@ -6,6 +6,7 @@ import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { buildCatalogQuery, toggleValue } from "../../app/catalogQuery";
 import { collectionMissingMessage } from "../../app/collectionNavigation";
+import { GameTaxonomy } from "../../components/GameTaxonomy";
 
 export function GamesPage({ community, initialGameId, onInitialConsumed, backToGathering }: { community: Community; initialGameId?: number; onInitialConsumed?: () => void; backToGathering?: () => void }) {
   const [query, setQuery] = useState(""); const [players, setPlayers] = useState<number>();
@@ -45,9 +46,7 @@ function GameDetail({ community, bggId, back }: { community: Community; bggId: n
     <div className="game-detail-hero"><Cover src={game.imageUrl} name={game.name} /><div><div className="detail-facts">{game.minPlayers && game.maxPlayers && <span>👥 {game.minPlayers}–{game.maxPlayers}</span>}{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{time && <span>⏱ {time}</span>}{game.minAge != null && <span>{game.minAge}+</span>}</div><a className="button primary-link" href={game.bggUrl} target="_blank" rel="noreferrer">Открыть на BGG</a></div></div>
     <Card className="detail-section"><h2>Доступность</h2>{game.availability.isInBaseCollection && <Notice kind="success">✓ {community.mode === "Camp" ? "Есть в коллекции клуба" : "Есть в коллекции клуба"}</Notice>}{game.availability.providers.length > 0 && <><h3>Кто может привезти</h3><ul className="provider-list">{game.availability.providers.map(provider => <li key={provider.participantId}><span>{provider.commitment === "Bringing" ? "✅ " : ""}<ContactLink url={provider.contactUrl}>{provider.displayName}</ContactLink>{provider.city ? ` (${provider.city})` : ""}</span><span>{provider.commitment === "Bringing" ? "точно привезёт" : "может привезти"}</span></li>)}</ul></>}{!game.availability.isInBaseCollection && !game.availability.hasCommittedProvider && game.availability.providers.length > 1 && <Notice kind="warning">Нужно решить, кто привезёт игру.</Notice>}</Card>
     {game.description && <Card className="detail-section"><h2>Об игре</h2>{game.description.split("\n").map((text, i) => text ? <p key={i}>{text}</p> : null)}</Card>}
-    <Card className="detail-section"><h2>Тип</h2><div className="tag-list">{game.typeNames.map(name => <Badge tone="accent" key={name}>{name}</Badge>)}</div></Card>
-    {game.categories.length > 0 && <Card className="detail-section"><h2>Категории</h2><div className="tag-list">{game.categories.map(item => <span className="tag" key={item.bggId}>{item.name}</span>)}</div></Card>}
-    {game.mechanics.length > 0 && <Card className="detail-section"><h2>Механики</h2><div className="tag-list">{game.mechanics.map(item => <span className="tag" key={item.bggId}>{item.name}</span>)}</div></Card>}
+    <GameTaxonomy typeNames={game.typeNames} categoryNames={game.categories.map(item => item.name)} mechanicNames={game.mechanics.map(item => item.name)} />
     {game.expansions.length > 0 && <Card className="detail-section"><h2>Дополнения в коллекции</h2><ul>{game.expansions.map(item => <li key={item.bggId}>{item.name}</li>)}</ul></Card>}
   </Page>;
 }

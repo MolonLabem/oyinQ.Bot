@@ -86,7 +86,7 @@ public sealed class CommunityDeletionService(
         var now = timeProvider.GetUtcNow();
         var future = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == community.Key && x.StartsAtUtc > now
-                && GatheringLifecycle.ActiveStatuses.Contains(x.Status))
+                && GatheringLifecycle.ScheduledStatuses.Contains(x.Status))
             .Include(x => x.Participants)
             .ToArrayAsync(cancellationToken);
         foreach (var gathering in future)

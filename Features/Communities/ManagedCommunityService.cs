@@ -139,7 +139,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var now = timeProvider.GetUtcNow();
         var future = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
-                && GatheringLifecycle.ActiveStatuses.Contains(x.Status))
+                && GatheringLifecycle.ScheduledStatuses.Contains(x.Status))
             .Include(x => x.Participants).ToArrayAsync(cancellationToken);
         if (status == CampStatus.Closed) CampRules.EnsureCanClose(future.Length);
         if (status == CampStatus.Cancelled)

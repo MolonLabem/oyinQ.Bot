@@ -26,12 +26,12 @@ public sealed class GatheringGuestTests
         var gathering = Gathering(maximum: 4, minimum: 4);
         gathering.Participants.Add(Membership(2, GatheringParticipationStatus.Confirmed));
         gathering.Guests.Add(new GameGatheringGuest { DisplayName = "Гость 1" });
-        GatheringCapacity.RecalculateStatus(gathering);
+        GatheringCapacity.SynchronizeScheduledStatus(gathering);
         Assert.Equal(3, GatheringCapacity.OccupiedSeats(gathering));
         Assert.Equal(GatheringStatus.Recruiting, gathering.Status);
 
         gathering.Guests.Add(new GameGatheringGuest { DisplayName = "Гость 2" });
-        GatheringCapacity.RecalculateStatus(gathering);
+        GatheringCapacity.SynchronizeScheduledStatus(gathering);
         Assert.Equal(4, GatheringCapacity.OccupiedSeats(gathering));
         Assert.Equal(GatheringStatus.Full, gathering.Status);
     }

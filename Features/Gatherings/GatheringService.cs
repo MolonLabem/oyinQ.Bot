@@ -167,19 +167,8 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
     private async Task<GameGathering> LockGatheringAsync(
         Guid publicId,
         string communityKey,
-        CancellationToken cancellationToken)
-    {
-        var query = dbContext.Database.IsRelational()
-            ? dbContext.GameGatherings.FromSqlInterpolated(
-                $"SELECT * FROM \"GameGatherings\" WHERE \"PublicId\" = {publicId} AND \"CommunityKey\" = {communityKey} FOR UPDATE")
-            : dbContext.GameGatherings.Where(x => x.PublicId == publicId && x.CommunityKey == communityKey);
-        return await query
-            .Include(value => value.OrganizerParticipant)
-            .Include(value => value.Participants).ThenInclude(value => value.Participant)
-            .Include(value => value.Guests)
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Сбор не найден в этом сообществе.");
-    }
+        CancellationToken cancellationToken) =>
+        await GatheringWriteStore.LockAsync(dbContext, publicId, communityKey, cancellationToken);
 
     private async Task<Participant> RequireContextParticipantAsync(
         GameGathering gathering,
@@ -216,7 +205,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
 
     private static void UpdateStatus(GameGathering gathering, DateTimeOffset now)
     {
-        GatheringCapacity.RecalculateStatus(gathering);
+        GatheringCapacity.SynchronizeScheduledStatus(gathering);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
     }

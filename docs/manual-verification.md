@@ -28,15 +28,16 @@ Run against an approved staging PostgreSQL database and real Telegram groups.
 21. Verify users without a public username remain readable non-links in provider and gathering participant lists.
 22. Create a gathering with an empty description; confirm taxonomy is shown separately and not copied into description.
 23. Fill a gathering, create an ordered waitlist, leave a confirmed place, and verify exactly one promotion plus best-effort DM.
-24. Close/reopen/edit a gathering; reject a maximum below confirmed count and unsafe expansion selection.
+24. Close/reopen/edit a gathering; reject a maximum below confirmed count and unsafe expansion selection. Increase capacity with a waitlist and verify ordered promotions happen before a newcomer or guest can take the seats.
 25. Manually cancel a gathering and simulate Telegram publication failure; verify the row remains in History → Отменены with retryable publication state.
 26. Let an underfilled gathering pass its start; verify the distinct hard-delete cleanup path, not cancellation history.
-26. Inspect the group announcement: organizer/participants are escaped direct mentions and the same message is edited in place.
-27. Test light/dark themes, narrow safe-area layout, responsive desktop layout, and fullscreen enter/exit labels on supported Telegram clients.
-28. Restart once in webhook mode and once in Development long-polling mode; confirm structured startup logs report five private commands, one group command, and the private Mini App menu URL without exposing the token.
-29. In a managed group type `/`; verify only `/oyinq — Открыть OyinQ` is suggested. Run it and verify the response names the correct Club/Camp and opens the contextual flow through the bot DM.
-30. In an unmanaged group run `/oyinq` as a normal user and as a global administrator. Verify only the administrator sees an admin entry action and no community is created.
-31. In a private chat verify `/start`, `/menu`, `/help`, `/privacy`, and authorization-checked `/admin`; verify `/privacy` opens the production `/privacy` URL in a normal browser without Telegram `initData`.
-32. Create one new Club and one new Camp through peer selection. Verify each group gets exactly one onboarding notice. Simulate send failure and verify creation remains committed and the administrator sees the warning. Restart and verify no notice repeats.
-33. Confirm managed groups have no persistent reply keyboard or permanent Open button. Verify native peer-selector fallback keyboards remain private and are removed after use.
-34. Complete the manual Main Mini App, previews, privacy URL, description picture, and splash checklist in `docs/botfather-setup.md`; test the bot profile Open App action in current Telegram mobile and desktop clients.
+27. Switch rapidly between Upcoming, History, Played, and Cancelled; verify each request returns only its canonical scope, including while an older cached Mini App or backend instance is still serving the compatible legacy parameters.
+28. Inspect the group announcement: organizer/participants are escaped direct mentions and the same message is edited in place.
+29. Test light/dark themes, narrow safe-area layout, responsive desktop layout, and fullscreen enter/exit labels on supported Telegram clients.
+30. Restart once in webhook mode and once in Development long-polling mode; confirm structured startup logs report five private commands, one group command, and the private Mini App menu URL without exposing the token.
+31. In a managed group type `/`; verify only `/oyinq — Открыть OyinQ` is suggested. Run it and verify the response names the correct Club/Camp and opens the contextual flow through the bot DM.
+32. In an unmanaged group run `/oyinq` as a normal user and as a global administrator. Verify only the administrator sees an admin entry action and no community is created.
+33. In a private chat verify `/start`, `/menu`, `/help`, `/privacy`, and authorization-checked `/admin`; verify `/privacy` opens the production `/privacy` URL in a normal browser without Telegram `initData`.
+34. Create one new Club and one new Camp through peer selection. Verify each group gets exactly one onboarding notice. Simulate send failure and verify creation remains committed and the administrator sees the warning. Restart and verify no notice repeats.
+35. Confirm managed groups have no persistent reply keyboard or permanent Open button. Verify native peer-selector fallback keyboards remain private and are removed after use.
+36. Complete the manual Main Mini App, previews, privacy URL, description picture, and splash checklist in `docs/botfather-setup.md`; test the bot profile Open App action in current Telegram mobile and desktop clients.

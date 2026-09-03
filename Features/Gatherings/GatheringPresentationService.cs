@@ -37,6 +37,9 @@ public sealed record GatheringDetailPresentation(
     IReadOnlyList<string> Expansions,
     string StatusText,
     string? TypeName,
+    IReadOnlyList<string> TypeNames,
+    IReadOnlyList<string> CategoryNames,
+    IReadOnlyList<string> MechanicNames,
     long? BggId,
     string? BggUrl);
 
@@ -89,6 +92,9 @@ public sealed class GatheringPresentationService
             gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray(),
             StatusText(gathering.Status),
             metadata.TypeNames.FirstOrDefault(),
+            metadata.TypeNames,
+            metadata.CategoryNames,
+            metadata.MechanicNames,
             game.BggId,
             BggGameUrl.FromId(game.BggId));
     }

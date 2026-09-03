@@ -21,13 +21,25 @@ public static class GatheringCapacity
         return promoted;
     }
 
-    public static void RecalculateStatus(GameGathering gathering, bool preserveClosed = true)
+    public static IReadOnlyList<GameGatheringParticipant> PromoteWaitlistedToCapacity(
+        GameGathering gathering)
     {
-        if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled
-            || preserveClosed && gathering.Status == GatheringStatus.Closed)
-            return;
+        var promoted = new List<GameGatheringParticipant>();
+        while (HasAvailableSeat(gathering) && PromoteFirstWaitlisted(gathering) is { } participant)
+            promoted.Add(participant);
+        return promoted;
+    }
+
+    public static GatheringStatus CalculateOpenStatus(GameGathering gathering)
+    {
         var occupied = OccupiedSeats(gathering);
-        gathering.Status = occupied >= gathering.MaximumPlayers ? GatheringStatus.Full
+        return occupied >= gathering.MaximumPlayers ? GatheringStatus.Full
             : occupied >= gathering.MinimumPlayers ? GatheringStatus.Ready : GatheringStatus.Recruiting;
+    }
+
+    public static void SynchronizeScheduledStatus(GameGathering gathering)
+    {
+        if (gathering.Status == GatheringStatus.Closed || GatheringLifecycle.IsTerminal(gathering.Status)) return;
+        gathering.Status = CalculateOpenStatus(gathering);
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
@@ -87,7 +88,8 @@ public sealed class GatheringManagementCampDateTests
         public static async Task<Fixture> CreateAsync()
         {
             var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options);
             var community = new OyinQCommunity
             {
                 Key = "camp", Name = "Кэмп", TelegramChatId = -1001, Mode = BotMode.Camp,

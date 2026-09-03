@@ -11,13 +11,19 @@ public enum GatheringLifecycleOutcome
 
 public static class GatheringLifecycle
 {
-    internal static readonly GatheringStatus[] ActiveStatuses =
+    internal static readonly GatheringStatus[] ScheduledStatuses =
         [GatheringStatus.Recruiting, GatheringStatus.Ready, GatheringStatus.Full, GatheringStatus.Closed];
 
-    public static bool IsActive(GatheringStatus status) => ActiveStatuses.Contains(status);
+    public static bool IsScheduled(GatheringStatus status) => ScheduledStatuses.Contains(status);
+
+    public static bool IsTerminal(GatheringStatus status) =>
+        status is GatheringStatus.Completed or GatheringStatus.Cancelled;
 
     public static bool IsUpcoming(GameGathering gathering, DateTimeOffset now) =>
-        gathering.StartsAtUtc > now.ToUniversalTime() && IsActive(gathering.Status);
+        gathering.StartsAtUtc > now.ToUniversalTime() && IsScheduled(gathering.Status);
+
+    public static bool IsDue(GameGathering gathering, DateTimeOffset now) =>
+        gathering.StartsAtUtc <= now.ToUniversalTime() && IsScheduled(gathering.Status);
 
     public static bool IsJoinOpen(GameGathering gathering, DateTimeOffset now) =>
         IsUpcoming(gathering, now) && gathering.Status != GatheringStatus.Closed;
@@ -26,7 +32,7 @@ public static class GatheringLifecycle
     {
         ArgumentNullException.ThrowIfNull(gathering);
         now = now.ToUniversalTime();
-        if (gathering.StartsAtUtc > now || !IsActive(gathering.Status))
+        if (!IsDue(gathering, now))
             return GatheringLifecycleOutcome.None;
 
         var occupiedSeats = GatheringCapacity.OccupiedSeats(gathering);

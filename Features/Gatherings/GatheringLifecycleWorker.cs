@@ -36,7 +36,7 @@ public sealed class GatheringLifecycleWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = timeProvider.GetUtcNow();
-        var activeStatusValues = GatheringLifecycle.ActiveStatuses.Select(x => (int)x).ToArray();
+        var scheduledStatusValues = GatheringLifecycle.ScheduledStatuses.Select(x => (int)x).ToArray();
         Guid? completedPublicId = null;
         UnderfilledGatheringNotification? underfilled = null;
 
@@ -46,7 +46,7 @@ public sealed class GatheringLifecycleWorker(
                 .FromSqlInterpolated($$"""
                     SELECT * FROM "GameGatherings"
                     WHERE "StartsAtUtc" <= {{now}}
-                      AND "Status" = ANY ({{activeStatusValues}})
+                      AND "Status" = ANY ({{scheduledStatusValues}})
                     ORDER BY "StartsAtUtc", "Id"
                     FOR UPDATE SKIP LOCKED LIMIT 1
                     """)

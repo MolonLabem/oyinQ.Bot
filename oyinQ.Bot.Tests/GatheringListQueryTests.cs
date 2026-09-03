@@ -10,9 +10,9 @@ public sealed class GatheringListQueryTests
     private static readonly DateTimeOffset Now = new(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void Upcoming_ContainsOnlyFutureActiveStatusesAndSortsNearestFirst()
+    public void Upcoming_ContainsOnlyFutureScheduledStatusesAndSortsNearestFirst()
     {
-        var values = Apply(GatheringListView.Upcoming, GatheringHistoryFilter.All);
+        var values = Apply(GatheringListScope.Upcoming);
 
         Assert.Equal([2L, 1L], values.Select(x => x.Id));
         Assert.All(values, x => Assert.True(x.StartsAtUtc > Now));
@@ -20,9 +20,9 @@ public sealed class GatheringListQueryTests
     }
 
     [Fact]
-    public void History_ContainsTerminalAndDueActiveStatusesAndSortsNewestFirst()
+    public void History_ContainsTerminalAndDueScheduledStatusesAndSortsNewestFirst()
     {
-        var values = Apply(GatheringListView.History, GatheringHistoryFilter.All);
+        var values = Apply(GatheringListScope.History);
 
         Assert.Equal([6L, 5L, 4L, 3L], values.Select(x => x.Id));
     }
@@ -30,20 +30,20 @@ public sealed class GatheringListQueryTests
     [Fact]
     public void FutureActiveGathering_IsUpcomingAndNotHistory()
     {
-        var upcoming = Apply(GatheringListView.Upcoming, GatheringHistoryFilter.All);
-        var history = Apply(GatheringListView.History, GatheringHistoryFilter.All);
+        var upcoming = Apply(GatheringListScope.Upcoming);
+        var history = Apply(GatheringListScope.History);
 
         Assert.Contains(upcoming, x => x.Id == 1);
         Assert.DoesNotContain(history, x => x.Id == 1);
     }
 
     [Theory]
-    [InlineData(GatheringHistoryFilter.Completed, GatheringStatus.Completed)]
-    [InlineData(GatheringHistoryFilter.Cancelled, GatheringStatus.Cancelled)]
+    [InlineData(GatheringListScope.Completed, GatheringStatus.Completed)]
+    [InlineData(GatheringListScope.Cancelled, GatheringStatus.Cancelled)]
     public void HistoryFilter_ReturnsOnlyRequestedStatus(
-        GatheringHistoryFilter filter, GatheringStatus expected)
+        GatheringListScope scope, GatheringStatus expected)
     {
-        var values = Apply(GatheringListView.History, filter);
+        var values = Apply(scope);
 
         Assert.NotEmpty(values);
         Assert.All(values, x => Assert.Equal(expected, x.Status));
@@ -52,8 +52,8 @@ public sealed class GatheringListQueryTests
     [Fact]
     public void CancelledFutureGathering_IsHistoryAndNeverUpcoming()
     {
-        var history = Apply(GatheringListView.History, GatheringHistoryFilter.Cancelled);
-        var upcoming = Apply(GatheringListView.Upcoming, GatheringHistoryFilter.All);
+        var history = Apply(GatheringListScope.Cancelled);
+        var upcoming = Apply(GatheringListScope.Upcoming);
 
         Assert.Contains(history, x => x.Id == 6);
         Assert.DoesNotContain(upcoming, x => x.Id == 6);
@@ -62,7 +62,7 @@ public sealed class GatheringListQueryTests
     [Fact]
     public void PagingAfterFilteringPreservesFilterAndDeterministicOrder()
     {
-        var values = Apply(GatheringListView.History, GatheringHistoryFilter.Cancelled)
+        var values = Apply(GatheringListScope.Cancelled)
             .Skip(1).Take(1).ToArray();
 
         Assert.Equal([4L], values.Select(x => x.Id));
@@ -76,7 +76,7 @@ public sealed class GatheringListQueryTests
             .UseNpgsql("Host=localhost;Database=oyinq_translation_test;Username=test;Password=test").Options);
 
         var sql = GatheringListQuery.Apply(dbContext.GameGatherings.AsNoTracking(),
-                GatheringListView.History, GatheringHistoryFilter.Cancelled, Now)
+                GatheringListScope.Cancelled, Now)
             .Skip(20).Take(21).ToQueryString();
 
         Assert.Contains("WHERE g.\"Status\" = 5", sql, StringComparison.Ordinal);
@@ -92,7 +92,7 @@ public sealed class GatheringListQueryTests
             .UseNpgsql("Host=localhost;Database=oyinq_translation_test;Username=test;Password=test").Options);
 
         var sql = GatheringListQuery.Apply(dbContext.GameGatherings.AsNoTracking(),
-            GatheringListView.Upcoming, GatheringHistoryFilter.All, Now).ToQueryString();
+            GatheringListScope.Upcoming, Now).ToQueryString();
 
         Assert.Contains("Status", sql, StringComparison.Ordinal);
         Assert.Contains("StartsAtUtc", sql, StringComparison.Ordinal);
@@ -107,20 +107,52 @@ public sealed class GatheringListQueryTests
     {
         var item = Item(20, status, Now);
 
-        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.Upcoming, GatheringHistoryFilter.All, Now));
-        Assert.Equal([item], GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.History, GatheringHistoryFilter.All, Now));
-        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.History, GatheringHistoryFilter.Completed, Now));
-        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListView.History, GatheringHistoryFilter.Cancelled, Now));
+        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListScope.Upcoming, Now));
+        Assert.Equal([item], GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListScope.History, Now));
+        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListScope.Completed, Now));
+        Assert.Empty(GatheringListQuery.Apply(new[] { item }.AsQueryable(), GatheringListScope.Cancelled, Now));
     }
 
     [Theory]
-    [InlineData("unknown", null)]
-    [InlineData("upcoming", "completed")]
-    [InlineData("history", "failed")]
-    public void UnsupportedViewOrFilter_IsRejected(string view, string? status) =>
-        Assert.False(GatheringListQuery.TryParse(view, status, out _, out _));
+    [InlineData("unknown", null, null)]
+    [InlineData("upcoming", "history", null)]
+    [InlineData("completed", "history", "cancelled")]
+    [InlineData(null, "upcoming", "completed")]
+    [InlineData(null, "history", "failed")]
+    public void UnsupportedOrAmbiguousScope_IsRejected(string? scope, string? view, string? status) =>
+        Assert.False(GatheringListQuery.TryParse(scope, view, status, out _));
 
-    private static GameGathering[] Apply(GatheringListView view, GatheringHistoryFilter filter)
+    [Theory]
+    [InlineData("upcoming", GatheringListScope.Upcoming)]
+    [InlineData("history", GatheringListScope.History)]
+    [InlineData("completed", GatheringListScope.Completed)]
+    [InlineData("cancelled", GatheringListScope.Cancelled)]
+    public void CanonicalScope_ParsesWithoutSecondaryState(string scope, GatheringListScope expected)
+    {
+        Assert.True(GatheringListQuery.TryParse(scope, null, null, out var parsed));
+        Assert.Equal(expected, parsed);
+    }
+
+    [Fact]
+    public void LegacyViewAndStatus_RemainCompatibleDuringRollout()
+    {
+        Assert.True(GatheringListQuery.TryParse(null, "history", "completed", out var parsed));
+        Assert.Equal(GatheringListScope.Completed, parsed);
+    }
+
+    [Theory]
+    [InlineData("upcoming", "upcoming", null, GatheringListScope.Upcoming)]
+    [InlineData("history", "history", null, GatheringListScope.History)]
+    [InlineData("completed", "history", "completed", GatheringListScope.Completed)]
+    [InlineData("cancelled", "history", "cancelled", GatheringListScope.Cancelled)]
+    public void EquivalentCanonicalAndLegacyParameters_AreRolloutSafe(string scope, string view,
+        string? status, GatheringListScope expected)
+    {
+        Assert.True(GatheringListQuery.TryParse(scope, view, status, out var parsed));
+        Assert.Equal(expected, parsed);
+    }
+
+    private static GameGathering[] Apply(GatheringListScope scope)
     {
         var source = new[]
         {
@@ -131,7 +163,7 @@ public sealed class GatheringListQueryTests
             Item(5, GatheringStatus.Recruiting, Now),
             Item(6, GatheringStatus.Cancelled, Now.AddHours(3))
         };
-        return GatheringListQuery.Apply(source.AsQueryable(), view, filter, Now).ToArray();
+        return GatheringListQuery.Apply(source.AsQueryable(), scope, Now).ToArray();
     }
 
     private static GameGathering Item(long id, GatheringStatus status, DateTimeOffset startsAt) =>
