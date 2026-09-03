@@ -145,8 +145,8 @@ function GatheringDetails({ community, id, onBack, onCancelled, editRegistration
       {value.canManageGuests && <div className="inline-form guest-form"><input value={guestName} maxLength={80} placeholder="Имя или описание гостя" onChange={event => setGuestName(event.target.value)} /><button disabled={busy || !guestName.trim()} onClick={() => guestAction("POST", undefined, guestName)}>Добавить гостя</button></div>}
       {value.waitlistedParticipants.length > 0 && <section className="gathering-waitlist"><h3>Лист ожидания <span>{value.waitlistedParticipants.length}</span></h3><ol>{value.waitlistedParticipants.map(participant => <li key={`${participant.position}-${participant.name}`}><span>{participant.position}</span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink></li>)}</ol></section>}
     </Card>
-    {value.gathering.bggId && <div className="gathering-secondary-actions"><GatheringCollectionAction bggId={value.gathering.bggId} open={openCollection} /></div>}
     <GameTaxonomy className="gathering-taxonomy" typeNames={typeNames} categoryNames={value.gathering.categoryNames} mechanicNames={value.gathering.mechanicNames} />
+    {value.gathering.bggId && <div className="gathering-secondary-actions"><GatheringCollectionAction bggId={value.gathering.bggId} open={openCollection} /></div>}
   </Page>;
 }
 
