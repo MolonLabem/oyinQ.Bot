@@ -40,3 +40,12 @@ export function buildGatheringListQuery(communityKey: string, state: GatheringLi
   }
   return query.toString();
 }
+
+export function gatheringListResponseMatches(
+  state: GatheringListState,
+  response: { view: GatheringListView; historyFilter: GatheringHistoryFilter; page: number }
+): boolean {
+  return response.view === state.view
+    && response.historyFilter === (state.view === "history" ? state.historyFilter : "all")
+    && response.page === state.page;
+}

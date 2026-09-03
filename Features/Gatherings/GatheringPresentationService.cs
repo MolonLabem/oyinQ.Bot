@@ -42,7 +42,8 @@ public sealed record GatheringDetailPresentation(
 
 public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
 public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
-    BotMode CommunityMode, string GameName, string LocalDateTime, bool IsOrganizer);
+    BotMode CommunityMode, string GameName, DateTimeOffset StartsAtUtc, string LocalDate,
+    string LocalTime, string LocalDateTime, bool IsOrganizer);
 
 public sealed class GatheringPresentationService
 {
@@ -149,7 +150,11 @@ public sealed class GatheringPresentationService
         long participantId)
     {
         var game = ResolveSnapshot(gathering);
+        var local = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
+            TimeZoneInfo.FindSystemTimeZoneById(community.TimeZoneId));
         return new(gathering.PublicId, community.Key, community.Name, community.Mode, game.Name,
+            gathering.StartsAtUtc, local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            local.ToString("HH:mm", CultureInfo.InvariantCulture),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             gathering.OrganizerParticipantId == participantId);
     }

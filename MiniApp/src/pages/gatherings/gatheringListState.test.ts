@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, type GatheringListState } from "./gatheringListState";
+import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringListResponseMatches, type GatheringListState } from "./gatheringListState";
 
 describe("gathering list state", () => {
   it("keeps the selected history filter in paged requests", () => {
@@ -26,5 +26,19 @@ describe("gathering list state", () => {
     expect(changeGatheringHistoryFilter(state, "cancelled")).toEqual({
       view: "history", historyFilter: "cancelled", page: 1
     });
+  });
+
+  it("rejects a response produced for a different history filter", () => {
+    const state: GatheringListState = { view: "history", historyFilter: "completed", page: 1 };
+
+    expect(gatheringListResponseMatches(state, {
+      view: "history", historyFilter: "completed", page: 1
+    })).toBe(true);
+    expect(gatheringListResponseMatches(state, {
+      view: "history", historyFilter: "all", page: 1
+    })).toBe(false);
+    expect(gatheringListResponseMatches(state, {
+      view: "history", historyFilter: "completed", page: 2
+    })).toBe(false);
   });
 });

@@ -44,6 +44,10 @@ public sealed class ProfileGatheringQueryTests
 
         Assert.Equal(service.BuildDetails(gathering, community).LocalDateTime,
             service.BuildProfileSchedule(gathering, community, 7).LocalDateTime);
+        var schedule = service.BuildProfileSchedule(gathering, community, 7);
+        Assert.Equal("2026-09-12", schedule.LocalDate);
+        Assert.Equal("19:00", schedule.LocalTime);
+        Assert.Equal(gathering.StartsAtUtc, schedule.StartsAtUtc);
     }
 
     private static GameGathering Item(long id, string community, DateTimeOffset starts,

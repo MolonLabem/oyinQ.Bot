@@ -25,7 +25,9 @@ internal sealed record GatheringListPageResponse(
     IReadOnlyCollection<GatheringListItemResponse> Items,
     int Page,
     bool HasPrevious,
-    bool HasNext);
+    bool HasNext,
+    string View,
+    string HistoryFilter);
 
 internal static class GatheringEndpoints
 {
@@ -48,7 +50,11 @@ internal static class GatheringEndpoints
 
     private const int GatheringPageSize = 20;
 
-    private static async Task<IResult> ListAsync(HttpRequest request, string community, string? view, string? status, int? page,
+    private static async Task<IResult> ListAsync(HttpRequest request,
+        [FromQuery(Name = "community")] string community,
+        [FromQuery(Name = "view")] string? view,
+        [FromQuery(Name = "status")] string? status,
+        [FromQuery(Name = "page")] int? page,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
         TimeProvider timeProvider,
@@ -73,7 +79,14 @@ internal static class GatheringEndpoints
         var items = values.Take(GatheringPageSize).Select(x => new GatheringListItemResponse(
             presentation.BuildCard(x, access.Community),
             x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)).ToArray();
-        return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
+        return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext,
+            parsedView == GatheringListView.Upcoming ? "upcoming" : "history",
+            parsedFilter switch
+            {
+                GatheringHistoryFilter.Completed => "completed",
+                GatheringHistoryFilter.Cancelled => "cancelled",
+                _ => "all"
+            }));
     }
 
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,

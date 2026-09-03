@@ -6,7 +6,7 @@ import { GameMeta, GamePicker } from "../../components/GamePicker";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { currentLocalMinute, formatLocalDateTimeInput, isFutureLocalDateTime } from "../../app/format";
-import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, initialGatheringListState, type GatheringHistoryFilter, type GatheringListState, type GatheringListView } from "./gatheringListState";
+import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringListResponseMatches, initialGatheringListState, type GatheringHistoryFilter, type GatheringListState, type GatheringListView } from "./gatheringListState";
 import { normalizePlayerCountRange } from "./playerCountRange";
 import { gatheringDateTimeBounds, isWithinCampDateRange, revalidateGatheringStart } from "./gatheringDateRange";
 import { GatheringBggLink, GatheringCollectionAction, GatheringTypeTag } from "./GatheringGameMetadata";
@@ -25,12 +25,18 @@ export function GatheringsPage({ community, bggAvailable, initialGatheringId, on
 
 function GatheringList({ community, listState, setListState, open, create }: { community: Community; listState: GatheringListState; setListState: (state: GatheringListState) => void; open: (id: string) => void; create: () => void }) {
   const { view, historyFilter, page } = listState;
-  const state = useAsync(() => api<GatheringListPage>(`/gatherings?${buildGatheringListQuery(community.key, listState)}`, { cache: "no-store" }), [community.key, view, historyFilter, page]);
+  const state = useAsync(async () => {
+    const response = await api<GatheringListPage>(`/gatherings?${buildGatheringListQuery(community.key, listState)}`, { cache: "no-store" });
+    if (!gatheringListResponseMatches(listState, response)) {
+      throw new Error("Список сборов устарел. Обновите его ещё раз.");
+    }
+    return response;
+  }, [community.key, view, historyFilter, page]);
   const selectView = (next: GatheringListView) => setListState(changeGatheringView(listState, next));
   const selectHistoryFilter = (next: GatheringHistoryFilter) => setListState(changeGatheringHistoryFilter(listState, next));
   return <Page title="Сборы" subtitle={community.name} actions={<button className="primary" onClick={create}>Создать сбор</button>}>
-    <div className="segmented"><button className={view === "upcoming" ? "active" : ""} onClick={() => selectView("upcoming")}>Предстоящие</button><button className={view === "history" ? "active" : ""} onClick={() => selectView("history")}>История</button></div>
-    {view === "history" && <div className="segmented"><button className={historyFilter === "all" ? "active" : ""} onClick={() => selectHistoryFilter("all")}>Все</button><button className={historyFilter === "completed" ? "active" : ""} onClick={() => selectHistoryFilter("completed")}>Сыграны</button><button className={historyFilter === "cancelled" ? "active" : ""} onClick={() => selectHistoryFilter("cancelled")}>Отменены</button></div>}
+    <div className="segmented" role="tablist" aria-label="Раздел сборов"><button role="tab" aria-selected={view === "upcoming"} className={view === "upcoming" ? "active" : ""} onClick={() => selectView("upcoming")}>Предстоящие</button><button role="tab" aria-selected={view === "history"} className={view === "history" ? "active" : ""} onClick={() => selectView("history")}>История</button></div>
+    {view === "history" && <div className="segmented history-filters" role="tablist" aria-label="Фильтр истории"><button role="tab" aria-selected={historyFilter === "all"} className={historyFilter === "all" ? "active" : ""} onClick={() => selectHistoryFilter("all")}>Все</button><button role="tab" aria-selected={historyFilter === "completed"} className={historyFilter === "completed" ? "active" : ""} onClick={() => selectHistoryFilter("completed")}>Сыграны</button><button role="tab" aria-selected={historyFilter === "cancelled"} className={historyFilter === "cancelled" ? "active" : ""} onClick={() => selectHistoryFilter("cancelled")}>Отменены</button></div>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? view === "upcoming" ? <><Empty>Пока нет запланированных сборов.</Empty><button className="primary" onClick={create}>Создать сбор</button></> : <Empty>{historyFilter === "completed" ? "Сыгранных сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
       <><div className="stack">{state.data.items.map(item => <div className={`gathering-card-shell${item.card.bggUrl ? " has-bgg" : ""}`} key={item.card.publicId}><button className="card gathering-card" onClick={() => open(item.card.publicId)}>
         <Cover src={item.card.imageUrl} name={item.card.gameName} /><div><div className="row"><h2>{item.card.gameName}</h2>{item.isOrganizer && <Badge tone="accent">Вы организатор</Badge>}</div><GatheringTypeTag typeName={item.card.typeName} /><p>{item.card.localDateTime}</p><p>{item.card.occupiedSeats} / {item.card.maximumPlayers} игроков</p><p className="muted">{item.card.organizerName} · организатор</p>{item.card.canTeachRules && <p>Могу объяснить правила</p>}{item.card.description && <p className="gathering-note">«{item.card.description}»</p>}<span className="muted">{item.card.statusText}</span></div>
