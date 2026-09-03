@@ -107,12 +107,15 @@ function GatheringDetails({ community, id, onBack, onCancelled, editRegistration
   const typeNames = value.gathering.typeNames?.length
     ? value.gathering.typeNames
     : value.gathering.typeName ? [value.gathering.typeName] : [];
-  return <Page title={value.gathering.gameName} titleHref={value.gathering.bggUrl} subtitle={value.gathering.localDateTime} actions={<button onClick={onBack}>Назад</button>}>
+  return <Page actions={<button onClick={onBack}>Назад</button>}>
     <Card className="gathering-overview">
+      <header className="gathering-overview-header">
+        <h1>{value.gathering.bggUrl ? <a className="page-title-link" href={value.gathering.bggUrl} target="_blank" rel="noreferrer">{value.gathering.gameName}</a> : value.gathering.gameName}</h1>
+        <div className="gathering-status-row"><Badge tone="accent">{value.gathering.statusText}</Badge><GatheringTypeTag typeName={value.gathering.typeName} /></div>
+      </header>
       <div className="gathering-detail-hero">
         <Cover src={value.gathering.imageUrl} name={value.gathering.gameName} />
         <div className="gathering-summary">
-          <div className="gathering-status-row"><Badge tone="accent">{value.gathering.statusText}</Badge><GatheringTypeTag typeName={value.gathering.typeName} /></div>
           <div className="gathering-key-facts">
             <div><span aria-hidden>📅</span><span><small>Когда</small><strong>{value.gathering.localDateTime}</strong></span></div>
             <div><span aria-hidden>👥</span><span><small>Игроки</small><strong>{value.gathering.occupiedSeats} из {value.maximumPlayers}</strong></span></div>

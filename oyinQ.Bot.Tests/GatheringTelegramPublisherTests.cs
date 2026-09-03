@@ -35,14 +35,14 @@ public sealed class GatheringTelegramPublisherTests
         Assert.DoesNotContain(handler.Methods, method => method.StartsWith("send", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("\"chat_id\":-1001", handler.Bodies.Last());
         Assert.Contains("\"message_id\":777", handler.Bodies.Last());
-        Assert.Contains("https://boardgamegeek.com/boardgame/1", handler.Bodies.Last());
-        Assert.Contains("BGG", handler.Bodies.Last());
-        Assert.Contains("c-1-club", handler.Bodies.Last());
-        Assert.Contains(KeyboardButtons(handler.Bodies.Last()), button => button.Text == "В коллекции");
+        var button = Assert.Single(KeyboardButtons(handler.Bodies.Last()));
+        Assert.Equal("Открыть сбор", button.Text);
+        Assert.DoesNotContain("boardgamegeek.com", handler.Bodies.Last());
+        Assert.DoesNotContain("c-1-club", handler.Bodies.Last());
     }
 
     [Fact]
-    public async Task MissingBggId_DoesNotRenderBrokenButton()
+    public async Task MissingBggId_StillRendersOnlyGatheringButton()
     {
         var handler = new RecordingHandler();
         var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO",
@@ -56,9 +56,9 @@ public sealed class GatheringTelegramPublisherTests
         await publisher.UpdateAsync(gathering,
             new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC"), default);
 
+        var button = Assert.Single(KeyboardButtons(handler.Bodies.Last()));
+        Assert.Equal("Открыть сбор", button.Text);
         Assert.DoesNotContain("boardgamegeek.com", handler.Bodies.Last());
-        Assert.DoesNotContain("\"text\":\"BGG\"", handler.Bodies.Last());
-        Assert.DoesNotContain(KeyboardButtons(handler.Bodies.Last()), button => button.Text == "В коллекции");
     }
 
     private static GameGathering Gathering() => new()
