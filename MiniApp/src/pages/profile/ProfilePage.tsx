@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
-import { Card, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import { Card, Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { ProfileScheduleList, profileScheduleEmptyText } from "./ProfileScheduleList";
@@ -39,5 +39,6 @@ export function ProfilePage({ community, communities, openGathering }: { communi
     <section className="profile-schedule"><h2>Моё расписание</h2>
       {schedule.loading ? <Loading /> : schedule.error ? <ErrorState message={schedule.error} retry={schedule.reload} /> : !schedule.data?.length ? <Empty>{profileScheduleEmptyText}</Empty> : <ProfileScheduleList items={schedule.data} communities={communities} open={openGathering} />}
     </section>
+    <ProductFooter />
   </Page>;
 }

@@ -20,6 +20,12 @@ export function BggAttribution() {
     <img src="https://dm1i7q1ruvbhg.cloudfront.net/assets/powered_by_bgg-9f2993c7fad826d5407c35b5c8117b08d2a6cdf5beb1f0c02d06a7dc7f5cdd7f.png" alt="Powered by BGG" />
   </a>;
 }
+export function ProductFooter() {
+  return <footer className="product-footer">
+    <BggAttribution />
+    <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>Политика конфиденциальности</button>
+  </footer>;
+}
 export function ContactLink({ url, children }: { url?: string; children: ReactNode }) {
   return url ? <a href={url} onClick={event => { event.preventDefault(); telegram.openContact(url); }}>{children}</a>
     : <span title="Telegram не разрешает открыть профиль этого пользователя">{children}</span>;

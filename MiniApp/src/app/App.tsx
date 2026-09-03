@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { Bootstrap, Capabilities, Community } from "../api/types";
 import { Navigation } from "../components/Navigation";
-import { BggAttribution, ErrorState, Loading, Notice, Page } from "../components/Ui";
+import { ErrorState, Loading, Notice, Page } from "../components/Ui";
 import { AdminPage } from "../pages/admin/AdminPage";
 import { CampRegistrationGate, MyGamesPage } from "../pages/camp/MyGamesPage";
 import { GamesPage } from "../pages/games/GamesPage";
@@ -43,7 +43,7 @@ export function App() {
   const backToProfile = profileReturnCommunityKey ? () => { setCommunityKey(profileReturnCommunityKey); setProfileReturnCommunityKey(undefined); setTab("profile"); } : undefined;
   const content = activeTab === "gatherings" ? <GatheringsPage key={community.key} community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} openCollection={openCollection} backFromInitial={backToProfile} /> : activeTab === "games" ? <GamesPage community={community} initialGameId={initialCollectionGameId} onInitialConsumed={() => setInitialCollectionGameId(undefined)} backToGathering={backToGathering} /> : activeTab === "profile" ? <ProfilePage community={community} communities={bootstrap.communities} openGathering={openProfileGathering} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
   const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} canOpenAdminPanel={bootstrap.canOpenAdminPanel}>{content}</CampRegistrationGate> : content;
-  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} />{community.name}<span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}</div></header>{telegram.canFullscreen && <div className="display-tools"><button type="button" className="fullscreen-action" aria-label={fullscreenActionLabel} title={fullscreenActionLabel} aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}><FullscreenIcon fullscreen={fullscreen} /></button></div>}<div className="content">{gatedContent}<BggAttribution /><PrivacyLink /></div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
+  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} /><span className="context-name">{community.name}</span><span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}{telegram.canFullscreen && <button type="button" className="fullscreen-action" aria-label={fullscreenActionLabel} title={fullscreenActionLabel} aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}><FullscreenIcon fullscreen={fullscreen} /></button>}</div></header><div className="content">{gatedContent}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
 }
 
 function FullscreenIcon({ fullscreen }: { fullscreen: boolean }) {
@@ -55,9 +55,5 @@ function FullscreenIcon({ fullscreen }: { fullscreen: boolean }) {
 }
 
 function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {
-  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><CommunityAvatar community={c} /><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}<BggAttribution /><PrivacyLink /></Page>;
-}
-
-function PrivacyLink() {
-  return <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>Политика конфиденциальности</button>;
+  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><CommunityAvatar community={c} /><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}</Page>;
 }
