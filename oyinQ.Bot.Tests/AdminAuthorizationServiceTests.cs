@@ -203,6 +203,23 @@ public sealed class AdminAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task RemovedBotChat_IsNotProbedWhenOpeningAdminPanel()
+    {
+        await using var fixture = CreateFixture();
+        fixture.Db.KnownTelegramChats.Add(new KnownTelegramChat
+        {
+            TelegramChatId = -1001, Title = "Removed", IsBotPresent = false,
+            FirstSeenAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        Assert.False(await fixture.Service.CanOpenAdminPanelAsync(10, default));
+
+        Assert.DoesNotContain(fixture.Telegram.VerificationCalls, x => x.ChatId == -1001);
+        Assert.Contains(fixture.Telegram.VerificationCalls, x => x.ChatId == -1002);
+    }
+
+    [Fact]
     public async Task ScopedExport_DoesNotContainAnotherCommunity()
     {
         await using var fixture = CreateFixture();

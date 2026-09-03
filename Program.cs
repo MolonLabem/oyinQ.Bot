@@ -62,7 +62,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(
 
 builder.Services.AddSingleton<GatheringPresentationService>();
 builder.Services.AddSingleton<MiniAppLinkBuilder>();
-builder.Services.AddSingleton<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
+builder.Services.AddScoped<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
 builder.Services.AddSingleton<IManagedChatValidator, TelegramManagedChatValidator>();
 builder.Services.AddSingleton<ITelegramChatAdministratorVerifier, TelegramChatAdministratorVerifier>();
 builder.Services.AddSingleton<ITelegramChatForumCapabilityResolver, TelegramChatForumCapabilityResolver>();

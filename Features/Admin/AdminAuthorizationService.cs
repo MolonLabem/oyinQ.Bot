@@ -259,11 +259,15 @@ public sealed class AdminAuthorizationService(
 
     private async Task<long[]> KnownChatIdsAsync(CancellationToken cancellationToken)
     {
+        var knownPresence = await dbContext.KnownTelegramChats.AsNoTracking()
+            .Select(x => new { x.TelegramChatId, x.IsBotPresent })
+            .ToDictionaryAsync(x => x.TelegramChatId, x => x.IsBotPresent, cancellationToken);
+        var knownAbsentIds = knownPresence.Where(x => !x.Value).Select(x => x.Key).ToArray();
         var configured = await dbContext.OyinQCommunities.AsNoTracking()
-            .Where(x => x.DeletedAt == null)
+            .Where(x => x.DeletedAt == null
+                && !knownAbsentIds.Contains(x.TelegramChatId))
             .Select(x => x.TelegramChatId).ToArrayAsync(cancellationToken);
-        var observed = await dbContext.KnownTelegramChats.AsNoTracking()
-            .Where(x => x.IsBotPresent).Select(x => x.TelegramChatId).ToArrayAsync(cancellationToken);
+        var observed = knownPresence.Where(x => x.Value).Select(x => x.Key);
         return configured.Concat(observed).Distinct().ToArray();
     }
 }
