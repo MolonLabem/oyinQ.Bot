@@ -64,7 +64,7 @@ builder.Services.AddSingleton<GatheringPresentationService>();
 builder.Services.AddSingleton<MiniAppLinkBuilder>();
 builder.Services.AddScoped<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
 builder.Services.AddSingleton<IManagedChatValidator, TelegramManagedChatValidator>();
-builder.Services.AddSingleton<ITelegramChatAdministratorVerifier, TelegramChatAdministratorVerifier>();
+builder.Services.AddScoped<ITelegramChatAdministratorVerifier, TelegramChatAdministratorVerifier>();
 builder.Services.AddSingleton<ITelegramChatForumCapabilityResolver, TelegramChatForumCapabilityResolver>();
 builder.Services.AddScoped<ICommunityStore, CommunityStore>();
 builder.Services.AddScoped<IAdminAuthorizationService, AdminAuthorizationService>();

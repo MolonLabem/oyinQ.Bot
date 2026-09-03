@@ -26,6 +26,14 @@ public sealed class TelegramMessageCleanupWorker(
             {
                 logger.LogError(exception, "Telegram message cleanup worker iteration failed.");
             }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(stoppingToken)) return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+        } while (!stoppingToken.IsCancellationRequested);
     }
 }

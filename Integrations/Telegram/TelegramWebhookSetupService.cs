@@ -17,15 +17,18 @@ public sealed class TelegramWebhookSetupService(
         var webhookUrl =
             $"{botOptions.PublicBaseUrl.TrimEnd('/')}/telegram/webhook/{Uri.EscapeDataString(botOptions.WebhookSecret)}";
 
-        await botClient.SetWebhook(
-            webhookUrl,
-            allowedUpdates: [UpdateType.Message, UpdateType.CallbackQuery,
-                UpdateType.MyChatMember, UpdateType.ChatMember],
-            dropPendingUpdates: false,
-            secretToken: botOptions.WebhookSecret,
-            cancellationToken: cancellationToken);
+        var configured = await TelegramStartupRetry.RunAsync(
+            attemptToken => botClient.SetWebhook(
+                webhookUrl,
+                allowedUpdates: [UpdateType.Message, UpdateType.CallbackQuery,
+                    UpdateType.MyChatMember, UpdateType.ChatMember],
+                dropPendingUpdates: false,
+                secretToken: botOptions.WebhookSecret,
+                cancellationToken: attemptToken),
+            "webhook configuration", logger, cancellationToken);
 
-        logger.LogInformation("Telegram webhook configured for {PublicBaseUrl}.", botOptions.PublicBaseUrl);
+        if (configured)
+            logger.LogInformation("Telegram webhook configured for {PublicBaseUrl}.", botOptions.PublicBaseUrl);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

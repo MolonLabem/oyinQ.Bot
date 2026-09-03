@@ -28,7 +28,15 @@ public sealed class GatheringLifecycleWorker(
             {
                 logger.LogError(exception, "Gathering lifecycle worker iteration failed.");
             }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(stoppingToken)) return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+        } while (!stoppingToken.IsCancellationRequested);
     }
 
     internal async Task<bool> ProcessOneAsync(CancellationToken cancellationToken)
@@ -53,6 +61,7 @@ public sealed class GatheringLifecycleWorker(
                 .Include(x => x.OrganizerParticipant)
                 .Include(x => x.Participants).ThenInclude(x => x.Participant)
                 .Include(x => x.Guests)
+                .AsSplitQuery()
                 .SingleOrDefaultAsync(cancellationToken);
             if (gathering is null)
             {

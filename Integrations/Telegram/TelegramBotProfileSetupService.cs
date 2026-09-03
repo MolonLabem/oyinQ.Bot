@@ -11,23 +11,28 @@ public sealed class TelegramBotProfileSetupService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var miniAppUrl = links.App();
-        await botClient.SetChatMenuButton(
-            menuButton: new MenuButtonWebApp
+        var configured = await TelegramStartupRetry.RunAsync(
+            async attemptToken =>
             {
-                Text = "Открыть OyinQ",
-                WebApp = new WebAppInfo { Url = miniAppUrl }
+                await botClient.SetChatMenuButton(
+                    menuButton: new MenuButtonWebApp
+                    {
+                        Text = "Открыть OyinQ",
+                        WebApp = new WebAppInfo { Url = miniAppUrl }
+                    },
+                    cancellationToken: attemptToken);
+                await botClient.SetMyShortDescription(TelegramBotProfile.ShortDescription,
+                    cancellationToken: attemptToken);
+                await botClient.SetMyDescription(TelegramBotProfile.Description,
+                    cancellationToken: attemptToken);
+                await botClient.SetMyCommands(TelegramBotProfile.PrivateCommands,
+                    scope: BotCommandScope.AllPrivateChats(), cancellationToken: attemptToken);
+                await botClient.SetMyCommands(TelegramBotProfile.GroupCommands,
+                    scope: BotCommandScope.AllGroupChats(), cancellationToken: attemptToken);
             },
-            cancellationToken: cancellationToken);
-        await botClient.SetMyShortDescription(TelegramBotProfile.ShortDescription,
-            cancellationToken: cancellationToken);
-        await botClient.SetMyDescription(TelegramBotProfile.Description,
-            cancellationToken: cancellationToken);
-        await botClient.SetMyCommands(TelegramBotProfile.PrivateCommands,
-            scope: BotCommandScope.AllPrivateChats(), cancellationToken: cancellationToken);
-        await botClient.SetMyCommands(TelegramBotProfile.GroupCommands,
-            scope: BotCommandScope.AllGroupChats(), cancellationToken: cancellationToken);
+            "bot profile configuration", logger, cancellationToken);
 
-        logger.LogInformation(
+        if (configured) logger.LogInformation(
             "Telegram bot profile configured: {PrivateCommandCount} private commands, {GroupCommandCount} group commands, Mini App menu {MiniAppUrl}.",
             TelegramBotProfile.PrivateCommands.Count, TelegramBotProfile.GroupCommands.Count, miniAppUrl);
     }
