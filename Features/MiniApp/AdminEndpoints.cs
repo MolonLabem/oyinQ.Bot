@@ -160,11 +160,11 @@ internal static class AdminEndpoints
         var clubs = await dbContext.Clubs.AsNoTracking().Include(x => x.BotChat)
             .Where(x => approvedKeys.Contains(x.BotChatKey)).OrderBy(x => x.Name)
             .Select(x => new { x.Id, x.BotChatKey, x.Name, TelegramTitle = x.BotChat.Name, x.BotChat.TimeZoneId,
-                x.BotChat.IsActive, GameCount = x.CollectionJson, x.CollectionRevision, x.UpdatedAt,
+                x.BotChat.TelegramChatId, x.BotChat.IsActive, GameCount = x.CollectionJson, x.CollectionRevision, x.UpdatedAt,
                 Gatherings = x.BotChat.Gatherings.Count })
             .ToArrayAsync(cancellationToken);
         var clubViews = clubs.Select(x => new { x.Id, CommunityKey = access.Single(a => a.CommunityKey == x.BotChatKey).CommunityKey,
-            x.Name, x.TelegramTitle, x.TimeZoneId, x.IsActive, IsApproved = true,
+            x.Name, x.TelegramTitle, x.TelegramChatId, x.TimeZoneId, x.IsActive, IsApproved = true,
             GameCount = ClubCollectionSerializer.Deserialize(x.GameCount).Games.Count,
             x.CollectionRevision, x.UpdatedAt, x.Gatherings });
         var camps = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).Include(x => x.SourceClub)
@@ -172,7 +172,7 @@ internal static class AdminEndpoints
             .OrderByDescending(x => x.StartDate).Select(x => new
             {
                 x.Id, CommunityKey = x.BotChatKey, x.Name, TelegramTitle = x.BotChat.Name,
-                x.BotChat.TimeZoneId, IsApproved = true,
+                x.BotChat.TelegramChatId, x.BotChat.TimeZoneId, IsApproved = true,
                 Status = x.Status.ToString(), x.StartDate, x.EndDate,
                 SourceClubId = x.SourceClub != null && approvedKeys.Contains(x.SourceClub.BotChatKey)
                     ? x.SourceClubId : null,

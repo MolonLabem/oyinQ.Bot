@@ -6,6 +6,7 @@ public static class GatheringRules
 {
     public const int DescriptionMaxLength = 300;
     public const int CancellationReasonMaxLength = 500;
+    public const int GuestDisplayNameMaxLength = 80;
 
     public static GameGathering Create(
         string communityKey,
@@ -77,7 +78,7 @@ public static class GatheringRules
         EnsureEditable(gathering, now);
         EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
-        var confirmed = 1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed);
+        var confirmed = GatheringCapacity.OccupiedSeats(gathering);
         if (maximumPlayers < confirmed)
             throw new InvalidOperationException("Максимум игроков не может быть меньше числа подтверждённых участников.");
 
@@ -98,7 +99,7 @@ public static class GatheringRules
         gathering.MaximumPlayers = maximumPlayers;
         gathering.Description = NormalizeDescription(description);
         gathering.CanTeachRules = canTeachRules;
-        RecalculateStatus(gathering);
+        GatheringCapacity.RecalculateStatus(gathering);
         gathering.UpdatedAt = now.ToUniversalTime();
     }
 
@@ -121,7 +122,7 @@ public static class GatheringRules
             throw new InvalidOperationException("Возобновить можно только закрытую запись.");
         if (gathering.StartsAtUtc <= now.ToUniversalTime())
             throw new InvalidOperationException("Нельзя возобновить запись на прошедший сбор.");
-        RecalculateStatus(gathering);
+        GatheringCapacity.RecalculateStatus(gathering, preserveClosed: false);
         gathering.UpdatedAt = now.ToUniversalTime();
     }
 
@@ -161,16 +162,25 @@ public static class GatheringRules
         membership.Status = GatheringParticipationStatus.Withdrawn;
         membership.WithdrawnAt = now.ToUniversalTime();
         membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
-        var promoted = shouldPromote
-            ? gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
-                .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).FirstOrDefault()
-            : null;
-        if (promoted is not null) promoted.Status = GatheringParticipationStatus.Confirmed;
-        RecalculateStatus(gathering);
+        var promoted = shouldPromote ? GatheringCapacity.PromoteFirstWaitlisted(gathering) : null;
+        GatheringCapacity.RecalculateStatus(gathering);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
         return promoted;
     }
+
+    public static string NormalizeGuestDisplayName(string? displayName)
+    {
+        var normalized = displayName?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new ArgumentException("Укажите имя или описание гостя.", nameof(displayName));
+        if (normalized.Length > GuestDisplayNameMaxLength)
+            throw new ArgumentException($"Имя гостя не должно быть длиннее {GuestDisplayNameMaxLength} символов.", nameof(displayName));
+        return normalized;
+    }
+
+    public static void EnsureGuestEditable(GameGathering gathering, DateTimeOffset now) =>
+        EnsureEditable(gathering, now);
 
     private static void EnsureEditable(GameGathering gathering, DateTimeOffset now)
     {
@@ -182,10 +192,4 @@ public static class GatheringRules
             throw new InvalidOperationException("Наступивший сбор нельзя изменить.");
     }
 
-    private static void RecalculateStatus(GameGathering gathering)
-    {
-        var confirmed = 1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed);
-        gathering.Status = confirmed >= gathering.MaximumPlayers ? GatheringStatus.Full
-            : confirmed >= gathering.MinimumPlayers ? GatheringStatus.Ready : GatheringStatus.Recruiting;
-    }
 }

@@ -629,6 +629,40 @@ namespace oyinQ.Bot.Data.Migrations
                     b.ToTable("GameGatheringExpansions", (string)null);
                 });
 
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGatheringGuest", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("CreatedByParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<long>("GameGatheringId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByParticipantId");
+
+                    b.HasIndex("GameGatheringId", "Id");
+
+                    b.ToTable("GameGatheringGuests", (string)null);
+                });
+
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGatheringParticipant", b =>
                 {
                     b.Property<long>("Id")
@@ -1079,6 +1113,25 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("GameGathering");
                 });
 
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGatheringGuest", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "CreatedByParticipant")
+                        .WithMany("CreatedGatheringGuests")
+                        .HasForeignKey("CreatedByParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("oyinQ.Bot.Data.Entities.GameGathering", "GameGathering")
+                        .WithMany("Guests")
+                        .HasForeignKey("GameGatheringId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByParticipant");
+
+                    b.Navigation("GameGathering");
+                });
+
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGatheringParticipant", b =>
                 {
                     b.HasOne("oyinQ.Bot.Data.Entities.GameGathering", "GameGathering")
@@ -1130,6 +1183,8 @@ namespace oyinQ.Bot.Data.Migrations
                 {
                     b.Navigation("Expansions");
 
+                    b.Navigation("Guests");
+
                     b.Navigation("Participants");
                 });
 
@@ -1149,6 +1204,8 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("CampGameContributions");
 
                     b.Navigation("CampRegistrations");
+
+                    b.Navigation("CreatedGatheringGuests");
 
                     b.Navigation("GatheringParticipations");
 

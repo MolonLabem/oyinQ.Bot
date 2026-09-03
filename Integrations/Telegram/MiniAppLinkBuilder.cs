@@ -14,6 +14,8 @@ public sealed class MiniAppLinkBuilder(IOptions<BotOptions> options)
         $"{App()}?community={Uri.EscapeDataString(communityKey)}";
     public string Gathering(string communityKey, Guid publicId) =>
         $"{Community(communityKey)}&gathering={publicId}";
+    public string CollectionGame(string communityKey, long bggId) =>
+        $"{Community(communityKey)}&tab=games&game={bggId}";
     public string CampImport(string communityKey, Guid importId) =>
         $"{Community(communityKey)}&tab=mine&import={importId}";
 }

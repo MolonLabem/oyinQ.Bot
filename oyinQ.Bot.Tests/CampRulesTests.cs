@@ -41,6 +41,57 @@ public sealed class CampRulesTests
         Assert.Equal(4, CampRules.InclusiveDuration(new(2026, 8, 29), new(2026, 9, 1)));
     }
 
+    [Theory]
+    [InlineData(2026, 9, 10)]
+    [InlineData(2026, 9, 13)]
+    public void GatheringDateRange_AcceptsInclusiveBoundaries(int year, int month, int day)
+    {
+        var camp = new Camp { StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13) };
+
+        CampRules.EnsureGatheringDateWithinRange(camp, new DateOnly(year, month, day));
+    }
+
+    [Theory]
+    [InlineData(2026, 9, 9)]
+    [InlineData(2026, 9, 14)]
+    public void GatheringDateRange_RejectsDatesOutsideCamp(int year, int month, int day)
+    {
+        var camp = new Camp { StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13) };
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            CampRules.EnsureGatheringDateWithinRange(camp, new DateOnly(year, month, day)));
+
+        Assert.Equal("Дата сбора должна быть в пределах дат кэмпа: 10–13 сентября.", error.Message);
+    }
+
+    [Fact]
+    public void GatheringDateRange_SingleDayAcceptsOnlyThatDate()
+    {
+        var camp = new Camp { StartDate = new(2026, 9, 20), EndDate = new(2026, 9, 20) };
+
+        CampRules.EnsureGatheringDateWithinRange(camp, new(2026, 9, 20));
+        Assert.Throws<InvalidOperationException>(() =>
+            CampRules.EnsureGatheringDateWithinRange(camp, new(2026, 9, 19)));
+        Assert.Throws<InvalidOperationException>(() =>
+            CampRules.EnsureGatheringDateWithinRange(camp, new(2026, 9, 21)));
+    }
+
+    [Fact]
+    public void GatheringDateRange_UsesCampTimezoneAndAllowsLastDayEvening()
+    {
+        var camp = new Camp { StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13) };
+        var firstLocalMidnight = new DateTimeOffset(2026, 9, 9, 19, 0, 0, TimeSpan.Zero);
+        var lastLocalEvening = new DateTimeOffset(2026, 9, 13, 18, 30, 0, TimeSpan.Zero);
+
+        var firstDate = CampRules.GetLocalGatheringDate(firstLocalMidnight, "Asia/Qyzylorda");
+        var lastDate = CampRules.GetLocalGatheringDate(lastLocalEvening, "Asia/Qyzylorda");
+
+        Assert.Equal(new DateOnly(2026, 9, 10), firstDate);
+        Assert.Equal(new DateOnly(2026, 9, 13), lastDate);
+        CampRules.EnsureGatheringDateWithinRange(camp, firstDate);
+        CampRules.EnsureGatheringDateWithinRange(camp, lastDate);
+    }
+
     [Fact]
     public void SelectedDates_AreDistinctOrderedAndInsideCamp()
     {

@@ -26,7 +26,7 @@ public sealed class GatheringNotificationService(
                 .Select(x => x.Participant.TelegramUserId))
             .Distinct().ToArray();
         return new(snapshot.Name, gathering.MinimumPlayers,
-            1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed),
+            GatheringCapacity.OccupiedSeats(gathering),
             recipients);
     }
 

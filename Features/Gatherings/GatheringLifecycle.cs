@@ -20,8 +20,7 @@ public static class GatheringLifecycle
                 or GatheringStatus.Full or GatheringStatus.Closed))
             return GatheringLifecycleOutcome.None;
 
-        var confirmedPlayers = 1 + gathering.Participants.Count(
-            x => x.Status == GatheringParticipationStatus.Confirmed);
+        var confirmedPlayers = GatheringCapacity.OccupiedSeats(gathering);
         if (confirmedPlayers < gathering.MinimumPlayers) return GatheringLifecycleOutcome.Delete;
 
         gathering.Status = GatheringStatus.Completed;

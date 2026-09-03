@@ -352,7 +352,10 @@ public sealed class TelegramUpdateHandler(
             InlineKeyboardButton.WithWebApp(
                 communities.Count == 1 ? "Открыть OyinQ" : community.Name,
                 new WebAppInfo { Url = startContext?.GatheringPublicId is { } gatheringId
-                    ? links.Gathering(community.Key, gatheringId) : links.Community(community.Key) })
+                    ? links.Gathering(community.Key, gatheringId)
+                    : startContext?.CollectionBggId is { } bggId
+                        ? links.CollectionGame(community.Key, bggId)
+                        : links.Community(community.Key) })
         ]).ToList();
         if (overrideText is not null && rows.Count == 0)
         {

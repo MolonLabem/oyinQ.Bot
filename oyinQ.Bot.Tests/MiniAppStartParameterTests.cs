@@ -25,4 +25,24 @@ public sealed class MiniAppStartParameterTests
         Assert.Equal("club", parsed?.CommunityKey);
         Assert.Null(parsed?.GatheringPublicId);
     }
+
+    [Fact]
+    public void CollectionGameParameter_RoundTripsCanonicalContext()
+    {
+        var parameter = MiniAppStartParameter.ForCollectionGame("club-main", 167791);
+
+        var parsed = MiniAppStartParameter.Parse($"/start {parameter}");
+
+        Assert.True(parameter.Length <= 64);
+        Assert.Equal("club-main", parsed?.CommunityKey);
+        Assert.Equal(167791, parsed?.CollectionBggId);
+        Assert.Null(parsed?.GatheringPublicId);
+    }
+
+    [Theory]
+    [InlineData("/start c-0-club")]
+    [InlineData("/start c-title-club")]
+    [InlineData("/start c-42-")]
+    public void InvalidCollectionGameParameter_IsRejected(string text) =>
+        Assert.Null(MiniAppStartParameter.Parse(text));
 }

@@ -37,6 +37,11 @@ internal static class CatalogEndpoints
         if (access is null) return Results.Forbid();
         try { return Results.Ok(await service.DetailsAsync(community, access.Community.Mode,
             access.Identity.TelegramUserId, bggId, cancellationToken)); }
+        catch (GameNotInCollectionException exception)
+        {
+            return MiniAppEndpointSupport.Problem("game_not_in_collection", exception.Message,
+                StatusCodes.Status404NotFound);
+        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 }

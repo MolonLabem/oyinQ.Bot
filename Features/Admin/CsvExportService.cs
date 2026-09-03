@@ -103,6 +103,7 @@ public sealed class CsvExportService(
             .Where(value => communityKey == null || value.CommunityKey == communityKey)
             .Include(value => value.OrganizerParticipant)
             .Include(value => value.Participants).ThenInclude(value => value.Participant)
+            .Include(value => value.Guests)
             .OrderBy(value => value.StartsAtUtc)
             .ToListAsync(cancellationToken);
         var rows = gatherings.Select(value =>
@@ -117,10 +118,11 @@ public sealed class CsvExportService(
                 value.Status,
                 value.Participants.Count(participant => participant.Status == Data.Entities.GatheringParticipationStatus.Confirmed),
                 value.Participants.Count(participant => participant.Status == Data.Entities.GatheringParticipationStatus.Waitlisted),
+                value.Guests.Count, GatheringCapacity.OccupiedSeats(value),
                 value.CreatedAt, value.UpdatedAt, value.CompletedAt, value.CancelledAt
             };
         });
-        return File("gatherings.csv", ["id", "public_id", "community_key", "game_name", "organizer_participant_id", "organizer_telegram_user_id", "organizer_name", "starts_at_utc", "minimum_players", "desired_players", "maximum_players", "status", "confirmed_count", "waitlisted_count", "created_at", "updated_at", "completed_at", "cancelled_at"], rows);
+        return File("gatherings.csv", ["id", "public_id", "community_key", "game_name", "organizer_participant_id", "organizer_telegram_user_id", "organizer_name", "starts_at_utc", "minimum_players", "desired_players", "maximum_players", "status", "confirmed_count", "waitlisted_count", "guest_count", "occupied_count", "created_at", "updated_at", "completed_at", "cancelled_at"], rows);
     }
 
     private static CsvExportFile File(string name, IReadOnlyList<string> headers, IEnumerable<object?[]> rows) =>

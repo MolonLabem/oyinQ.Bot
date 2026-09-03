@@ -23,6 +23,7 @@ public sealed class GatheringPublicationService(
         var gathering = await dbContext.GameGatherings
             .Include(x => x.OrganizerParticipant)
             .Include(x => x.Participants).ThenInclude(x => x.Participant)
+            .Include(x => x.Guests)
             .Include(x => x.Expansions)
             .SingleOrDefaultAsync(x => x.PublicId == publicId, cancellationToken)
             ?? throw new KeyNotFoundException("Сбор не найден.");

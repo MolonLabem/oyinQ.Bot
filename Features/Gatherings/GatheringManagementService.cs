@@ -102,7 +102,7 @@ public sealed class GatheringManagementService(
     {
         var gathering = await dbContext.GameGatherings
             .Include(x => x.OrganizerParticipant).Include(x => x.Participants).ThenInclude(x => x.Participant)
-            .Include(x => x.Expansions)
+            .Include(x => x.Expansions).Include(x => x.Guests)
             .SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == communityKey,
                 cancellationToken) ?? throw new KeyNotFoundException("Сбор не найден.");
         if (gathering.OrganizerParticipant.TelegramUserId != telegramUserId)
@@ -120,14 +120,10 @@ public sealed class GatheringManagementService(
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
         if (participantId is null)
             throw new UnauthorizedAccessException("Сначала завершите регистрацию в кэмпе.");
-        var local = TimeZoneInfo.ConvertTime(startsAt, TimeZoneInfo.FindSystemTimeZoneById(community.TimeZoneId));
-        var localDate = DateOnly.FromDateTime(local.DateTime);
+        var localDate = CampRules.GetLocalGatheringDate(startsAt, community.TimeZoneId);
+        CampRules.EnsureGatheringDateWithinRange(camp, localDate);
         await participationPolicy.RequireCompleteRegistrationAsync(camp.Id, participantId.Value,
             cancellationToken, localDate);
-        if (camp.StartDate is not { } start || camp.EndDate is not { } end)
-            throw new InvalidOperationException("Для кэмпа ещё не настроены даты.");
-        if (localDate < start || localDate > end)
-            throw new InvalidOperationException("Сбор должен проходить в пределах дат кэмпа.");
     }
 
     private async Task<Participant> GetOrCreateParticipantAsync(TelegramMiniAppIdentity identity,

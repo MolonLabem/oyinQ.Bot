@@ -182,7 +182,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             .Select(x => x.StartsAtUtc).ToArrayAsync(cancellationToken);
         if (gatheringStarts.Any(startsAt =>
             {
-                var localDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(startsAt, timeZone).DateTime);
+                var localDate = CampRules.GetLocalGatheringDate(startsAt, timeZone.Id);
                 return localDate < command.StartDate || localDate > command.EndDate;
             }))
             throw new InvalidOperationException("Новый диапазон не включает один или несколько сборов кэмпа.");

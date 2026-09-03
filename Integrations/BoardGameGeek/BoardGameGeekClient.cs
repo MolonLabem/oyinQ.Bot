@@ -387,7 +387,7 @@ public sealed class BoardGameGeekClient(
             ReadIntValue(item.Element("minplayers")),
             ReadIntValue(item.Element("maxplayers")),
             BggBestPlayerCalculator.Calculate(item),
-            $"https://boardgamegeek.com/boardgame/{bggId.Value}",
+            BggGameUrl.FromId(bggId),
             ReadImageUrl(item.Element("thumbnail")),
             ReadImageUrl(item.Element("image")),
             subdomains.Select(value => NormalizeSubdomain(value.Name)).ToArray(),

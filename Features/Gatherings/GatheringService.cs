@@ -37,8 +37,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             return new(gathering);
         }
 
-        var confirmed = 1 + gathering.Participants.Count(value => value.Status == GatheringParticipationStatus.Confirmed);
-        var status = confirmed < gathering.MaximumPlayers
+        var status = GatheringCapacity.HasAvailableSeat(gathering)
             ? GatheringParticipationStatus.Confirmed
             : GatheringParticipationStatus.Waitlisted;
         if (existing is null)
@@ -101,16 +100,87 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             promoted.Participant.PreferredDisplayName ?? promoted.Participant.DisplayName));
     }
 
+    public async Task<GatheringMutationResult> AddGuestAsync(Guid publicId, string communityKey,
+        long telegramUserId, string? displayName, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
+        RequireOrganizer(gathering, telegramUserId);
+        GatheringRules.EnsureGuestEditable(gathering, now);
+        var normalizedDisplayName = GatheringRules.NormalizeGuestDisplayName(displayName);
+        if (!GatheringCapacity.HasAvailableSeat(gathering))
+            throw new InvalidOperationException("В сборе больше нет свободных мест.");
+        gathering.Guests.Add(new GameGatheringGuest
+        {
+            DisplayName = normalizedDisplayName,
+            CreatedByParticipantId = gathering.OrganizerParticipantId,
+            CreatedAt = now.ToUniversalTime(),
+            UpdatedAt = now.ToUniversalTime()
+        });
+        UpdateStatus(gathering, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(gathering);
+    }
+
+    public async Task<GatheringMutationResult> RenameGuestAsync(Guid publicId, long guestId,
+        string communityKey, long telegramUserId, string? displayName, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
+        RequireOrganizer(gathering, telegramUserId);
+        GatheringRules.EnsureGuestEditable(gathering, now);
+        var guest = gathering.Guests.SingleOrDefault(x => x.Id == guestId)
+            ?? throw new KeyNotFoundException("Гость не найден в этом сборе.");
+        guest.DisplayName = GatheringRules.NormalizeGuestDisplayName(displayName);
+        guest.UpdatedAt = now.ToUniversalTime();
+        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+        gathering.UpdatedAt = now.ToUniversalTime();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(gathering);
+    }
+
+    public async Task<GatheringMutationResult> RemoveGuestAsync(Guid publicId, long guestId,
+        string communityKey, long telegramUserId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
+        RequireOrganizer(gathering, telegramUserId);
+        GatheringRules.EnsureGuestEditable(gathering, now);
+        var guest = gathering.Guests.SingleOrDefault(x => x.Id == guestId)
+            ?? throw new KeyNotFoundException("Гость не найден в этом сборе.");
+        dbContext.GameGatheringGuests.Remove(guest);
+        gathering.Guests.Remove(guest);
+        var promoted = GatheringCapacity.PromoteFirstWaitlisted(gathering);
+        UpdateStatus(gathering, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new(gathering, promoted is null ? null : new GatheringPromotion(
+            promoted.Participant.TelegramUserId,
+            promoted.Participant.PreferredDisplayName ?? promoted.Participant.DisplayName));
+    }
+
     private async Task<GameGathering> LockGatheringAsync(
         Guid publicId,
         string communityKey,
-        CancellationToken cancellationToken) =>
-        await dbContext.GameGatherings
-            .FromSqlInterpolated($"SELECT * FROM \"GameGatherings\" WHERE \"PublicId\" = {publicId} AND \"CommunityKey\" = {communityKey} FOR UPDATE")
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.Database.IsRelational()
+            ? dbContext.GameGatherings.FromSqlInterpolated(
+                $"SELECT * FROM \"GameGatherings\" WHERE \"PublicId\" = {publicId} AND \"CommunityKey\" = {communityKey} FOR UPDATE")
+            : dbContext.GameGatherings.Where(x => x.PublicId == publicId && x.CommunityKey == communityKey);
+        return await query
             .Include(value => value.OrganizerParticipant)
             .Include(value => value.Participants).ThenInclude(value => value.Participant)
+            .Include(value => value.Guests)
             .SingleOrDefaultAsync(cancellationToken)
-        ?? throw new KeyNotFoundException("Сбор не найден в этом сообществе.");
+            ?? throw new KeyNotFoundException("Сбор не найден в этом сообществе.");
+    }
 
     private async Task<Participant> RequireContextParticipantAsync(
         GameGathering gathering,
@@ -148,12 +218,14 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
 
     private static void UpdateStatus(GameGathering gathering, DateTimeOffset now)
     {
-        var confirmed = 1 + gathering.Participants.Count(value => value.Status == GatheringParticipationStatus.Confirmed);
-        gathering.Status = confirmed >= gathering.MaximumPlayers
-            ? GatheringStatus.Full
-            : confirmed >= gathering.MinimumPlayers
-                ? GatheringStatus.Ready
-                : GatheringStatus.Recruiting;
+        GatheringCapacity.RecalculateStatus(gathering);
+        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
+    }
+
+    private static void RequireOrganizer(GameGathering gathering, long telegramUserId)
+    {
+        if (gathering.OrganizerParticipant.TelegramUserId != telegramUserId)
+            throw new UnauthorizedAccessException("Управлять гостями может только организатор сбора.");
     }
 }

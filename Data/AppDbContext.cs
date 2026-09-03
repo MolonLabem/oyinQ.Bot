@@ -19,6 +19,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<GameGathering> GameGatherings => Set<GameGathering>();
     public DbSet<GameGatheringExpansion> GameGatheringExpansions => Set<GameGatheringExpansion>();
     public DbSet<GameGatheringParticipant> GameGatheringParticipants => Set<GameGatheringParticipant>();
+    public DbSet<GameGatheringGuest> GameGatheringGuests => Set<GameGatheringGuest>();
     public DbSet<CampBggImport> CampBggImports => Set<CampBggImport>();
     public DbSet<ClubMetadataRefresh> ClubMetadataRefreshes => Set<ClubMetadataRefresh>();
     public DbSet<ClubBggImport> ClubBggImports => Set<ClubBggImport>();
@@ -307,6 +308,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasOne(x => x.Participant)
                 .WithMany(x => x.GatheringParticipations)
                 .HasForeignKey(x => x.ParticipantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GameGatheringGuest>(entity =>
+        {
+            entity.ToTable("GameGatheringGuests");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.GameGatheringId, x.Id });
+            entity.Property(x => x.DisplayName).HasMaxLength(GatheringRules.GuestDisplayNameMaxLength);
+            entity.HasOne(x => x.GameGathering)
+                .WithMany(x => x.Guests)
+                .HasForeignKey(x => x.GameGatheringId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.CreatedByParticipant)
+                .WithMany(x => x.CreatedGatheringGuests)
+                .HasForeignKey(x => x.CreatedByParticipantId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

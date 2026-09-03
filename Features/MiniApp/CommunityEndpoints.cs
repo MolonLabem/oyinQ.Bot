@@ -35,6 +35,7 @@ internal static class CommunityEndpoints
             items.Add(new
             {
                 community.Key, community.Name, Mode = community.Mode.ToString(), community.TimeZoneId,
+                community.StartDate, community.EndDate,
                 AvatarUrl = await photos.GetDataUrlAsync(community.TelegramChatId, cancellationToken)
             });
         return Results.Ok(new

@@ -15,13 +15,14 @@ public sealed class CommunityStore(AppDbContext dbContext) : ICommunityStore
     public async Task<BotCommunity?> FindByKeyAsync(
         string communityKey,
         CancellationToken cancellationToken) =>
-        (await dbContext.OyinQCommunities.AsNoTracking().SingleOrDefaultAsync(
+        (await dbContext.OyinQCommunities.AsNoTracking().Include(value => value.Camp).SingleOrDefaultAsync(
             value => value.IsActive && value.DeletedAt == null && value.Key == communityKey,
             cancellationToken))?.ToBotCommunity();
 
     public async Task<IReadOnlyList<BotCommunity>> ListActiveAsync(CancellationToken cancellationToken)
     {
         var entities = await dbContext.OyinQCommunities.AsNoTracking()
+            .Include(value => value.Camp)
             .Where(value => value.IsActive && value.DeletedAt == null)
             .OrderBy(value => value.Name)
             .ToArrayAsync(cancellationToken);

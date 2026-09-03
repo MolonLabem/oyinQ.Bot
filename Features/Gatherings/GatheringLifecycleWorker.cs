@@ -55,6 +55,7 @@ public sealed class GatheringLifecycleWorker(
                     """)
                 .Include(x => x.OrganizerParticipant)
                 .Include(x => x.Participants).ThenInclude(x => x.Participant)
+                .Include(x => x.Guests)
                 .SingleOrDefaultAsync(cancellationToken);
             if (gathering is null)
             {

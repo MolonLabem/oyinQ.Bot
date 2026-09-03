@@ -3,6 +3,7 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Catalog;
 
@@ -25,6 +26,12 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
     IReadOnlyList<KeyValuePair<GameType, string>> Types);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
+
+public sealed class GameNotInCollectionException(long bggId)
+    : KeyNotFoundException($"Игра BGG {bggId} отсутствует в коллекции сообщества.")
+{
+    public long BggId { get; } = bggId;
+}
 
 public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog)
 {
@@ -61,7 +68,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         long bggId, CancellationToken cancellationToken)
     {
         var value = (await LoadAsync(communityKey, mode, telegramUserId, cancellationToken))
-            .SingleOrDefault(x => x.Game.BggId == bggId) ?? throw new KeyNotFoundException("Игра отсутствует в каталоге.");
+            .SingleOrDefault(x => x.Game.BggId == bggId) ?? throw new GameNotInCollectionException(bggId);
         var game = value.Game;
         var presentation = BggTaxonomyCatalog.Present(game);
         return new GameDetailsResponse(game.BggId, game.Name, game.OriginalName,
@@ -71,7 +78,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             game.MaxPlayTimeMinutes, game.MinAge,
             (game.CategoryItems ?? []).Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeCategory(x))).ToArray(),
             (game.Mechanics ?? []).Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeMechanic(x))).ToArray(),
-            game.Expansions, $"https://boardgamegeek.com/boardgame/{game.BggId}",
+            game.Expansions, BggGameUrl.FromId(game.BggId)!,
             new GameAvailabilityResponse(value.IsInBaseCollection, value.Providers,
                 value.Providers.Any(x => x.Commitment == CampBringCommitment.Bringing)));
     }

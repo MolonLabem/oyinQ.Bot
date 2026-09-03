@@ -37,10 +37,18 @@ public sealed class ClubBggImportTests
         Assert.Equal("Fresh title", refreshed.Name);
         Assert.Equal("Fresh original", refreshed.OriginalName);
         Assert.Equal("Fresh metadata", refreshed.Description);
+        Assert.Equal(GameType.Strategy, refreshed.Type);
         Assert.Equal(3, result.Document.Games.Count);
         Assert.Equal([100L, 101L, 102L], refreshed.Expansions.Select(x => x.BggId).Order());
         Assert.Equal([102L], Assert.Single(result.Document.Games, game => game.BggId == 30)
             .Expansions.Select(x => x.BggId));
+
+        var repeated = ClubBggImportService.Merge(result.Document, imported);
+        var repeatedGame = Assert.Single(repeated.Document.Games, game => game.BggId == 10);
+        Assert.Equal(GameType.Strategy, repeatedGame.Type);
+        Assert.Equal([100L, 101L, 102L], repeatedGame.Expansions.Select(x => x.BggId).Order());
+        Assert.Equal(0, repeated.AddedGames);
+        Assert.Equal(0, repeated.AddedExpansions);
     }
 
     [Fact]

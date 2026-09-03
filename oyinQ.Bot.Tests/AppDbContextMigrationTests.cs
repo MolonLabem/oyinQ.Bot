@@ -9,13 +9,15 @@ public sealed class AppDbContextMigrationTests
     private const string CleanBaselineMigration = "20260901073247_CleanBaseline";
     private const string ForumPostingTopicsMigration = "20260901125924_ForumPostingTopics";
     private const string CommunityDeletionMigration = "20260901133621_CommunityDeletionAndTelegramPhotos";
+    private const string GatheringGuestsMigration = "20260903073138_AddGatheringGuests";
 
     [Fact]
     public void Migrations_ContainCleanBaselineAndAdditiveForumTopicConfiguration()
     {
         using var dbContext = CreateDbContext();
 
-        Assert.Equal([CleanBaselineMigration, ForumPostingTopicsMigration, CommunityDeletionMigration], dbContext.Database.GetMigrations());
+        Assert.Equal([CleanBaselineMigration, ForumPostingTopicsMigration, CommunityDeletionMigration,
+            GatheringGuestsMigration], dbContext.Database.GetMigrations());
     }
 
     [Fact]
@@ -53,6 +55,10 @@ public sealed class AppDbContextMigrationTests
         Assert.Equal("jsonb", gathering?.FindProperty(nameof(GameGathering.GameSnapshotJson))?.GetColumnType());
         Assert.Equal(300, gathering?.FindProperty(nameof(GameGathering.Description))?.GetMaxLength());
         Assert.NotNull(gathering?.FindProperty(nameof(GameGathering.CanTeachRules)));
+        var guest = dbContext.Model.FindEntityType(typeof(GameGatheringGuest));
+        Assert.Equal(80, guest?.FindProperty(nameof(GameGatheringGuest.DisplayName))?.GetMaxLength());
+        Assert.Equal(DeleteBehavior.Cascade, guest!.GetForeignKeys()
+            .Single(x => x.PrincipalEntityType.ClrType == typeof(GameGathering)).DeleteBehavior);
     }
 
     [Fact]

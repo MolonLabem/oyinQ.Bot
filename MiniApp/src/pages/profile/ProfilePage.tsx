@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
-import type { Community, Profile } from "../../api/types";
-import { Card, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import type { Community, Profile, ProfileGathering } from "../../api/types";
+import { Card, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
+import { ProfileScheduleList, profileScheduleEmptyText } from "./ProfileScheduleList";
 
-export function ProfilePage({ community }: { community: Community }) {
+export function ProfilePage({ community, communities, openGathering }: { community: Community; communities: Community[]; openGathering: (communityKey: string, gatheringId: string) => void }) {
   const profile = useAsync(() => api<Profile>(`/profile?community=${encodeURIComponent(community.key)}`), [community.key]);
+  const schedule = useAsync(() => profile.data ? api<ProfileGathering[]>(`/profile/gatherings?community=${encodeURIComponent(community.key)}`, { cache: "no-store" }) : Promise.resolve([]), [community.key, Boolean(profile.data)]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -34,5 +36,8 @@ export function ProfilePage({ community }: { community: Community }) {
       {error && <Notice kind="danger">{error}</Notice>}
       <button className="primary" disabled={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить профиль"}</button>
     </Card>
+    <section className="profile-schedule"><h2>Моё расписание</h2>
+      {schedule.loading ? <Loading /> : schedule.error ? <ErrorState message={schedule.error} retry={schedule.reload} /> : !schedule.data?.length ? <Empty>{profileScheduleEmptyText}</Empty> : <ProfileScheduleList items={schedule.data} communities={communities} open={openGathering} />}
+    </section>
   </Page>;
 }

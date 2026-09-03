@@ -119,6 +119,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
                         && (p.Status == GatheringParticipationStatus.Confirmed
                             || p.Status == GatheringParticipationStatus.Waitlisted))))
             .Include(x => x.Participants).ThenInclude(x => x.Participant)
+            .Include(x => x.Guests)
             .ToArrayAsync(cancellationToken);
         var organized = gatherings.Where(x => x.OrganizerParticipantId == participantId).ToArray();
         if (organized.Length > 0)

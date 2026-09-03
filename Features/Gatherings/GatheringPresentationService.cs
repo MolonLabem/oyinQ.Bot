@@ -4,6 +4,7 @@ using System.Text;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Integrations.Telegram;
+using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -19,7 +20,9 @@ public sealed record GatheringCardPresentation(
     int ConfirmedPlayers,
     int MaximumPlayers,
     string StatusText,
-    string TypeName);
+    string? TypeName,
+    long? BggId,
+    string? BggUrl);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -32,9 +35,14 @@ public sealed record GatheringDetailPresentation(
     string LocalDateTime,
     int ConfirmedPlayers,
     IReadOnlyList<string> Expansions,
-    string StatusText);
+    string StatusText,
+    string? TypeName,
+    long? BggId,
+    string? BggUrl);
 
-public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl);
+public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
+public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
+    BotMode CommunityMode, string GameName, string LocalDateTime, bool IsOrganizer);
 
 public sealed class GatheringPresentationService
 {
@@ -58,12 +66,15 @@ public sealed class GatheringPresentationService
             ConfirmedPlayers(gathering),
             gathering.MaximumPlayers,
             StatusText(gathering.Status),
-            metadata.TypeName);
+            metadata.TypeNames.FirstOrDefault(),
+            game.BggId,
+            BggGameUrl.FromId(game.BggId));
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
     {
         var game = ResolveSnapshot(gathering);
+        var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
         return new(
             gathering.PublicId,
             game.Name,
@@ -75,7 +86,10 @@ public sealed class GatheringPresentationService
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             ConfirmedPlayers(gathering),
             gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray(),
-            StatusText(gathering.Status));
+            StatusText(gathering.Status),
+            metadata.TypeNames.FirstOrDefault(),
+            game.BggId,
+            BggGameUrl.FromId(game.BggId));
     }
 
     public GatheringAnnouncement BuildTelegramAnnouncement(
@@ -83,8 +97,11 @@ public sealed class GatheringPresentationService
         BotCommunity community)
     {
         var game = ResolveSnapshot(gathering);
+        var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
         var text = new StringBuilder();
         text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(game.Name)}</b>");
+        if (metadata.TypeNames.FirstOrDefault() is { } typeName)
+            text.AppendLine($"🏷 {WebUtility.HtmlEncode(typeName)}");
         text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
         text.AppendLine($"👥 {ConfirmedPlayers(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
         text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant)}");
@@ -103,12 +120,14 @@ public sealed class GatheringPresentationService
         var confirmed = gathering.Participants.Where(value => value.Status == GatheringParticipationStatus.Confirmed
                 && value.Participant is not null)
             .OrderBy(value => value.JoinedAt).ThenBy(value => value.Id).ToArray();
-        if (confirmed.Length > 0)
+        if (confirmed.Length > 0 || gathering.Guests.Count > 0)
         {
             text.AppendLine();
             text.AppendLine("Участники:");
             foreach (var participant in confirmed)
                 text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant)}");
+            foreach (var guest in gathering.Guests.OrderBy(value => value.CreatedAt).ThenBy(value => value.Id))
+                text.AppendLine($"• {WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>");
         }
 
         var description = Truncate(gathering.Description, AnnouncementDescriptionLength);
@@ -122,14 +141,23 @@ public sealed class GatheringPresentationService
         text.Append(StatusText(gathering.Status));
         return new GatheringAnnouncement(
             text.ToString(),
-            game.ImageUrl ?? game.ThumbnailImageUrl);
+            game.ImageUrl ?? game.ThumbnailImageUrl,
+            BggGameUrl.FromId(game.BggId));
+    }
+
+    public ProfileGatheringPresentation BuildProfileSchedule(GameGathering gathering, BotCommunity community,
+        long participantId)
+    {
+        var game = ResolveSnapshot(gathering);
+        return new(gathering.PublicId, community.Key, community.Name, community.Mode, game.Name,
+            FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
+            gathering.OrganizerParticipantId == participantId);
     }
 
     private static GatheringGameSnapshot ResolveSnapshot(GameGathering gathering)
         => GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
 
-    private static int ConfirmedPlayers(GameGathering gathering) =>
-        1 + gathering.Participants.Count(value => value.Status == GatheringParticipationStatus.Confirmed);
+    private static int ConfirmedPlayers(GameGathering gathering) => GatheringCapacity.OccupiedSeats(gathering);
 
     private static string DisplayName(Participant participant) =>
         participant.PreferredDisplayName ?? participant.DisplayName;
@@ -137,7 +165,7 @@ public sealed class GatheringPresentationService
     private static string RulesText(bool canTeachRules) =>
         canTeachRules ? "Могу объяснить правила" : "Опыт с игрой желателен";
 
-    private static string FormatLocalDateTime(DateTimeOffset startsAtUtc, string timeZoneId)
+    public static string FormatLocalDateTime(DateTimeOffset startsAtUtc, string timeZoneId)
     {
         var local = TimeZoneInfo.ConvertTime(startsAtUtc, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
         return local.ToString("d MMMM, HH:mm", RussianCulture);

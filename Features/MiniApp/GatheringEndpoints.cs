@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
@@ -16,6 +17,7 @@ internal sealed record UpdateGatheringRequest(string CommunityKey, string Starts
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description,
     bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds);
 internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null);
+internal sealed record GatheringGuestRequest(string CommunityKey, string? DisplayName = null);
 internal sealed record GatheringListItemResponse(
     GatheringCardPresentation Card,
     bool IsOrganizer);
@@ -36,6 +38,9 @@ internal static class GatheringEndpoints
         gatherings.MapPut("/{publicId:guid}", UpdateAsync);
         gatherings.MapPost("/{publicId:guid}/join", JoinAsync);
         gatherings.MapPost("/{publicId:guid}/leave", LeaveAsync);
+        gatherings.MapPost("/{publicId:guid}/guests", AddGuestAsync);
+        gatherings.MapPut("/{publicId:guid}/guests/{guestId:long}", RenameGuestAsync);
+        gatherings.MapDelete("/{publicId:guid}/guests/{guestId:long}", RemoveGuestAsync);
         gatherings.MapPost("/{publicId:guid}/{action}", LifecycleAsync);
         gatherings.MapPost("/{publicId:guid}/publication/retry", RetryPublicationAsync);
         return group;
@@ -59,7 +64,7 @@ internal static class GatheringEndpoints
             return MiniAppEndpointSupport.Problem("invalid_gathering_page", "Номер страницы должен быть больше нуля.", 400);
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         var query = dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
-            .Include(x => x.Participants).Include(x => x.OrganizerParticipant);
+            .Include(x => x.Participants).Include(x => x.Guests).Include(x => x.OrganizerParticipant);
         var values = await GatheringListQuery.Apply(query, parsedView, parsedFilter, timeProvider.GetUtcNow())
             .Skip((pageNumber - 1) * GatheringPageSize)
             .Take(GatheringPageSize + 1)
@@ -82,6 +87,7 @@ internal static class GatheringEndpoints
         var gathering = await dbContext.GameGatherings.AsNoTracking()
             .Include(x => x.OrganizerParticipant).Include(x => x.Expansions)
             .Include(x => x.Participants).ThenInclude(x => x.Participant)
+            .Include(x => x.Guests)
             .SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == community, cancellationToken);
         if (gathering is null) return Results.NotFound();
         var me = gathering.Participants.SingleOrDefault(x => x.Participant.TelegramUserId == access.Identity.TelegramUserId);
@@ -115,6 +121,8 @@ internal static class GatheringEndpoints
             WaitlistedParticipants = waitlisted.Select((x, index) => new
             { Name = ParticipantPresentation.GetDisplayName(x.Participant), Position = index + 1,
                 ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) }),
+            GuestParticipants = gathering.Guests.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+                .Select(x => new { x.Id, x.DisplayName }),
             PublicationStatus = gathering.PublicationStatus.ToString(),
             gathering.PublicationError,
             CanRetryPublication = manages && gathering.PublicationStatus == GatheringPublicationStatus.Failed
@@ -193,6 +201,53 @@ internal static class GatheringEndpoints
         TimeProvider timeProvider,
         CancellationToken cancellationToken) => MutateParticipationAsync(false, request, publicId, body,
             authenticator, resolver, service, publication, timeProvider, cancellationToken);
+
+    private static Task<IResult> AddGuestAsync(HttpRequest request, Guid publicId, GatheringGuestRequest body,
+        TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
+        GatheringService service, GatheringPublicationService publication, TimeProvider timeProvider,
+        CancellationToken cancellationToken) => MutateGuestAsync("add", request, publicId, null, body,
+            authenticator, resolver, service, publication, timeProvider, cancellationToken);
+
+    private static Task<IResult> RenameGuestAsync(HttpRequest request, Guid publicId, long guestId,
+        GatheringGuestRequest body, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
+        GatheringService service, GatheringPublicationService publication, TimeProvider timeProvider,
+        CancellationToken cancellationToken) => MutateGuestAsync("rename", request, publicId, guestId, body,
+            authenticator, resolver, service, publication, timeProvider, cancellationToken);
+
+    private static Task<IResult> RemoveGuestAsync(HttpRequest request, Guid publicId, long guestId,
+        [FromBody] GatheringGuestRequest body, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
+        GatheringService service, GatheringPublicationService publication, TimeProvider timeProvider,
+        CancellationToken cancellationToken) => MutateGuestAsync("remove", request, publicId, guestId, body,
+            authenticator, resolver, service, publication, timeProvider, cancellationToken);
+
+    private static async Task<IResult> MutateGuestAsync(string action, HttpRequest request, Guid publicId,
+        long? guestId, GatheringGuestRequest body, TelegramMiniAppAuthenticator authenticator,
+        CommunityContextResolver resolver, GatheringService service, GatheringPublicationService publication,
+        TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
+        var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
+            authenticator, resolver, cancellationToken);
+        if (access is null) return Results.Forbid();
+        try
+        {
+            var now = timeProvider.GetUtcNow();
+            var result = action switch
+            {
+                "add" => await service.AddGuestAsync(publicId, body.CommunityKey,
+                    access.Identity.TelegramUserId, body.DisplayName, now, cancellationToken),
+                "rename" => await service.RenameGuestAsync(publicId, guestId!.Value, body.CommunityKey,
+                    access.Identity.TelegramUserId, body.DisplayName, now, cancellationToken),
+                "remove" => await service.RemoveGuestAsync(publicId, guestId!.Value, body.CommunityKey,
+                    access.Identity.TelegramUserId, now, cancellationToken),
+                _ => throw new InvalidOperationException("Неизвестное действие с гостем.")
+            };
+            if (result.Promotion is not null)
+                await publication.NotifyPromotionAsync(result.Promotion, publicId, cancellationToken);
+            await publication.PublishAsync(publicId, cancellationToken);
+            return Results.NoContent();
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
 
     private static async Task<IResult> MutateParticipationAsync(bool join, HttpRequest request, Guid publicId,
         GatheringActionRequest body, TelegramMiniAppAuthenticator authenticator,

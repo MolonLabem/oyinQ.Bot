@@ -1,6 +1,7 @@
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Features.Collections;
 
 namespace oyinQ.Bot.Tests;
 
@@ -25,8 +26,37 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal("Sardar", card.OrganizerName);
         Assert.True(card.CanTeachRules);
         Assert.True(detail.CanTeachRules);
+        Assert.Equal("Стратегия", card.TypeName);
+        Assert.Equal("Стратегия", detail.TypeName);
+        Assert.Equal(167791, card.BggId);
+        Assert.Equal("https://boardgamegeek.com/boardgame/167791", card.BggUrl);
+        Assert.Equal(card.BggUrl, detail.BggUrl);
         Assert.Equal(2, detail.ConfirmedPlayers);
         Assert.Equal(["Hellas & Elysium", "Prelude"], detail.Expansions);
+    }
+
+    [Fact]
+    public void MissingClassificationAndBggId_AreOmittedWithoutPlaceholder()
+    {
+        var gathering = CreateGathering(canTeachRules: true);
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
+        {
+            BggId = null,
+            Type = GameType.Other
+        });
+        var service = new GatheringPresentationService();
+
+        var card = service.BuildCard(gathering, Community);
+        var detail = service.BuildDetails(gathering, Community);
+        var announcement = service.BuildTelegramAnnouncement(gathering, Community);
+
+        Assert.Null(card.TypeName);
+        Assert.Null(detail.TypeName);
+        Assert.Null(card.BggUrl);
+        Assert.Null(detail.BggUrl);
+        Assert.Null(announcement.BggUrl);
+        Assert.DoesNotContain("Другое", announcement.HtmlText);
     }
 
     [Fact]
@@ -36,6 +66,20 @@ public sealed class GatheringPresentationServiceTests
         gathering.Status = GatheringStatus.Recruiting;
 
         Assert.Equal("🟡 Идёт набор", new GatheringPresentationService().BuildCard(gathering, Community).StatusText);
+    }
+
+    [Fact]
+    public void ClubAndCampGatheringsExposeTheSameGameMetadata()
+    {
+        var gathering = CreateGathering(canTeachRules: true);
+        var service = new GatheringPresentationService();
+
+        var club = service.BuildCard(gathering, Community);
+        var camp = service.BuildCard(gathering,
+            new BotCommunity("camp", "Кэмп", -1002, BotMode.Camp, "UTC"));
+
+        Assert.Equal(club.TypeName, camp.TypeName);
+        Assert.Equal(club.BggUrl, camp.BggUrl);
     }
 
     [Fact]
@@ -71,6 +115,7 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal(120, card.Description?.Length);
         Assert.EndsWith("…", card.Description);
         Assert.Contains("📖 Правила объясню", announcement.HtmlText);
+        Assert.Contains("🏷 Стратегия", announcement.HtmlText);
         Assert.Contains("Дополнения:", announcement.HtmlText);
         Assert.Equal("https://images.example/large.jpg", announcement.ImageUrl);
     }
@@ -96,7 +141,8 @@ public sealed class GatheringPresentationServiceTests
             "4",
             [],
             "catalog",
-            [])),
+            [],
+            Type: GameType.Strategy)),
         OrganizerParticipant = new Participant { DisplayName = "Sardar" },
         Participants =
         [

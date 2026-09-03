@@ -13,7 +13,9 @@ public sealed record BotCommunity(
     string Name,
     long TelegramChatId,
     BotMode Mode,
-    string TimeZoneId);
+    string TimeZoneId,
+    DateOnly? StartDate = null,
+    DateOnly? EndDate = null);
 
 public sealed class CommunityOptions
 {

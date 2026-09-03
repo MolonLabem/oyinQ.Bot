@@ -231,6 +231,7 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                     </div>
                     <details className="technical">
                       <summary>Техническая информация</summary>
+                      <p>Telegram ID: <code>{club.telegramChatId}</code></p>
                       <p>Часовой пояс: {club.timeZoneId}</p>
                       <p>Ревизия: {club.collectionRevision}</p>
                       <small>Обновлено {new Date(club.updatedAt).toLocaleString("ru-RU")}</small>
@@ -275,6 +276,11 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                     )}
                     {canDeleteCommunity(isSuperAdmin) && <button className="danger ghost" onClick={() => deleteCommunity("camps", camp.id, camp.name)}>Удалить кэмп</button>}
                   </div>
+                  <details className="technical">
+                    <summary>Техническая информация</summary>
+                    <p>Telegram ID: <code>{camp.telegramChatId}</code></p>
+                    <p>Часовой пояс: {camp.timeZoneId}</p>
+                  </details>
                 </Card>
               ))}
             </div>

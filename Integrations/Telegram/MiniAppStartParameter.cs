@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.WebUtilities;
 
 namespace oyinQ.Bot.Integrations.Telegram;
 
-public sealed record MiniAppStartContext(string CommunityKey, Guid? GatheringPublicId);
+public sealed record MiniAppStartContext(string CommunityKey, Guid? GatheringPublicId, long? CollectionBggId = null);
 
 public static class MiniAppStartParameter
 {
@@ -10,6 +10,12 @@ public static class MiniAppStartParameter
 
     public static string ForGathering(string communityKey, Guid publicId) =>
         $"g-{WebEncoders.Base64UrlEncode(publicId.ToByteArray())}-{communityKey}";
+
+    public static string ForCollectionGame(string communityKey, long bggId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bggId);
+        return $"c-{bggId}-{communityKey}";
+    }
 
     public static MiniAppStartContext? Parse(string? messageText)
     {
@@ -21,6 +27,17 @@ public static class MiniAppStartParameter
         if (parameter.StartsWith("community-", StringComparison.Ordinal))
         {
             return new MiniAppStartContext(parameter["community-".Length..], null);
+        }
+
+        if (parameter.StartsWith("c-", StringComparison.Ordinal))
+        {
+            var separator = parameter.IndexOf('-', 2);
+            return separator > 2
+                && long.TryParse(parameter.AsSpan(2, separator - 2), out var bggId)
+                && bggId > 0
+                && separator < parameter.Length - 1
+                    ? new MiniAppStartContext(parameter[(separator + 1)..], null, bggId)
+                    : null;
         }
 
         const int separatorIndex = 24;

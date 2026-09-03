@@ -13,6 +13,7 @@ public sealed class Participant
 
     public ICollection<GameGathering> OrganizedGatherings { get; set; } = [];
     public ICollection<GameGatheringParticipant> GatheringParticipations { get; set; } = [];
+    public ICollection<GameGatheringGuest> CreatedGatheringGuests { get; set; } = [];
     public ICollection<CampRegistration> CampRegistrations { get; set; } = [];
     public ICollection<CampGameContribution> CampGameContributions { get; set; } = [];
 }

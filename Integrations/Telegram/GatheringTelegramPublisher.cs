@@ -20,7 +20,7 @@ public sealed class GatheringTelegramPublisher(
         CancellationToken cancellationToken)
     {
         var announcement = presentationService.BuildTelegramAnnouncement(gathering, community);
-        var keyboard = await BuildKeyboardAsync(gathering, community, cancellationToken);
+        var keyboard = await BuildKeyboardAsync(gathering, community, announcement.BggUrl, cancellationToken);
 
         if (announcement.ImageUrl is not null)
         {
@@ -63,7 +63,7 @@ public sealed class GatheringTelegramPublisher(
         }
 
         var announcement = presentationService.BuildTelegramAnnouncement(gathering, community);
-        var keyboard = await BuildKeyboardAsync(gathering, community, cancellationToken);
+        var keyboard = await BuildKeyboardAsync(gathering, community, announcement.BggUrl, cancellationToken);
         try
         {
             await botClient.EditMessageCaption(
@@ -93,6 +93,7 @@ public sealed class GatheringTelegramPublisher(
     private async Task<InlineKeyboardMarkup> BuildKeyboardAsync(
         GameGathering gathering,
         BotCommunity community,
+        string? bggUrl,
         CancellationToken cancellationToken)
     {
         var bot = await botClient.GetMe(cancellationToken);
@@ -103,8 +104,16 @@ public sealed class GatheringTelegramPublisher(
 
         var parameter = MiniAppStartParameter.ForGathering(community.Key, gathering.PublicId);
         var url = TelegramBotDeepLinks.BuildStart(bot.Username, parameter);
-        return new InlineKeyboardMarkup([
-            [InlineKeyboardButton.WithUrl("Открыть сбор", url)]
-        ]);
+        var row = new List<InlineKeyboardButton> { InlineKeyboardButton.WithUrl("Открыть сбор", url) };
+        if (bggUrl is not null) row.Add(InlineKeyboardButton.WithUrl("BGG", bggUrl));
+        var rows = new List<IEnumerable<InlineKeyboardButton>> { row };
+        var bggId = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson).BggId;
+        if (bggId is > 0)
+        {
+            var collectionParameter = MiniAppStartParameter.ForCollectionGame(community.Key, bggId.Value);
+            rows.Add([InlineKeyboardButton.WithUrl("В коллекции",
+                TelegramBotDeepLinks.BuildStart(bot.Username, collectionParameter))]);
+        }
+        return new InlineKeyboardMarkup(rows);
     }
 }

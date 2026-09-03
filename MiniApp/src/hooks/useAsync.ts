@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useAsync<T>(loader: () => Promise<T>, dependencies: unknown[]) {
-  const [data, setData] = useState<T>(); const [error, setError] = useState<string>(); const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<T>(); const [error, setError] = useState<string>(); const [failure, setFailure] = useState<unknown>(); const [loading, setLoading] = useState(true);
   const requestVersion = useRef(0);
   const reload = useCallback(() => {
     const version = ++requestVersion.current;
-    setLoading(true); setError(undefined);
+    setLoading(true); setError(undefined); setFailure(undefined);
     loader()
       .then(value => { if (version === requestVersion.current) setData(value); })
-      .catch(e => { if (version === requestVersion.current) setError(e instanceof Error ? e.message : String(e)); })
+      .catch(e => { if (version === requestVersion.current) { setFailure(e); setError(e instanceof Error ? e.message : String(e)); } })
       .finally(() => { if (version === requestVersion.current) setLoading(false); });
   }, dependencies);
   useEffect(() => {
     reload();
     return () => { requestVersion.current++; };
   }, [reload]);
-  return { data, error, loading, reload, setData };
+  return { data, error, failure, loading, reload, setData };
 }
 
 export function useDebouncedValue<T>(value: T, delayMilliseconds: number): T {

@@ -61,6 +61,16 @@ public sealed class GatheringLifecycleTests
         Assert.Null(GatheringLifecycle.CreateCleanup(Due(GatheringStatus.Recruiting, 2), Now));
 
     [Fact]
+    public void ManualGuest_CountsTowardMinimumAtLifecycleBoundary()
+    {
+        var gathering = Due(GatheringStatus.Ready, minimumPlayers: 2);
+        gathering.Guests.Add(new GameGatheringGuest { DisplayName = "Гость" });
+
+        Assert.Equal(GatheringLifecycleOutcome.Completed, GatheringLifecycle.ApplyDue(gathering, Now));
+        Assert.Equal(GatheringStatus.Completed, gathering.Status);
+    }
+
+    [Fact]
     public void DuplicateLifecycleProcessing_IsIdempotentAfterCompletion()
     {
         var gathering = Due(GatheringStatus.Ready, minimumPlayers: 1);

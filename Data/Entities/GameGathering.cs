@@ -30,4 +30,5 @@ public sealed class GameGathering
     public Participant OrganizerParticipant { get; set; } = null!;
     public ICollection<GameGatheringExpansion> Expansions { get; set; } = [];
     public ICollection<GameGatheringParticipant> Participants { get; set; } = [];
+    public ICollection<GameGatheringGuest> Guests { get; set; } = [];
 }

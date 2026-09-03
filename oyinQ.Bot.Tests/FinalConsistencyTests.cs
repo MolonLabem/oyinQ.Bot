@@ -194,7 +194,7 @@ public sealed class FinalConsistencyTests
             && x.GetFilter() == "\"Status\" IN (0, 1)");
         Assert.NotNull(refresh.FindProperty(nameof(ClubMetadataRefresh.LeaseId)));
         Assert.NotNull(refresh.FindProperty(nameof(ClubMetadataRefresh.LeaseExpiresAt)));
-        Assert.Equal(["20260901073247_CleanBaseline", "20260901125924_ForumPostingTopics", "20260901133621_CommunityDeletionAndTelegramPhotos"],
+        Assert.Equal(["20260901073247_CleanBaseline", "20260901125924_ForumPostingTopics", "20260901133621_CommunityDeletionAndTelegramPhotos", "20260903073138_AddGatheringGuests"],
             db.Database.GetMigrations());
     }
 

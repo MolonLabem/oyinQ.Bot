@@ -18,6 +18,8 @@ public sealed class UxHelperTests
         Assert.Equal("https://example.test/app/?admin=1", links.Admin());
         Assert.Equal("https://example.test/app/?community=camp%20one&gathering=8d8c273c-5726-45ad-a902-c8fa022c3265",
             links.Gathering("camp one", gatheringId));
+        Assert.Equal("https://example.test/app/?community=camp%20one&tab=games&game=167791",
+            links.CollectionGame("camp one", 167791));
     }
 
     [Fact]

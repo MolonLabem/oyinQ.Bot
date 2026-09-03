@@ -139,7 +139,7 @@ public static class BggTaxonomyCatalog
         (game.Mechanics ?? []).Select(LocalizeMechanic).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 
     public static Presentation Present(Gatherings.GatheringGameSnapshot game) => new(
-        [DisplayName(game.Type)],
+        game.Type == GameType.Other ? [] : [DisplayName(game.Type)],
         (game.Categories ?? []).Select(LocalizeCategory).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
         (game.Mechanics ?? []).Select(LocalizeMechanic).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 

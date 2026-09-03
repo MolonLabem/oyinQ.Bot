@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
@@ -34,6 +35,30 @@ public sealed class GatheringTelegramPublisherTests
         Assert.DoesNotContain(handler.Methods, method => method.StartsWith("send", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("\"chat_id\":-1001", handler.Bodies.Last());
         Assert.Contains("\"message_id\":777", handler.Bodies.Last());
+        Assert.Contains("https://boardgamegeek.com/boardgame/1", handler.Bodies.Last());
+        Assert.Contains("BGG", handler.Bodies.Last());
+        Assert.Contains("c-1-club", handler.Bodies.Last());
+        Assert.Contains(KeyboardButtons(handler.Bodies.Last()), button => button.Text == "В коллекции");
+    }
+
+    [Fact]
+    public async Task MissingBggId_DoesNotRenderBrokenButton()
+    {
+        var handler = new RecordingHandler();
+        var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO",
+            new HttpClient(handler));
+        var publisher = new GatheringTelegramPublisher(new RejectingGroupSender(), bot,
+            new GatheringPresentationService(), NullLogger<GatheringTelegramPublisher>.Instance);
+        var gathering = Gathering();
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with { BggId = null });
+
+        await publisher.UpdateAsync(gathering,
+            new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC"), default);
+
+        Assert.DoesNotContain("boardgamegeek.com", handler.Bodies.Last());
+        Assert.DoesNotContain("\"text\":\"BGG\"", handler.Bodies.Last());
+        Assert.DoesNotContain(KeyboardButtons(handler.Bodies.Last()), button => button.Text == "В коллекции");
     }
 
     private static GameGathering Gathering() => new()
@@ -45,6 +70,15 @@ public sealed class GatheringTelegramPublisherTests
             GatheringGameSnapshot.CurrentVersion, 1, "Игра", null, null, 2, 4, null, [], "catalog", [])),
         OrganizerParticipant = new Participant { DisplayName = "Организатор" }
     };
+
+    private static IReadOnlyList<(string Text, string? Url)> KeyboardButtons(string body)
+    {
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.GetProperty("reply_markup").GetProperty("inline_keyboard")
+            .EnumerateArray().SelectMany(row => row.EnumerateArray())
+            .Select(button => (button.GetProperty("text").GetString()!,
+                button.TryGetProperty("url", out var url) ? url.GetString() : null)).ToArray();
+    }
 
     private sealed class RejectingGroupSender : ITelegramGroupMessageSender
     {
