@@ -12,6 +12,7 @@ public sealed class MiniAppStartParameterTests
 
         var parsed = MiniAppStartParameter.Parse($"/start {parameter}");
 
+        Assert.Equal("g-Hb5nG7rK0EGFXQS8Kb0ELQ-club-main", parameter);
         Assert.True(parameter.Length <= 64);
         Assert.Equal("club-main", parsed?.CommunityKey);
         Assert.Equal(id, parsed?.GatheringPublicId);

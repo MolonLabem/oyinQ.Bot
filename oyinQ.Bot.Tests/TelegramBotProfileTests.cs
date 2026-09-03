@@ -61,6 +61,15 @@ public sealed class TelegramBotProfileTests
     }
 
     [Fact]
+    public void MainMiniAppDeepLink_OpensAppWithoutStartCommand()
+    {
+        var link = TelegramBotDeepLinks.BuildMainMiniApp("@RuntimeBot", "g-payload-club");
+
+        Assert.Equal("https://t.me/RuntimeBot?startapp=g-payload-club", link);
+        Assert.DoesNotContain("?start=", link, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HelpAndPrivacyCopy_AreConciseAndActionable()
     {
         Assert.Contains("Основные действия находятся в Mini App", TelegramEntryText.Help);

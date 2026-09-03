@@ -12,12 +12,14 @@ import { telegram } from "../telegram/webApp";
 import { fullscreenLabel } from "../pages/camp/registrationLogic";
 import { collectionVisitFromGathering, positiveGameId } from "./collectionNavigation";
 import { CommunityAvatar } from "../components/CommunityAvatar";
+import { miniAppLaunchContext } from "./launchContext";
 
 export function App() {
+  const [launchContext] = useState(() => miniAppLaunchContext(location.search, telegram.startParam));
   const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
-  const [communityKey, setCommunityKey] = useState(() => initialCommunity()); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
+  const [communityKey, setCommunityKey] = useState(() => launchContext.communityKey ?? localStorage.getItem("oyinq-community") ?? ""); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
-  const [initialGatheringId, setInitialGatheringId] = useState(() => new URLSearchParams(location.search).get("gathering") ?? undefined);
+  const [initialGatheringId, setInitialGatheringId] = useState(() => launchContext.gatheringId);
   const [initialCollectionGameId, setInitialCollectionGameId] = useState(() => positiveGameId(new URLSearchParams(location.search).get("game")));
   const [collectionReturnGatheringId, setCollectionReturnGatheringId] = useState<string>();
   const [profileReturnCommunityKey, setProfileReturnCommunityKey] = useState<string>();
@@ -58,10 +60,4 @@ function CommunityPicker({ communities, choose, admin }: { communities: Communit
 
 function PrivacyLink() {
   return <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>Политика конфиденциальности</button>;
-}
-
-function initialCommunity() {
-  const query = new URLSearchParams(location.search).get("community");
-  const start = window.Telegram?.WebApp.initDataUnsafe.start_param;
-  return query ?? (start?.startsWith("community-") ? start.slice(10) : null) ?? localStorage.getItem("oyinq-community") ?? "";
 }
