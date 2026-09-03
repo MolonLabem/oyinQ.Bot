@@ -105,8 +105,7 @@ public sealed class GatheringManagementService(
             .Include(x => x.Expansions).Include(x => x.Guests)
             .SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == communityKey,
                 cancellationToken) ?? throw new KeyNotFoundException("Сбор не найден.");
-        if (gathering.OrganizerParticipant.TelegramUserId != telegramUserId)
-            throw new UnauthorizedAccessException("Управлять сбором может только организатор.");
+        GatheringAccessPolicy.RequireOrganizer(gathering, telegramUserId);
         return gathering;
     }
 
@@ -142,12 +141,9 @@ public sealed class GatheringManagementService(
             return participant;
         }
         var now = timeProvider.GetUtcNow();
-        participant = new Participant
-        {
-            TelegramUserId = identity.TelegramUserId, TelegramUsername = identity.TelegramUsername,
-            DisplayName = identity.DisplayName ?? $"Telegram {identity.TelegramUserId}",
-            ActiveCommunityKey = communityKey, CreatedAt = now, UpdatedAt = now
-        };
+        participant = ParticipantIdentityPolicy.Create(identity.TelegramUserId,
+            identity.TelegramUsername, identity.DisplayName, now);
+        participant.ActiveCommunityKey = communityKey;
         dbContext.Participants.Add(participant);
         await dbContext.SaveChangesAsync(cancellationToken);
         return participant;

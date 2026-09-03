@@ -21,9 +21,6 @@ public sealed class CampRegistrationConflictException(
 
 public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider timeProvider)
 {
-    private static readonly GatheringStatus[] ActiveGatheringStatuses =
-        [GatheringStatus.Recruiting, GatheringStatus.Ready, GatheringStatus.Full, GatheringStatus.Closed];
-
     public async Task<CampRegistrationMutationResult> SaveAsync(long campId, long participantId,
         IReadOnlyCollection<DateOnly> selectedDates, bool needsAccommodation, string? displayName, string city,
         bool confirmAttendanceChanges, CancellationToken cancellationToken)
@@ -113,7 +110,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         }
         var gatherings = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
-                && ActiveGatheringStatuses.Contains(x.Status)
+                && GatheringLifecycle.ActiveStatuses.Contains(x.Status)
                 && (x.OrganizerParticipantId == participantId
                     || x.Participants.Any(p => p.ParticipantId == participantId
                         && (p.Status == GatheringParticipationStatus.Confirmed
@@ -157,7 +154,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
     {
         var values = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == communityKey && x.StartsAtUtc > now
-                && ActiveGatheringStatuses.Contains(x.Status)
+                && GatheringLifecycle.ActiveStatuses.Contains(x.Status)
                 && (x.OrganizerParticipantId == participantId
                     || x.Participants.Any(p => p.ParticipantId == participantId
                         && (p.Status == GatheringParticipationStatus.Confirmed

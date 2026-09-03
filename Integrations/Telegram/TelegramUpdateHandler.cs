@@ -120,14 +120,8 @@ public sealed class TelegramUpdateHandler(
                 || command == "/admin" && isAdministrator))
         {
             var now = DateTimeOffset.UtcNow;
-            participant = new Participant
-            {
-                TelegramUserId = user.Id,
-                TelegramUsername = user.Username,
-                DisplayName = BuildDisplayName(user),
-                CreatedAt = now,
-                UpdatedAt = now
-            };
+            participant = ParticipantIdentityPolicy.Create(user.Id, user.Username,
+                BuildDisplayName(user), now);
             dbContext.Participants.Add(participant);
             await dbContext.SaveChangesAsync(cancellationToken);
         }

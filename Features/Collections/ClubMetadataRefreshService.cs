@@ -155,18 +155,10 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
 
     public static ClubCollectionGame EnrichPreservingMembership(ClubCollectionGame existing, BggGameDetails details)
     {
-        var game = details.Game;
-        return existing with { Name = game.Name, ThumbnailImageUrl = game.ThumbnailImageUrl,
-            ImageUrl = game.ImageUrl, MinPlayers = game.MinPlayers, MaxPlayers = game.MaxPlayers,
-            BestPlayers = game.BestPlayers, Types = game.Types, Categories = game.Categories,
-            Description = game.Description, YearPublished = game.YearPublished,
-            MinPlayTimeMinutes = game.MinPlayTimeMinutes, MaxPlayTimeMinutes = game.MaxPlayTimeMinutes,
-            MinAge = game.MinAge, Type = game.Type, Subdomains = game.Subdomains,
-            CategoryItems = game.CategoryItems, Mechanics = game.Mechanics,
-            OriginalName = game.OriginalName,
-            Expansions = existing.Expansions.Select(selected => details.Expansions
+        var expansions = existing.Expansions.Select(selected => details.Expansions
                 .Where(x => x.BggId == selected.BggId)
                 .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName))
-                .SingleOrDefault() ?? selected).ToArray() };
+                .SingleOrDefault() ?? selected).ToArray();
+        return BggGameMapper.ToCollectionGame(details.Game, expansions);
     }
 }

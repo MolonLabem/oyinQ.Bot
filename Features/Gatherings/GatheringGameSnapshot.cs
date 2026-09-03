@@ -30,7 +30,8 @@ public sealed record GatheringGameSnapshot(
 
     public static GatheringGameSnapshot FromClubGame(
         ClubCollectionGame game,
-        IReadOnlyCollection<long> selectedExpansionIds)
+        IReadOnlyCollection<long> selectedExpansionIds,
+        string source = "catalog")
     {
         var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
         return new(
@@ -43,7 +44,7 @@ public sealed record GatheringGameSnapshot(
             players.Maximum,
             game.BestPlayers,
             game.Expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
-            "catalog",
+            source,
             game.Expansions.ToArray(),
             game.Description,
             game.YearPublished,

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Gatherings;
 
 namespace oyinQ.Bot.Features.Communities;
 
@@ -51,10 +52,9 @@ public sealed class CampLifecycleWorker(
             await transaction.CommitAsync(cancellationToken);
             return true;
         }
-        var activeStatuses = new[] { GatheringStatus.Recruiting, GatheringStatus.Ready,
-            GatheringStatus.Full, GatheringStatus.Closed };
         var future = await dbContext.GameGatherings.AsNoTracking().CountAsync(x =>
-            x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now && activeStatuses.Contains(x.Status),
+            x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
+                && GatheringLifecycle.ActiveStatuses.Contains(x.Status),
             cancellationToken);
         if (future > 0)
         {

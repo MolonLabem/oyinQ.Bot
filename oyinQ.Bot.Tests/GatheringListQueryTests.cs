@@ -85,6 +85,19 @@ public sealed class GatheringListQueryTests
         Assert.Contains("LIMIT", sql, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void CanonicalActiveStatusSet_TranslatesForNpgsql()
+    {
+        using var dbContext = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=oyinq_translation_test;Username=test;Password=test").Options);
+
+        var sql = GatheringListQuery.Apply(dbContext.GameGatherings.AsNoTracking(),
+            GatheringListView.Upcoming, GatheringHistoryFilter.All, Now).ToQueryString();
+
+        Assert.Contains("Status", sql, StringComparison.Ordinal);
+        Assert.Contains("StartsAtUtc", sql, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(GatheringStatus.Recruiting)]
     [InlineData(GatheringStatus.Ready)]

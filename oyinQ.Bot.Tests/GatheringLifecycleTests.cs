@@ -10,6 +10,30 @@ public sealed class GatheringLifecycleTests
     private static readonly DateTimeOffset Now = new(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
 
     [Theory]
+    [InlineData(GatheringStatus.Recruiting, true)]
+    [InlineData(GatheringStatus.Ready, true)]
+    [InlineData(GatheringStatus.Full, true)]
+    [InlineData(GatheringStatus.Closed, true)]
+    [InlineData(GatheringStatus.Completed, false)]
+    [InlineData(GatheringStatus.Cancelled, false)]
+    public void ActiveStatusSet_IsCanonical(GatheringStatus status, bool expected) =>
+        Assert.Equal(expected, GatheringLifecycle.IsActive(status));
+
+    [Fact]
+    public void OrganizerManagement_UsesCanonicalUpcomingLifecycle()
+    {
+        var gathering = Due(GatheringStatus.Ready, 1);
+        gathering.StartsAtUtc = Now.AddMinutes(1);
+
+        Assert.True(GatheringAccessPolicy.CanManage(gathering, true, Now));
+        gathering.Status = GatheringStatus.Completed;
+        Assert.False(GatheringAccessPolicy.CanManage(gathering, true, Now));
+        gathering.Status = GatheringStatus.Ready;
+        gathering.StartsAtUtc = Now;
+        Assert.False(GatheringAccessPolicy.CanManage(gathering, true, Now));
+    }
+
+    [Theory]
     [InlineData(GatheringStatus.Recruiting)]
     [InlineData(GatheringStatus.Closed)]
     public void DueGatheringBelowMinimum_IsMarkedForHardDeletion(GatheringStatus status)

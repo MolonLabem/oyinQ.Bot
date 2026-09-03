@@ -76,8 +76,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             IsolationLevel.Serializable,
             cancellationToken);
         var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
-        if (gathering.StartsAtUtc <= now.ToUniversalTime()
-            || gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
+        if (!GatheringLifecycle.IsUpcoming(gathering, now))
             throw new InvalidOperationException("Нельзя покинуть завершённый или отменённый сбор.");
         var participant = await RequireContextParticipantAsync(gathering, telegramUserId, cancellationToken);
         if (gathering.OrganizerParticipantId == participant.Id)
@@ -106,7 +105,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
         var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
-        RequireOrganizer(gathering, telegramUserId);
+        GatheringAccessPolicy.RequireOrganizer(gathering, telegramUserId);
         GatheringRules.EnsureGuestEditable(gathering, now);
         var normalizedDisplayName = GatheringRules.NormalizeGuestDisplayName(displayName);
         if (!GatheringCapacity.HasAvailableSeat(gathering))
@@ -131,7 +130,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
         var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
-        RequireOrganizer(gathering, telegramUserId);
+        GatheringAccessPolicy.RequireOrganizer(gathering, telegramUserId);
         GatheringRules.EnsureGuestEditable(gathering, now);
         var guest = gathering.Guests.SingleOrDefault(x => x.Id == guestId)
             ?? throw new KeyNotFoundException("Гость не найден в этом сборе.");
@@ -150,7 +149,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
         var gathering = await LockGatheringAsync(publicId, communityKey, cancellationToken);
-        RequireOrganizer(gathering, telegramUserId);
+        GatheringAccessPolicy.RequireOrganizer(gathering, telegramUserId);
         GatheringRules.EnsureGuestEditable(gathering, now);
         var guest = gathering.Guests.SingleOrDefault(x => x.Id == guestId)
             ?? throw new KeyNotFoundException("Гость не найден в этом сборе.");
@@ -209,8 +208,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
 
     private static void EnsureJoinable(GameGathering gathering, DateTimeOffset now)
     {
-        if (gathering.StartsAtUtc <= now.ToUniversalTime()
-            || gathering.Status is GatheringStatus.Closed or GatheringStatus.Completed or GatheringStatus.Cancelled)
+        if (!GatheringLifecycle.IsJoinOpen(gathering, now))
         {
             throw new InvalidOperationException("Запись в этот сбор закрыта.");
         }
@@ -221,11 +219,5 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         GatheringCapacity.RecalculateStatus(gathering);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
-    }
-
-    private static void RequireOrganizer(GameGathering gathering, long telegramUserId)
-    {
-        if (gathering.OrganizerParticipant.TelegramUserId != telegramUserId)
-            throw new UnauthorizedAccessException("Управлять гостями может только организатор сбора.");
     }
 }

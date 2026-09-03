@@ -4,6 +4,17 @@
 
 OyinQ is one ASP.NET Core .NET 10 application, one React Telegram Mini App, and one Telegram bot serving multiple PostgreSQL-backed communities. `BotMode` has exactly `Club` and `Camp`. Never branch on hard-coded chat IDs or duplicate identity, integrations, collections, or gathering stacks per mode.
 
+Canonical rule ownership:
+
+- `CommunityContextResolver` plus `ICommunityStore` own active community resolution and membership checks; `OyinQCommunity.Key` is application scope and `TelegramChatId` is transport identity.
+- `IAdminAuthorizationService` owns Super Admin and effective group-admin authorization. Endpoints and Telegram handlers must not reconstruct it.
+- `BggGameNameResolver`, `BggTaxonomyCatalog`, and `BggGameMapper` own provider title, taxonomy, and provider-to-domain projection. BGG ID is identity and `BggGameUrl` derives links.
+- `GameCatalogService` and `EffectiveCampCatalogService` own scoped collection membership and Camp availability. `ClubCollectionGame.HasExpansions` is the only expansion-availability invariant.
+- `GatheringLifecycle`, `GatheringCapacity`, `GatheringAccessPolicy`, and `GatheringRules` own status/date semantics, occupied seats, user actions, and mutations respectively. `GatheringListQuery` owns list/history filtering; `ProfileGatheringQuery` composes it.
+- `CampRules` owns inclusive Camp dates and local-date validation. Gathering instants are UTC; `GatheringPresentationService` owns community-timezone rendering.
+- `ITelegramGroupMessageSender` owns `chatId + optional messageThreadId` resolution and stale-topic fallback. Publishers format content but do not resolve destinations.
+- The Mini App renders backend decisions. Telegram parses/delivers updates and routes mutations through application services; neither adapter owns a second business-rule implementation.
+
 The Mini App is the primary application UI. It owns Camp registration, Club collections, Camp contributions, catalog/search, gathering creation and participation, and all administration. Telegram is a thin adapter limited to `/start`, contextual deep links, `/admin` entry, prepared native peer selection and its DM fallback, group gathering announcements, and notifications. Do not add reply-keyboard application menus or `game:`, `interest:`, `copy:`, `collection:`, `session:`, or `reg:` callback applications.
 Bot profile setup runs in both webhook and long-polling modes. Private command scope is `/start`, `/menu`, `/help`, `/privacy`, `/admin`; group scope contains only `/oyinq`. `/menu` uses the same community-aware Mini App entry point as `/start`; `/admin` remains authorization-checked. Group `/oyinq` resolves the managed chat and uses a runtime `getMe()` username for the safe contextual private-chat deep link. Never hard-code a bot username.
 
@@ -82,7 +93,7 @@ Northflank provides `PORT`; do not require it as application configuration. Keep
 
 ## Database baseline
 
-The database is created from the single clean baseline migration. Do not reintroduce the retired global `Game`, `GameCopy`, `GameInterest`, `GameSession`, `GameSessionParticipant`, `CollectionImport`, `ParticipantConversationState`, or `OyinQAdministrator` entities, the old participant registration fields, `Club.BggUsername`, or `GameGathering.GameId`.
+The database starts from the clean baseline migration; later schema changes are forward-only additive migrations. Do not reintroduce the retired global `Game`, `GameCopy`, `GameInterest`, `GameSession`, `GameSessionParticipant`, `CollectionImport`, `ParticipantConversationState`, or `OyinQAdministrator` entities, the old participant registration fields, `Club.BggUsername`, or `GameGathering.GameId`.
 
 Admin statistics and CSV export use `CampRegistration`, Club/Camp collection documents, `CampGameContributions`, and `GameGathering`.
 

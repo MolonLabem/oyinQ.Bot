@@ -8,7 +8,8 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 
 - Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`. Administrators can add a whole BGG Owned collection by username through a persisted additive job; it never removes existing games or selected expansions.
 - Camps have inclusive local dates, lifecycle status, scoped `CampRegistration` with exact `CampRegistrationDays`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`. `DaysStaying` is derived compatibility data, not attendance authority.
-- Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL.
+- Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL. `GatheringCapacity` derives occupied seats from the organizer, confirmed registered participants, and manual guests; the API transports that result as `occupiedSeats`.
+- `GatheringLifecycle` owns active/upcoming/due status semantics, `GatheringListQuery` owns list/history filtering, and the profile schedule composes that query instead of maintaining a second schedule model.
 - Gathering instants are stored and transported as UTC. The Mini App interprets and validates `datetime-local` values in the selected community's validated IANA time zone, never in the browser or server machine time zone.
 - Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.
 - BGG is the only external board-game provider. Missing BGG credentials visibly disable search/add/import without disabling stored collections, contributions, or gatherings.
@@ -130,7 +131,7 @@ Do not set `Telegram__UseLongPolling` in production. Do not manually set `PORT` 
 
 ## Database baseline
 
-The repository contains one clean EF migration, `20260901073247_CleanBaseline`, intended for a fresh database. The retired global game/session/import/conversation entities, persistent administrator table, participant compatibility fields, `Club.BggUsername`, and `GameGathering.GameId` are not part of the model or schema.
+The migration chain starts with the clean `20260901073247_CleanBaseline` for a fresh database. Forum topics, community soft deletion/photos, and gathering guests are forward-only additive migrations. The retired global game/session/import/conversation entities, persistent administrator table, participant compatibility fields, `Club.BggUsername`, and `GameGathering.GameId` are not part of the model or schema.
 
 This baseline deliberately replaces the earlier additive migration chain. Do not apply it over a database containing that old chain: create a backup or Neon branch, reset the target schema, and then apply the baseline. Super Admins are restored from configuration, normal administrator grants are recreated per community, and optional communities may be reinserted from `CommunityBootstrap:CommunitiesJson`.
 

@@ -149,7 +149,7 @@ public sealed class FinalConsistencyTests
         var notification = GatheringNotificationService.CaptureUnderfilled(gathering);
 
         Assert.Equal([1L, 2L], notification.TelegramUserIds);
-        Assert.Equal(2, notification.ConfirmedPlayers);
+        Assert.Equal(2, notification.OccupiedSeats);
     }
 
     [Fact]
@@ -165,6 +165,20 @@ public sealed class FinalConsistencyTests
         Assert.Equal("Игровое имя", participant.PreferredDisplayName);
         Assert.False(ParticipantIdentityPolicy.RefreshTrustedPresentation(participant, "new", null, now.AddMinutes(1)));
         Assert.Equal("New name", participant.DisplayName);
+    }
+
+    [Fact]
+    public void TrustedIdentityCreation_NormalizesEveryEntryPathTheSameWay()
+    {
+        var now = DateTimeOffset.Parse("2026-08-31T12:00:00+05:00");
+
+        var participant = ParticipantIdentityPolicy.Create(42, "  user  ", "  Player  ", now);
+
+        Assert.Equal("user", participant.TelegramUsername);
+        Assert.Equal("Player", participant.DisplayName);
+        Assert.Equal(now.ToUniversalTime(), participant.CreatedAt);
+        Assert.Equal(participant.CreatedAt, participant.UpdatedAt);
+        Assert.Equal("Telegram 43", ParticipantIdentityPolicy.Create(43, null, null, now).DisplayName);
     }
 
     [Theory]

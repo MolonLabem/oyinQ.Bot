@@ -101,14 +101,15 @@ internal static class GatheringEndpoints
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
         var localStart = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
             TimeZoneInfo.FindSystemTimeZoneById(access.Community.TimeZoneId));
+        var canManage = GatheringAccessPolicy.CanManage(gathering, manages, now);
         return Results.Ok(new
         {
             Gathering = presentation.BuildDetails(gathering, access.Community),
             Status = gathering.Status.ToString(),
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
-            CanManage = manages,
-            CanEdit = manages && gathering.StartsAtUtc > now
-                && gathering.Status is not GatheringStatus.Completed and not GatheringStatus.Cancelled,
+            CanEdit = canManage,
+            CanChangeLifecycle = canManage,
+            CanManageGuests = canManage,
             HasStarted = gathering.StartsAtUtc <= now,
             CanJoin = GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
             CanLeave = GatheringAccessPolicy.CanLeave(gathering, manages, active, now),

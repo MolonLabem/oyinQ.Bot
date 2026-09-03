@@ -277,17 +277,15 @@ internal static class CampEndpoints
             var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
             if (selected.Any(id => details.Expansions.All(x => x.BggId != id)))
                 throw new InvalidOperationException("Выбрано неизвестное дополнение.");
-            var game = details.Game;
-                await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, bggId.Value,
-                CampContributionItemType.BaseGame, null, Snapshot(game.Name, game.ThumbnailImageUrl,
-                    game.ImageUrl, game.MinPlayers, game.MaxPlayers, game.BestPlayers,
-                    game.Types, game.Categories, game),
+            await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, bggId.Value,
+                CampContributionItemType.BaseGame, null, BggGameMapper.ToContributionSnapshot(details.Game),
                 DateTimeOffset.UtcNow, cancellationToken);
             foreach (var expansion in details.Expansions.Where(x => selected.Contains(x.BggId)))
                 await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, expansion.BggId,
                     CampContributionItemType.Expansion, bggId.Value,
-                    Snapshot(expansion.Name, null, null, null, null, null, null, null, null) with
-                    { ParentBggIds = [bggId.Value], OriginalName = expansion.OriginalName },
+                    new CampContributionSnapshot(CampContributionSnapshot.CurrentVersion,
+                        expansion.Name, null, null, null, null, null,
+                        ParentBggIds: [bggId.Value], OriginalName: expansion.OriginalName),
                     DateTimeOffset.UtcNow, cancellationToken);
             return Results.NoContent();
         }
@@ -354,14 +352,6 @@ internal static class CampEndpoints
             !x.IsInBaseCollection && x.Providers.Count > 1
                 && x.Providers.All(p => p.Commitment != CampBringCommitment.Bringing)); }));
     }
-
-    private static CampContributionSnapshot Snapshot(string name, string? thumbnail, string? image,
-        int? min, int? max, string? best, IReadOnlyList<string>? types,
-        IReadOnlyList<string>? categories, oyinQ.Bot.Integrations.ExternalGame? game) => new(CampContributionSnapshot.CurrentVersion,
-        name, thumbnail, image, min, max, best, types, categories,
-        game?.Description, game?.YearPublished, game?.MinPlayTimeMinutes, game?.MaxPlayTimeMinutes,
-        game?.MinAge, game?.Type ?? GameType.Other, game?.Subdomains, game?.CategoryItems, game?.Mechanics,
-        OriginalName: game?.OriginalName);
 
     private static async Task<(long CampId, long ParticipantId, IResult? Error)> OwnedCampAsync(
         HttpRequest request, string community, AppDbContext dbContext,

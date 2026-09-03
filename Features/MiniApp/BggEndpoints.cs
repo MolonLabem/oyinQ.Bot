@@ -44,12 +44,7 @@ internal static class BggEndpoints
         {
             var details = await client.GetGameDetailsAsync(id.Value, cancellationToken);
             if (details is null) return Results.NotFound();
-            var game = details.Game;
-            var collectionGame = new ClubCollectionGame(game.BggId!.Value, game.Name, game.ThumbnailImageUrl,
-                game.ImageUrl, game.MinPlayers, game.MaxPlayers, game.BestPlayers, [], game.Types,
-                game.Categories, game.Description, game.YearPublished, game.MinPlayTimeMinutes,
-                game.MaxPlayTimeMinutes, game.MinAge, game.Type, game.Subdomains, game.CategoryItems,
-                game.Mechanics, game.OriginalName);
+            var collectionGame = BggGameMapper.ToCollectionGame(details.Game);
             var metadata = BggTaxonomyCatalog.Present(collectionGame);
             var players = PlayerCountRange.Normalize(collectionGame.MinPlayers, collectionGame.MaxPlayers);
             return Results.Ok(new

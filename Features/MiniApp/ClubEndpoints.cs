@@ -105,15 +105,10 @@ internal static class ClubEndpoints
             var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
             if (selected.Any(id => details.Expansions.All(x => x.BggId != id)))
                 throw new InvalidOperationException("BGG не связывает выбранное дополнение с этой игрой.");
-            var game = details.Game;
+            var expansions = details.Expansions.Where(x => selected.Contains(x.BggId))
+                .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName)).ToArray();
             await service.AddOrReplaceGameAsync(clubId,
-                new ClubCollectionGame(bggId.Value, game.Name, game.ThumbnailImageUrl, game.ImageUrl,
-                    game.MinPlayers, game.MaxPlayers, game.BestPlayers,
-                    details.Expansions.Where(x => selected.Contains(x.BggId))
-                        .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName)).ToArray(),
-                    game.Types, game.Categories, game.Description, game.YearPublished,
-                    game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
-                    game.Subdomains, game.CategoryItems, game.Mechanics, game.OriginalName),
+                BggGameMapper.ToCollectionGame(details.Game, expansions),
                 body.ExpectedRevision, DateTimeOffset.UtcNow, cancellationToken);
             return Results.Ok(await service.GetAsync(clubId, cancellationToken));
         }

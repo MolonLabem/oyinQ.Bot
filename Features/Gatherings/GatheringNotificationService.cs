@@ -9,7 +9,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 namespace oyinQ.Bot.Features.Gatherings;
 
 public sealed record UnderfilledGatheringNotification(string GameName, int MinimumPlayers,
-    int ConfirmedPlayers, IReadOnlyList<long> TelegramUserIds);
+    int OccupiedSeats, IReadOnlyList<long> TelegramUserIds);
 
 public sealed class GatheringNotificationService(
     AppDbContext dbContext,
@@ -32,7 +32,7 @@ public sealed class GatheringNotificationService(
 
     public Task NotifyUnderfilledAsync(UnderfilledGatheringNotification notification,
         CancellationToken cancellationToken) => SendManyAsync(notification.TelegramUserIds,
-        $"Сбор «{notification.GameName}» не состоялся.\n\nНужно минимум {notification.MinimumPlayers} игроков, записалось {notification.ConfirmedPlayers}.",
+        $"Сбор «{notification.GameName}» не состоялся.\n\nНужно минимум {notification.MinimumPlayers} игроков, ожидалось {notification.OccupiedSeats}.",
         null, null, cancellationToken);
 
     public async Task NotifyTimeChangedAsync(Guid gatheringPublicId, CancellationToken cancellationToken)

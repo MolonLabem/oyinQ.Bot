@@ -31,7 +31,7 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal(167791, card.BggId);
         Assert.Equal("https://boardgamegeek.com/boardgame/167791", card.BggUrl);
         Assert.Equal(card.BggUrl, detail.BggUrl);
-        Assert.Equal(2, detail.ConfirmedPlayers);
+        Assert.Equal(2, detail.OccupiedSeats);
         Assert.Equal(["Hellas & Elysium", "Prelude"], detail.Expansions);
     }
 

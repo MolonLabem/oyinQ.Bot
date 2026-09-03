@@ -137,11 +137,9 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             throw new InvalidOperationException("Нельзя активировать кэмп после даты его завершения.");
         CampRules.ValidateTransition(camp.Status, status);
         var now = timeProvider.GetUtcNow();
-        var activeStatuses = new[] { GatheringStatus.Recruiting, GatheringStatus.Ready,
-            GatheringStatus.Full, GatheringStatus.Closed };
         var future = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
-                && activeStatuses.Contains(x.Status))
+                && GatheringLifecycle.ActiveStatuses.Contains(x.Status))
             .Include(x => x.Participants).ToArrayAsync(cancellationToken);
         if (status == CampStatus.Closed) CampRules.EnsureCanClose(future.Length);
         if (status == CampStatus.Cancelled)

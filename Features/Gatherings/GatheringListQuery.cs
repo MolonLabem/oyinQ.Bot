@@ -51,10 +51,7 @@ public static class GatheringListQuery
         if (view == GatheringListView.Upcoming)
         {
             return query.Where(x => x.StartsAtUtc > now
-                    && (x.Status == GatheringStatus.Recruiting
-                        || x.Status == GatheringStatus.Ready
-                        || x.Status == GatheringStatus.Full
-                        || x.Status == GatheringStatus.Closed))
+                    && GatheringLifecycle.ActiveStatuses.Contains(x.Status))
                 .OrderBy(x => x.StartsAtUtc).ThenBy(x => x.Id);
         }
 
@@ -65,10 +62,7 @@ public static class GatheringListQuery
             _ => query.Where(x => x.Status == GatheringStatus.Completed
                 || x.Status == GatheringStatus.Cancelled
                 || (x.StartsAtUtc <= now
-                    && (x.Status == GatheringStatus.Recruiting
-                        || x.Status == GatheringStatus.Ready
-                        || x.Status == GatheringStatus.Full
-                        || x.Status == GatheringStatus.Closed)))
+                    && GatheringLifecycle.ActiveStatuses.Contains(x.Status)))
         };
         return query.OrderByDescending(x => x.StartsAtUtc).ThenByDescending(x => x.Id);
     }

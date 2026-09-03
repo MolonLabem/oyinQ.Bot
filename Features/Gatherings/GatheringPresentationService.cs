@@ -17,7 +17,7 @@ public sealed record GatheringCardPresentation(
     bool CanTeachRules,
     string RulesText,
     string LocalDateTime,
-    int ConfirmedPlayers,
+    int OccupiedSeats,
     int MaximumPlayers,
     string StatusText,
     string? TypeName,
@@ -33,7 +33,7 @@ public sealed record GatheringDetailPresentation(
     string RulesText,
     string OrganizerName,
     string LocalDateTime,
-    int ConfirmedPlayers,
+    int OccupiedSeats,
     IReadOnlyList<string> Expansions,
     string StatusText,
     string? TypeName,
@@ -63,7 +63,7 @@ public sealed class GatheringPresentationService
             gathering.CanTeachRules,
             RulesText(gathering.CanTeachRules),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
-            ConfirmedPlayers(gathering),
+            GatheringCapacity.OccupiedSeats(gathering),
             gathering.MaximumPlayers,
             StatusText(gathering.Status),
             metadata.TypeNames.FirstOrDefault(),
@@ -82,9 +82,9 @@ public sealed class GatheringPresentationService
             gathering.Description,
             gathering.CanTeachRules,
             RulesText(gathering.CanTeachRules),
-            DisplayName(gathering.OrganizerParticipant),
+            ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
-            ConfirmedPlayers(gathering),
+            GatheringCapacity.OccupiedSeats(gathering),
             gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray(),
             StatusText(gathering.Status),
             metadata.TypeNames.FirstOrDefault(),
@@ -103,7 +103,7 @@ public sealed class GatheringPresentationService
         if (metadata.TypeNames.FirstOrDefault() is { } typeName)
             text.AppendLine($"🏷 {WebUtility.HtmlEncode(typeName)}");
         text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
-        text.AppendLine($"👥 {ConfirmedPlayers(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
+        text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
         text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant)}");
         text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
 
@@ -156,11 +156,6 @@ public sealed class GatheringPresentationService
 
     private static GatheringGameSnapshot ResolveSnapshot(GameGathering gathering)
         => GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
-
-    private static int ConfirmedPlayers(GameGathering gathering) => GatheringCapacity.OccupiedSeats(gathering);
-
-    private static string DisplayName(Participant participant) =>
-        participant.PreferredDisplayName ?? participant.DisplayName;
 
     private static string RulesText(bool canTeachRules) =>
         canTeachRules ? "Могу объяснить правила" : "Опыт с игрой желателен";

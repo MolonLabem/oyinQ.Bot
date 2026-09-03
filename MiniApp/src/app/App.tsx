@@ -12,7 +12,6 @@ import { telegram } from "../telegram/webApp";
 import { fullscreenLabel } from "../pages/camp/registrationLogic";
 import { collectionVisitFromGathering, positiveGameId } from "./collectionNavigation";
 import { CommunityAvatar } from "../components/CommunityAvatar";
-import { profileGatheringVisit } from "./profileNavigation";
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
@@ -38,7 +37,7 @@ export function App() {
   const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("mine"); };
   const openCollection = (bggId: number, gatheringId: string) => { const visit = collectionVisitFromGathering(bggId, gatheringId); setInitialCollectionGameId(visit.bggId); setCollectionReturnGatheringId(visit.returnGatheringId); setTab("games"); };
   const backToGathering = collectionReturnGatheringId ? () => { setInitialGatheringId(collectionReturnGatheringId); setCollectionReturnGatheringId(undefined); setTab("gatherings"); } : undefined;
-  const openProfileGathering = (targetCommunityKey: string, gatheringId: string) => { const visit = profileGatheringVisit(community.key, targetCommunityKey, gatheringId); setProfileReturnCommunityKey(visit.returnCommunityKey); setCommunityKey(visit.targetCommunityKey); setInitialGatheringId(visit.gatheringId); setTab("gatherings"); };
+  const openProfileGathering = (targetCommunityKey: string, gatheringId: string) => { setProfileReturnCommunityKey(community.key); setCommunityKey(targetCommunityKey); setInitialGatheringId(gatheringId); setTab("gatherings"); };
   const backToProfile = profileReturnCommunityKey ? () => { setCommunityKey(profileReturnCommunityKey); setProfileReturnCommunityKey(undefined); setTab("profile"); } : undefined;
   const content = activeTab === "gatherings" ? <GatheringsPage key={community.key} community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} openCollection={openCollection} backFromInitial={backToProfile} /> : activeTab === "games" ? <GamesPage community={community} initialGameId={initialCollectionGameId} onInitialConsumed={() => setInitialCollectionGameId(undefined)} backToGathering={backToGathering} /> : activeTab === "profile" ? <ProfilePage community={community} communities={bootstrap.communities} openGathering={openProfileGathering} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
   const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} canOpenAdminPanel={bootstrap.canOpenAdminPanel}>{content}</CampRegistrationGate> : content;

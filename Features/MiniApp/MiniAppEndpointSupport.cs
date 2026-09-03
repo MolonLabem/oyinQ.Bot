@@ -58,13 +58,8 @@ internal static class MiniAppEndpointSupport
         var now = DateTimeOffset.UtcNow;
         if (participant is null)
         {
-            participant = new Participant
-            {
-                TelegramUserId = identity.TelegramUserId,
-                TelegramUsername = identity.TelegramUsername,
-                DisplayName = identity.DisplayName ?? $"Telegram {identity.TelegramUserId}",
-                CreatedAt = now
-            };
+            participant = ParticipantIdentityPolicy.Create(identity.TelegramUserId,
+                identity.TelegramUsername, identity.DisplayName, now);
             dbContext.Participants.Add(participant);
         }
         else

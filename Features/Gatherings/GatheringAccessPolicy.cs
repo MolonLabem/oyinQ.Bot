@@ -9,13 +9,19 @@ public static class GatheringAccessPolicy
 
     public static bool CanJoin(GameGathering gathering, bool isOrganizer, bool hasActiveParticipation,
         DateTimeOffset now) => !isOrganizer && !hasActiveParticipation
-        && gathering.StartsAtUtc > now.ToUniversalTime()
-        && gathering.Status is not GatheringStatus.Closed
-            and not GatheringStatus.Completed and not GatheringStatus.Cancelled;
+        && GatheringLifecycle.IsJoinOpen(gathering, now);
 
     public static bool CanLeave(GameGathering gathering, bool isOrganizer, bool hasActiveParticipation,
         DateTimeOffset now) => !isOrganizer && hasActiveParticipation
-        && gathering.StartsAtUtc > now.ToUniversalTime()
-        && gathering.Status is not GatheringStatus.Completed and not GatheringStatus.Cancelled;
+        && GatheringLifecycle.IsUpcoming(gathering, now);
+
+    public static bool CanManage(GameGathering gathering, bool isOrganizer, DateTimeOffset now) =>
+        isOrganizer && GatheringLifecycle.IsUpcoming(gathering, now);
+
+    public static void RequireOrganizer(GameGathering gathering, long telegramUserId)
+    {
+        if (gathering.OrganizerParticipant.TelegramUserId != telegramUserId)
+            throw new UnauthorizedAccessException("Управлять сбором может только организатор.");
+    }
 
 }

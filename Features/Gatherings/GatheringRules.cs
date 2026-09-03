@@ -27,7 +27,7 @@ public static class GatheringRules
         EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
 
-        return new GameGathering
+        var gathering = new GameGathering
         {
             PublicId = Guid.NewGuid(),
             CommunityKey = communityKey.Trim().ToLowerInvariant(),
@@ -40,7 +40,7 @@ public static class GatheringRules
             Description = NormalizeDescription(description),
             CanTeachRules = canTeachRules,
             PublicationStatus = GatheringPublicationStatus.Pending,
-            Status = minimumPlayers <= 1 ? GatheringStatus.Ready : GatheringStatus.Recruiting,
+            Status = GatheringStatus.Recruiting,
             CreatedAt = now.ToUniversalTime(),
             UpdatedAt = now.ToUniversalTime(),
             Expansions = gameSnapshot.SelectedExpansions.Select(value => new GameGatheringExpansion
@@ -49,6 +49,8 @@ public static class GatheringRules
                 Name = value.Name
             }).ToArray()
         };
+        GatheringCapacity.RecalculateStatus(gathering);
+        return gathering;
     }
 
     public static void ValidatePlayerLimits(int minimumPlayers, int desiredPlayers, int maximumPlayers)
@@ -78,8 +80,8 @@ public static class GatheringRules
         EnsureEditable(gathering, now);
         EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
-        var confirmed = GatheringCapacity.OccupiedSeats(gathering);
-        if (maximumPlayers < confirmed)
+        var occupiedSeats = GatheringCapacity.OccupiedSeats(gathering);
+        if (maximumPlayers < occupiedSeats)
             throw new InvalidOperationException("Максимум игроков не может быть меньше числа подтверждённых участников.");
 
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
@@ -184,11 +186,11 @@ public static class GatheringRules
 
     private static void EnsureEditable(GameGathering gathering, DateTimeOffset now)
     {
-        if (gathering.Status is GatheringStatus.Completed or GatheringStatus.Cancelled)
+        if (!GatheringLifecycle.IsActive(gathering.Status))
         {
             throw new InvalidOperationException("Завершённый или отменённый сбор нельзя изменить.");
         }
-        if (gathering.StartsAtUtc <= now.ToUniversalTime())
+        if (!GatheringLifecycle.IsUpcoming(gathering, now))
             throw new InvalidOperationException("Наступивший сбор нельзя изменить.");
     }
 

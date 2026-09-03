@@ -4,6 +4,21 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public static class ParticipantIdentityPolicy
 {
+    public static Participant Create(long telegramUserId, string? telegramUsername,
+        string? displayName, DateTimeOffset now)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(telegramUserId);
+        now = now.ToUniversalTime();
+        return new Participant
+        {
+            TelegramUserId = telegramUserId,
+            TelegramUsername = string.IsNullOrWhiteSpace(telegramUsername) ? null : telegramUsername.Trim(),
+            DisplayName = string.IsNullOrWhiteSpace(displayName) ? $"Telegram {telegramUserId}" : displayName.Trim(),
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+    }
+
     public static bool RefreshTrustedPresentation(Participant participant, string? telegramUsername,
         string? displayName, DateTimeOffset now)
     {
