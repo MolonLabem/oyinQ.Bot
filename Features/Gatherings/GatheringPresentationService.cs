@@ -182,7 +182,7 @@ public sealed class GatheringPresentationService
     public static string FormatLocalDateTime(DateTimeOffset startsAtUtc, string timeZoneId)
     {
         var local = TimeZoneInfo.ConvertTime(startsAtUtc, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
-        return local.ToString("d MMMM, HH:mm", RussianCulture);
+        return local.ToString("ddd, d MMMM, HH:mm", RussianCulture);
     }
 
     private static string StatusText(GatheringStatus status) => status switch

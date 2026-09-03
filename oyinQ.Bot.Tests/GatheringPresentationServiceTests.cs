@@ -36,6 +36,8 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal(card.BggUrl, detail.BggUrl);
         Assert.Equal(2, detail.OccupiedSeats);
         Assert.Equal(["Hellas & Elysium", "Prelude"], detail.Expansions);
+        Assert.Equal("сб, 5 сентября, 19:00", card.LocalDateTime);
+        Assert.Equal(card.LocalDateTime, detail.LocalDateTime);
     }
 
     [Fact]
@@ -121,6 +123,7 @@ public sealed class GatheringPresentationServiceTests
         Assert.Contains("🏷 Стратегия", announcement.HtmlText);
         Assert.Contains("Дополнения:", announcement.HtmlText);
         Assert.Contains("⏳ Лист ожидания: 1", announcement.HtmlText);
+        Assert.Contains("📅 сб, 5 сентября, 19:00", announcement.HtmlText);
         Assert.Equal("https://images.example/large.jpg", announcement.ImageUrl);
     }
 

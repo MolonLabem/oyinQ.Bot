@@ -1,6 +1,7 @@
 const dateFormatter = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 const localInputFormatter = new Intl.DateTimeFormat("ru-RU", {
-  dateStyle: "long", timeStyle: "short", timeZone: "UTC"
+  weekday: "short", day: "numeric", month: "long", year: "numeric",
+  hour: "2-digit", minute: "2-digit", timeZone: "UTC"
 });
 
 export function formatDate(value?: string) {
@@ -38,7 +39,8 @@ export function formatLocalDateTimeInput(value: string) {
 
 export function formatInstant(value: string, timeZoneId: string) {
   return new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "long", timeStyle: "short", timeZone: timeZoneId
+    weekday: "short", day: "numeric", month: "long", year: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZone: timeZoneId
   }).format(new Date(value));
 }
 

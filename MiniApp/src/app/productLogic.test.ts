@@ -52,6 +52,7 @@ describe("Russian product helpers", () => {
     expect(currentLocalMinute("Asia/Qyzylorda", now)).toBe("2026-09-01T05:30");
     expect(isFutureLocalDateTime("2026-09-01T05:31", "Asia/Qyzylorda", now)).toBe(true);
     expect(isFutureLocalDateTime("2026-09-01T05:30", "Asia/Qyzylorda", now)).toBe(false);
+    expect(formatLocalDateTimeInput("2026-09-01T05:31")).toContain("вт");
     expect(formatLocalDateTimeInput("2026-09-01T05:31")).toContain("05:31");
   });
 

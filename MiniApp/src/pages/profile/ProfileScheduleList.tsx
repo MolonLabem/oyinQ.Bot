@@ -27,6 +27,6 @@ export function ProfileScheduleList({ items, communities, open }: {
 
 function formatScheduleDay(value: string): string {
   const [year, month, day] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" })
+  return new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "long" })
     .format(new Date(year, month - 1, day));
 }

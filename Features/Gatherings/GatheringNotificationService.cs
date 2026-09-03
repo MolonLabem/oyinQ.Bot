@@ -39,10 +39,8 @@ public sealed class GatheringNotificationService(
     {
         var value = await LoadAsync(gatheringPublicId, cancellationToken);
         if (value is null) return;
-        var local = TimeZoneInfo.ConvertTime(value.StartsAtUtc,
-            TimeZoneInfo.FindSystemTimeZoneById(value.TimeZoneId));
         await SendManyAsync(value.Recipients,
-            $"Изменилось время сбора «{value.GameName}»: {local:dd.MM.yyyy HH:mm}.",
+            $"Изменилось время сбора «{value.GameName}»: {GatheringPresentationService.FormatLocalDateTime(value.StartsAtUtc, value.TimeZoneId)}.",
             value.CommunityKey, gatheringPublicId, cancellationToken);
     }
 

@@ -16,7 +16,7 @@ describe("profile gathering schedule", () => {
 
     expect(markup).toContain("Покорение Марса");
     expect(markup).toContain("RollMove");
-    expect(markup).toContain("суббота, 12 сентября");
+    expect(markup).toContain("сб, 12 сентября");
     expect(markup).toContain("19:00");
     expect(markup).toContain("Организатор");
     expect(markup).toContain("<button");
