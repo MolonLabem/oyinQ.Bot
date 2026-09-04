@@ -1,4 +1,5 @@
 using System.Globalization;
+using oyinQ.Bot.Features.Catalog;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using oyinQ.Bot.Data;
@@ -12,11 +13,11 @@ namespace oyinQ.Bot.Features.MiniApp;
 
 internal sealed record CreateGatheringRequest(string CommunityKey, string GameSource, long BggId,
     IReadOnlyCollection<long>? SelectedExpansionIds, string StartsAtLocal,
-    int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules);
+    int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false);
 internal sealed record UpdateGatheringRequest(string CommunityKey, string StartsAtLocal,
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description,
-    bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds);
-internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null);
+    bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds, bool ConfirmScheduleConflict = false);
+internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null, bool ConfirmScheduleConflict = false);
 internal sealed record GatheringGuestRequest(string CommunityKey, string? DisplayName = null);
 internal sealed record GatheringListItemResponse(
     GatheringCardPresentation Card,
@@ -84,7 +85,7 @@ internal static class GatheringEndpoints
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
-        TimeProvider timeProvider,
+        TimeProvider timeProvider, PrivateChatCapability privateChat, GameProviderService providers,
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
@@ -98,6 +99,8 @@ internal static class GatheringEndpoints
         var me = gathering.Participants.SingleOrDefault(x => x.Participant.TelegramUserId == access.Identity.TelegramUserId);
         var manages = gathering.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId;
         var active = me?.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted;
+        var participant = await dbContext.Participants.SingleAsync(x => x.TelegramUserId == access.Identity.TelegramUserId, cancellationToken);
+        var startUrl = await privateChat.StartUrlAsync(participant, community, publicId, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var waitlisted = gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
             .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).ToArray();
@@ -110,7 +113,11 @@ internal static class GatheringEndpoints
         return Results.Ok(new
         {
             Gathering = presentation.BuildDetails(gathering, access.Community),
+            Provider = await providers.ForGatheringAsync(gathering, participant.Id, cancellationToken),
+            CanRecordPlay = GatheringAccessPolicy.CanRecordPlay(gathering, participant.Id),
             Status = gathering.Status.ToString(),
+            BotStartRequired = participant.PrivateChatStartedAt is null || participant.TelegramDeliveryBlockedAt is not null,
+            StartUrl = startUrl,
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanEdit = canManage,
             CanClose = GatheringAccessPolicy.CanClose(gathering, manages, now),
@@ -162,7 +169,7 @@ internal static class GatheringEndpoints
             var gathering = await management.CreateAsync(access.Community, access.Identity,
                 new(body.CommunityKey, body.GameSource, body.BggId, body.SelectedExpansionIds ?? [], startsAt,
                     body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
-                    body.Description, body.CanTeachRules), cancellationToken);
+                    body.Description, body.CanTeachRules, body.ConfirmScheduleConflict, body.AddToCollection, body.BringToCamp), cancellationToken);
             var published = await publication.PublishAsync(gathering.PublicId, cancellationToken);
             return Results.Created($"/api/miniapp/gatherings/{gathering.PublicId}",
                 new { gathering.PublicId, AnnouncementPublished = published });
@@ -179,7 +186,8 @@ internal static class GatheringEndpoints
     private static async Task<IResult> UpdateAsync(HttpRequest request, Guid publicId,
         UpdateGatheringRequest body, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringManagementService management,
-        GatheringPublicationService publication, CancellationToken cancellationToken)
+        GatheringPublicationService publication,
+        CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
             authenticator, resolver, cancellationToken);
@@ -189,9 +197,7 @@ internal static class GatheringEndpoints
             var startsAt = ParseLocal(body.StartsAtLocal, access.Community.TimeZoneId);
             var result = await management.UpdateAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
                 new(startsAt, body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
-                    body.Description, body.CanTeachRules, body.SelectedExpansionIds ?? []), cancellationToken);
-            foreach (var promotion in result.Promotions)
-                await publication.NotifyPromotionAsync(promotion, publicId, cancellationToken);
+                    body.Description, body.CanTeachRules, body.SelectedExpansionIds ?? [], body.ConfirmScheduleConflict), cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);
             return Results.NoContent();
         }
@@ -214,19 +220,22 @@ internal static class GatheringEndpoints
 
     private static Task<IResult> AddGuestAsync(HttpRequest request, Guid publicId, GatheringGuestRequest body,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        GatheringService service, GatheringPublicationService publication, TimeProvider timeProvider,
+        GatheringService service, GatheringPublicationService publication,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken) => MutateGuestAsync("add", request, publicId, null, body,
             authenticator, resolver, service, publication, timeProvider, cancellationToken);
 
     private static Task<IResult> RenameGuestAsync(HttpRequest request, Guid publicId, long guestId,
         GatheringGuestRequest body, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        GatheringService service, GatheringPublicationService publication, TimeProvider timeProvider,
+        GatheringService service, GatheringPublicationService publication,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken) => MutateGuestAsync("rename", request, publicId, guestId, body,
             authenticator, resolver, service, publication, timeProvider, cancellationToken);
 
     private static Task<IResult> RemoveGuestAsync(HttpRequest request, Guid publicId, long guestId,
         [FromBody] GatheringGuestRequest body, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        GatheringService service, GatheringPublicationService publication, TimeProvider timeProvider,
+        GatheringService service, GatheringPublicationService publication,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken) => MutateGuestAsync("remove", request, publicId, guestId, body,
             authenticator, resolver, service, publication, timeProvider, cancellationToken);
 
@@ -251,8 +260,6 @@ internal static class GatheringEndpoints
                     access.Identity.TelegramUserId, now, cancellationToken),
                 _ => throw new InvalidOperationException("Неизвестное действие с гостем.")
             };
-            if (result.Promotion is not null)
-                await publication.NotifyPromotionAsync(result.Promotion, publicId, cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);
             return Results.NoContent();
         }
@@ -272,11 +279,9 @@ internal static class GatheringEndpoints
         {
             var result = join
                 ? await service.JoinAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
-                    timeProvider.GetUtcNow(), cancellationToken)
+                    timeProvider.GetUtcNow(), cancellationToken, body.ConfirmScheduleConflict)
                 : await service.LeaveAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
                     timeProvider.GetUtcNow(), cancellationToken);
-            if (result.Promotion is not null)
-                await publication.NotifyPromotionAsync(result.Promotion, publicId, cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);
             return Results.NoContent();
         }
@@ -316,15 +321,5 @@ internal static class GatheringEndpoints
         return Results.Ok(new { Published = await publication.PublishAsync(publicId, cancellationToken) });
     }
 
-    private static DateTimeOffset ParseLocal(string value, string timeZoneId)
-    {
-        if (!DateTime.TryParseExact(value, "yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var local))
-            throw new ArgumentException("Укажите корректные дату и время.");
-        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-        var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        if (zone.IsInvalidTime(local) || zone.IsAmbiguousTime(local))
-            throw new ArgumentException("Выбранное локальное время неоднозначно.");
-        return new DateTimeOffset(local, zone.GetUtcOffset(local));
-    }
+    private static DateTimeOffset ParseLocal(string value, string timeZoneId) => CommunityTime.ParseLocal(value, timeZoneId);
 }

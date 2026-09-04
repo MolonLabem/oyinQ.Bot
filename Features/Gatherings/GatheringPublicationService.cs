@@ -3,9 +3,6 @@ using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.Telegram;
-using Telegram.Bot;
-using Telegram.Bot.Types;
-using Telegram.Bot.Types.ReplyMarkups;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -13,8 +10,6 @@ public sealed class GatheringPublicationService(
     AppDbContext dbContext,
     ICommunityStore communityStore,
     GatheringTelegramPublisher publisher,
-    ITelegramBotClient botClient,
-    MiniAppLinkBuilder links,
     TimeProvider timeProvider,
     ILogger<GatheringPublicationService> logger)
 {
@@ -58,30 +53,6 @@ public sealed class GatheringPublicationService(
             await dbContext.SaveChangesAsync(CancellationToken.None);
             logger.LogWarning(exception, "Gathering {GatheringPublicId} publication failed.", publicId);
             return false;
-        }
-    }
-
-    public async Task NotifyPromotionAsync(GatheringPromotion promotion, Guid gatheringPublicId,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var communityKey = await dbContext.GameGatherings.AsNoTracking()
-                .Where(x => x.PublicId == gatheringPublicId)
-                .Select(x => x.CommunityKey)
-                .SingleAsync(cancellationToken);
-            var url = links.Gathering(communityKey, gatheringPublicId);
-            await botClient.SendMessage(promotion.TelegramUserId,
-                $"{promotion.DisplayName}, для вас освободилось место в сборе.",
-                replyMarkup: new InlineKeyboardMarkup([[
-                    InlineKeyboardButton.WithWebApp("Открыть сбор", new WebAppInfo { Url = url })
-                ]]),
-                cancellationToken: cancellationToken);
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning(exception, "Could not notify promoted participant {TelegramUserId}.",
-                promotion.TelegramUserId);
         }
     }
 }

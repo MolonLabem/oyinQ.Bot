@@ -6,17 +6,19 @@ using oyinQ.Bot.Features.Communities;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
-public sealed record GatheringPromotion(long TelegramUserId, string DisplayName);
-public sealed record GatheringMutationResult(GameGathering Gathering, GatheringPromotion? Promotion = null);
+public sealed record GatheringMutationResult(GameGathering Gathering, GatheringPromotion? Promotion = null,
+    GatheringWithdrawalOutcome? Withdrawal = null);
 
-public sealed class GatheringService(AppDbContext dbContext, CampParticipationPolicy participationPolicy)
+public sealed class GatheringService(AppDbContext dbContext, CampParticipationPolicy participationPolicy, GatheringScheduleConflictService? conflicts = null, GatheringNotificationService? notificationService = null)
 {
+    private readonly GatheringNotificationService notifications = notificationService
+        ?? new(dbContext, new Features.Notifications.NotificationService(dbContext, TimeProvider.System));
     public async Task<GatheringMutationResult> JoinAsync(
         Guid publicId,
         string communityKey,
         long telegramUserId,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool confirmScheduleConflict = false)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
@@ -37,6 +39,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             return new(gathering);
         }
 
+        await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(participant.Id, gathering.StartsAtUtc, gathering.PublicId, confirmScheduleConflict, now, cancellationToken);
         var status = GatheringCapacity.HasAvailableSeat(gathering)
             ? GatheringParticipationStatus.Confirmed
             : GatheringParticipationStatus.Waitlisted;
@@ -61,6 +64,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
 
         UpdateStatus(gathering, now);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notifications.NotifyFullAsync(publicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(gathering);
     }
@@ -91,12 +95,12 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             return new(gathering);
         }
 
-        var promoted = GatheringRules.WithdrawParticipant(gathering, membership, now);
+        var withdrawal = GatheringRules.WithdrawParticipant(gathering, membership, now)!;
+        var outcome = GatheringWithdrawalOutcome.Capture(gathering, withdrawal);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notifications.NotifyWithdrawalAsync(outcome, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(gathering, promoted is null ? null : new GatheringPromotion(
-            promoted.Participant.TelegramUserId,
-            promoted.Participant.PreferredDisplayName ?? promoted.Participant.DisplayName));
+        return new(gathering, Withdrawal: outcome);
     }
 
     public async Task<GatheringMutationResult> AddGuestAsync(Guid publicId, string communityKey,
@@ -119,6 +123,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         });
         UpdateStatus(gathering, now);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notifications.NotifyFullAsync(publicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(gathering);
     }
@@ -139,6 +144,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notifications.NotifyFullAsync(publicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(gathering);
     }
@@ -158,10 +164,9 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
         var promoted = GatheringCapacity.PromoteFirstWaitlisted(gathering);
         UpdateStatus(gathering, now);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (promoted is not null) await notifications.NotifyPromotionsAsync(communityKey, publicId, [GatheringPromotion.Capture(promoted.Participant)], cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(gathering, promoted is null ? null : new GatheringPromotion(
-            promoted.Participant.TelegramUserId,
-            promoted.Participant.PreferredDisplayName ?? promoted.Participant.DisplayName));
+        return new(gathering, promoted is null ? null : GatheringPromotion.Capture(promoted.Participant));
     }
 
     private async Task<GameGathering> LockGatheringAsync(
@@ -189,7 +194,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             var localDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
                 TimeZoneInfo.FindSystemTimeZoneById(context.TimeZoneId)).DateTime);
             await participationPolicy.RequireCompleteRegistrationAsync(context.CampId!.Value, participant.Id,
-                cancellationToken, localDate);
+                cancellationToken, localDate, gathering.StartsAtUtc);
         }
 
         return participant;

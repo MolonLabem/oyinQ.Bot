@@ -10,9 +10,9 @@ public sealed record CampBggImportDraft(int Version, string BggUsername, IReadOn
 
 public sealed record CampBggImportDraftItem(
     long BggId,
-    CampContributionItemType ItemType,
+    CollectionItemType ItemType,
     long? ParentBggId,
-    CampContributionSnapshot Snapshot,
+    CollectionItemSnapshot Snapshot,
     bool SelectedByDefault = true,
     CampImportSkipReason? SkipReason = null,
     bool IsOverridable = false,
@@ -55,7 +55,7 @@ public static class CampBggImportDraftSerializer
         {
             if (item.BggId <= 0 || item.ParentBggId is <= 0 || item.ParentBggIds?.Any(x => x <= 0) == true)
                 throw new InvalidOperationException("Черновик содержит некорректный BGG ID.");
-            _ = CampContributionSnapshotSerializer.Serialize(item.Snapshot);
+            _ = CollectionItemSnapshotSerializer.Serialize(item.Snapshot);
         }
     }
 }

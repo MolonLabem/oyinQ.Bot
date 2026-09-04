@@ -1,4 +1,5 @@
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Gatherings;
 
 namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
@@ -16,10 +17,14 @@ public static class BggGameMapper
             game.Type, game.Subdomains, game.CategoryItems, game.Mechanics, game.OriginalName);
     }
 
-    public static CampContributionSnapshot ToContributionSnapshot(ExternalGame game,
-        IReadOnlyList<long>? parentBggIds = null) => new(
-        CampContributionSnapshot.CurrentVersion, game.Name, game.ThumbnailImageUrl, game.ImageUrl,
-        game.MinPlayers, game.MaxPlayers, game.BestPlayers, game.Types, game.Categories, game.Description,
-        game.YearPublished, game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
-        game.Subdomains, game.CategoryItems, game.Mechanics, parentBggIds, game.OriginalName);
+    public static CollectionItemSnapshot ToCollectionSnapshot(ExternalGame game,
+        IReadOnlyList<long>? parentBggIds = null)
+    {
+        var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
+        return new(CollectionItemSnapshot.CurrentVersion, game.Name, game.ThumbnailImageUrl, game.ImageUrl,
+            players.WasDefaulted ? null : players.Minimum, players.WasDefaulted ? null : players.Maximum,
+            game.BestPlayers, game.Types, game.Categories, game.Description,
+            game.YearPublished, game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
+            game.Subdomains, game.CategoryItems, game.Mechanics, parentBggIds, game.OriginalName);
+    }
 }

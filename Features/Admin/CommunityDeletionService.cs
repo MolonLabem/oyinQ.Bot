@@ -11,8 +11,9 @@ public sealed record CommunityDeletionResult(string CommunityKey, string Name,
 public sealed class CommunityDeletionService(
     AppDbContext dbContext,
     IAdminAuthorizationService authorization,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider, GatheringNotificationService? notificationService = null)
 {
+    private readonly GatheringNotificationService notifications = notificationService ?? new(dbContext, new Features.Notifications.NotificationService(dbContext, timeProvider));
     public async Task<CommunityDeletionResult> DeleteClubAsync(long actorTelegramUserId, long clubId,
         CancellationToken cancellationToken)
     {
@@ -74,6 +75,9 @@ public sealed class CommunityDeletionService(
     private async Task<CommunityDeletionResult> DeleteAsync(OyinQCommunity community,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var current = await Features.Communities.CommunityMutationLock.AcquireAsync(dbContext, community.Key, cancellationToken);
+        dbContext.Entry(community).CurrentValues.SetValues(current);
         if (community.DeletedAt is not null)
         {
             var pending = await dbContext.GameGatherings.AsNoTracking()
@@ -106,6 +110,8 @@ public sealed class CommunityDeletionService(
         community.PostingTopicInvalidatedAt = now;
         community.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+        foreach (var g in future) await notifications.NotifyCancellationAsync(g.PublicId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new(community.Key, community.Name, future.Select(x => x.PublicId).ToArray(), false);
     }
 

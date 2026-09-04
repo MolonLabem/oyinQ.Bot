@@ -14,7 +14,7 @@ internal static class CatalogEndpoints
     }
 
     private static async Task<IResult> ListAsync(HttpRequest request, string community, string? search,
-        int? players, string? types, string? categories, string? sort,
+        int? players, string? types, string? categories, string? sort, string? ownership, string? availability, string? planning,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         GameCatalogService service, CancellationToken cancellationToken)
     {
@@ -26,7 +26,7 @@ internal static class CatalogEndpoints
         var categoryIds = (categories ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(value => long.TryParse(value, out var parsed) ? parsed : 0).Where(value => value > 0).ToArray();
         return Results.Ok(await service.ListAsync(community, access.Community.Mode, access.Identity.TelegramUserId,
-            new CatalogQuery(search, players, parsedTypes, categoryIds, sort), cancellationToken));
+            new CatalogQuery(search, players, parsedTypes, categoryIds, sort, ownership, availability, planning), cancellationToken));
     }
 
     private static async Task<IResult> DetailsAsync(HttpRequest request, string community, long bggId,

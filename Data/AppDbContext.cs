@@ -6,7 +6,15 @@ namespace oyinQ.Bot.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<ReleaseAnnouncement> ReleaseAnnouncements => Set<ReleaseAnnouncement>();
+    public DbSet<ReleaseAnnouncementDelivery> ReleaseAnnouncementDeliveries => Set<ReleaseAnnouncementDelivery>();
+    public DbSet<GatheringExternalPlayReference> GatheringExternalPlayReferences => Set<GatheringExternalPlayReference>();
+    public DbSet<GatheringPlayRecord> GatheringPlayRecords => Set<GatheringPlayRecord>();
+    public DbSet<GatheringPlayPlayer> GatheringPlayPlayers => Set<GatheringPlayPlayer>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
     public DbSet<Participant> Participants => Set<Participant>();
+    public DbSet<ParticipantCollectionItem> ParticipantCollectionItems => Set<ParticipantCollectionItem>();
     public DbSet<OyinQCommunity> OyinQCommunities => Set<OyinQCommunity>();
     public DbSet<ChatAdminPermission> ChatAdminPermissions => Set<ChatAdminPermission>();
     public DbSet<KnownTelegramChat> KnownTelegramChats => Set<KnownTelegramChat>();
@@ -28,6 +36,80 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ReleaseAnnouncement>(b =>
+        {
+            b.HasKey(x => x.Id); b.Property(x => x.Id).HasMaxLength(64); b.Property(x => x.Text).HasMaxLength(3500);
+            b.HasOne<Participant>().WithMany().HasForeignKey(x => x.CreatedByParticipantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ReleaseAnnouncementDelivery>(b =>
+        {
+            b.HasKey(x => new { x.ReleaseId, x.CommunityKey });
+            b.Property(x => x.Error).HasMaxLength(300);
+            b.HasOne(x => x.Release).WithMany().HasForeignKey(x => x.ReleaseId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Community).WithMany().HasForeignKey(x => x.CommunityKey).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.State, x.AttemptedAt });
+        });
+        modelBuilder.Entity<GameGathering>().Property<string>("LegacyPlayOutcomeJson").HasColumnType("jsonb");
+        modelBuilder.Entity<Participant>().Property(x => x.PublicId).HasDefaultValueSql("gen_random_uuid()");
+        modelBuilder.Entity<GameGatheringGuest>().Property(x => x.PublicId).HasDefaultValueSql("gen_random_uuid()");
+        modelBuilder.Entity<Participant>().HasIndex(x => x.PublicId).IsUnique();
+        modelBuilder.Entity<GameGatheringGuest>().HasIndex(x => x.PublicId).IsUnique();
+        modelBuilder.Entity<GatheringPlayRecord>(b =>
+        {
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => x.PublicId).IsUnique();
+            b.HasIndex(x => x.GatheringId).IsUnique();
+            b.Property(x => x.GameSnapshotJson).HasColumnType("jsonb");
+            // Retained only as a legacy audit column; new links have authors and their own rows.
+            b.Property<string>("ExternalUrl").HasMaxLength(2048);
+            b.HasOne(x => x.Gathering).WithOne().HasForeignKey<GatheringPlayRecord>(x => x.GatheringId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.RecordedByParticipant).WithMany().HasForeignKey(x => x.RecordedByParticipantId).OnDelete(DeleteBehavior.Restrict);
+            b.HasMany(x => x.Players).WithOne(x => x.PlayRecord).HasForeignKey(x => x.PlayRecordId).OnDelete(DeleteBehavior.Cascade);
+            b.ToTable(t => t.HasCheckConstraint("CK_PlayRecord_Outcome", "(\"WasPlayed\" AND \"EndedAtUtc\" IS NOT NULL) OR (NOT \"WasPlayed\" AND \"EndedAtUtc\" IS NULL)"));
+        });
+        modelBuilder.Entity<GatheringExternalPlayReference>(b =>
+        {
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Url).HasMaxLength(GatheringExternalPlayReference.MaxUrlLength);
+            b.HasIndex(x => new { x.GatheringPlayRecordId, x.Url }).IsUnique();
+            b.HasOne(x => x.PlayRecord).WithMany().HasForeignKey(x => x.GatheringPlayRecordId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.AddedByParticipant).WithMany().HasForeignKey(x => x.AddedByParticipantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<GatheringPlayPlayer>(b =>
+        {
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.PlayRecordId, x.SourcePlayerId }).IsUnique();
+            b.Property(x => x.DisplayName).HasMaxLength(128);
+            b.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.DeduplicationKey).IsUnique();
+            entity.Property(x => x.DeduplicationKey).HasMaxLength(240);
+            entity.Property(x => x.Text).HasMaxLength(4000);
+            entity.Property(x => x.LastErrorCategory).HasMaxLength(80);
+            entity.HasIndex(x => new { x.State, x.NextAttemptAt });
+            entity.HasIndex(x => new { x.GatheringPublicId, x.ParticipantId });
+            entity.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<NotificationPreferences>(entity =>
+        {
+            entity.HasKey(x => x.ParticipantId);
+            entity.HasOne(x => x.Participant).WithOne().HasForeignKey<NotificationPreferences>(x => x.ParticipantId).OnDelete(DeleteBehavior.Cascade);
+            entity.ToTable("NotificationPreferences", table => table.HasCheckConstraint("CK_NotificationPreferences_Reminder", "\"ReminderLeadMinutes\" IN (0, 30, 60, 120, 360, 720, 1440)"));
+        });
+        modelBuilder.Entity<ParticipantCollectionItem>(entity =>
+        {
+            entity.ToTable("ParticipantCollectionItems", table =>
+                table.HasCheckConstraint("CK_ParticipantCollectionItems_BggId", "\"BggId\" > 0"));
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ParticipantId, x.BggId, x.ItemType }).IsUnique();
+            entity.Property(x => x.SnapshotJson).HasColumnType("jsonb");
+            entity.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<OyinQCommunity>(entity =>
         {
             entity.ToTable("OyinQCommunities");
@@ -102,12 +184,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             {
                 table.HasCheckConstraint("CK_Camps_BotChatMode", "\"BotChatMode\" = 1");
                 table.HasCheckConstraint(
-                    "CK_Camps_DateRange",
-                    "(\"StartDate\" IS NULL AND \"EndDate\" IS NULL) OR (\"StartDate\" IS NOT NULL AND \"EndDate\" IS NOT NULL AND \"StartDate\" <= \"EndDate\")");
+                    "CK_Camps_OperatingWindow",
+                    "(\"StartsAtUtc\" IS NULL AND \"EndsAtUtc\" IS NULL) OR (\"StartsAtUtc\" IS NOT NULL AND \"EndsAtUtc\" IS NOT NULL AND \"StartsAtUtc\" < \"EndsAtUtc\")");
             });
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.BotChatKey).IsUnique();
-            entity.HasIndex(x => new { x.Status, x.EndDate, x.Id });
+            entity.HasIndex(x => new { x.Status, x.EndsAtUtc, x.Id });
             entity.Property(x => x.BotChatKey).HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.BaseCollectionJson).HasColumnType("jsonb");
@@ -178,6 +260,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasIndex(x => new { x.CampId, x.ParticipantId }).IsUnique()
                 .HasDatabaseName("IX_CampBggImports_ActiveCampParticipant")
                 .HasFilter("\"Status\" IN (0, 1)");
+            entity.HasIndex(x => x.ParticipantId).IsUnique()
+                .HasDatabaseName("IX_CampBggImports_ActiveProfileParticipant")
+                .HasFilter("\"CampId\" IS NULL AND \"Status\" IN (0, 1)");
             entity.Property(x => x.BggUsername).HasMaxLength(100);
             entity.Property(x => x.DraftJson).HasColumnType("jsonb");
             entity.Property(x => x.ConfirmationJson).HasColumnType("jsonb");

@@ -109,12 +109,12 @@ public sealed class CatalogMetadataTests
     public void ImportSkipClassification_DoesNotTreatAnotherOwnerAsDuplicate()
     {
         var draft = new CampBggImportDraft(2, "owner", [
-            new(1, CampContributionItemType.BaseGame, null, new CampContributionSnapshot(2, "Shared", null, null, 2, 4, null)),
-            new(2, CampContributionItemType.BaseGame, null, new CampContributionSnapshot(2, "Base", null, null, 2, 4, null)),
-            new(3, CampContributionItemType.BaseGame, null, new CampContributionSnapshot(2, "Manual", null, null, 2, 4, null))]);
+            new(1, CollectionItemType.BaseGame, null, new CollectionItemSnapshot(2, "Shared", null, null, 2, 4, null)),
+            new(2, CollectionItemType.BaseGame, null, new CollectionItemSnapshot(2, "Base", null, null, 2, 4, null)),
+            new(3, CollectionItemType.BaseGame, null, new CollectionItemSnapshot(2, "Manual", null, null, 2, 4, null))]);
 
         var classified = CampBggImportService.ClassifySkips(draft, new HashSet<long> { 2 },
-            new HashSet<(long, CampContributionItemType)> { (3, CampContributionItemType.BaseGame) });
+            new HashSet<(long, CollectionItemType)> { (3, CollectionItemType.BaseGame) });
 
         Assert.Null(classified.Items[0].SkipReason); // another participant may already own it; that is not a skip
         Assert.Equal(CampImportSkipReason.AlreadyInBaseCollection, classified.Items[1].SkipReason);

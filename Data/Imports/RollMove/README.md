@@ -2,7 +2,7 @@
 
 This directory contains the reviewed inputs for the one-time migration from the Tesera collection of user `John90` to the dedicated BoardGameGeek account `RollMoveClub`.
 
-Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is the reviewed historical migration snapshot. `club-collection.v2.json` is the current recovery/bootstrap snapshot rebuilt from the authoritative positive BGG IDs in only `club.json`, `guests.json`, `john.json`, and `sergei.json` under `BarinDwalin/board-games-club/public/data/collections`. Restore a snapshot only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
+Tesera is not a runtime OyinQ integration. `club-collection.v1.json` is the reviewed historical migration snapshot. `club-collection.v2.json` is the current recovery/bootstrap snapshot rebuilt from the authoritative positive BGG IDs in `club.json`, `guests.json`, `john.json`, and `sergei.json` under `BarinDwalin/board-games-club/public/data/collections`. Restore a snapshot only through the Club collection JSON import for an empty or deliberately replaced Club; PostgreSQL `Club.CollectionJson` is authoritative during normal operation.
 
 The v2 refresh reads IDs from the four source documents but never copies their game metadata. It fetches current metadata, versions, and item classification from BGG in throttled batches, deduplicates by canonical BGG ID, and writes through `ClubCollectionSerializer`. `name` prefers the single confidently associated Russian-version canonical title while `originalName` retains the primary BGG title; both base games and expansions use the centralized resolver. BGG-classified expansions are nested only under included official inbound parents; unresolved IDs and orphan expansions are omitted and reported.
 
@@ -22,7 +22,7 @@ The historical BGG-account enrichment resolved 219 base games and 121 expansions
 
 `bgg-owned-ids.csv` is the semicolon-delimited historical reviewed set of 340 unique RollMove Owned IDs. It is retained as migration audit evidence and is not an input to the current v2 refresh.
 
-`club-collection.v1.json` contains 219 base games and 119 nested expansion links representing 109 unique owned expansions. The current v2 snapshot contains 337 BGG-resolved base games from the four requested sources. The source IDs `215545` and `5179628` do not resolve to included BGG items, while `477191` is classified by BGG as an expansion without an included official parent; all three are therefore omitted instead of guessed or copied from Tesera metadata.
+`club-collection.v1.json` contains 219 base games and 119 nested expansion links representing 109 unique owned expansions. The current v2 snapshot contains 374 BGG-resolved base games: 337 from the four sources plus 37 additions from the explicit reconciliation list. The source IDs `215545` and `5179628` do not resolve to included BGG items, while `477191` is classified by BGG as an expansion without an included official parent; all three are therefore omitted instead of guessed or copied from Tesera metadata.
 
 ## Operator workflow
 
@@ -37,7 +37,7 @@ The historical BGG-account enrichment resolved 219 base games and 121 expansions
    Remove-Item Env:BoardGameGeek__ApiToken
    ```
 
-   The command reads only the four named source JSONs, extracts and deduplicates positive BGG IDs recursively, fetches BGG metadata through typed base/expansion requests, links expansions through official BGG parent relationships, and reports invalid, unresolved, and orphan items. Use `--source-base-url=<url>` only for a reviewed mirror or test fixture and `--output=<path>` for an audit run.
+   The command reads the four named source JSONs plus `reconciliation-candidates.txt` (excluding optional `edition-review-ids.txt`), extracts and deduplicates positive BGG IDs recursively, fetches BGG metadata through typed base/expansion requests, links expansions through official BGG parent relationships, and reports invalid, unresolved, and orphan items. Use `--source-base-url=<url>` only for a reviewed mirror or test fixture and `--output=<path>` for an audit run.
    To reconcile the completed document into PostgreSQL atomically, add `--apply-club-key=<community-key>`. The command locks the Club row, replaces only `Club.CollectionJson`, increments the revision only when content changed, and reports added/retained/removed IDs and expansion-link changes. Existing gathering snapshots and participation data are not rewritten.
 
    On a fresh single-Club installation, `--apply-only-club` resolves the target only when exactly one Club exists. It fails before mutation when the database contains zero or multiple Clubs, so an operator never has to guess a community key.
@@ -52,3 +52,13 @@ dotnet run --project oyinQ.Bot.csproj -- --refresh-bgg-names
 The command loads all distinct stored BGG IDs, completes every batched BGG request before opening its database transaction, and then changes only stored display/original names. A confidently resolved Russian title updates the display name; when Russian data is missing or ambiguous, the existing display name remains untouched while a resolved primary BGG title is retained as `originalName`. Repeating the command is idempotent.
 
 Do not commit the BGG password, email address, application token, browser profile, or uploader logs.
+
+## Сверка 04.09.2026
+
+Проверены 51 явный BGG ID из `reconciliation-candidates.txt` (включая HTML-пробел после 437383). Все разрешились как базовые игры. Через существующий BGG-клиент с Owned-фильтром и отдельным запросом дополнений проверен RollMoveClub: уже Owned — 0; подтверждённо отсутствуют — 51; неразрешённых — 0. В локальном JSON уже были 14, добавлены 37. Все запрошенные ID теперь присутствуют в v2.
+
+В этом списке нет отдельно помеченных edition-review ID; исторические 22 строки `needs-review` не разрешались заново, отсутствующие идентификаторы не угадывались. Проверяется канонический ID, а не совпадение названия или другого издания. При последующих сверках вынесите требующие ручной проверки ID в `edition-review-ids.txt`: они не попадут ни в JSON, ни в список добавления.
+
+Аккаунт BGG не изменён: владелец выбрал ручное добавление. `bgg-missing-owned.csv` — список ID с Owned=1 для этой работы; он не является обещанием поддержки CSV-upload самим BGG. Откройте каждый ID в авторизованном RollMoveClub и отметьте Owned. Официальная [документация XML API2](https://boardgamegeek.com/wiki/page/BGG_XML_API2) описывает чтение коллекции и 202/retry, но не поддерживаемый endpoint записи. Не используйте внутренние недокументированные API.
+
+Повторяемая read-only для аккаунта команда: `dotnet run --project oyinQ.Bot.csproj -- --reconcile-rollmove`. Она обновляет локальный JSON и отчёт, а аккаунт не мутирует. Токен передаётся через каноническую конфигурацию `BoardGameGeek:ApiToken`; локальный секрет `BGG_API_TOKEN` при этой сверке был передан ей только в окружении процесса, без вывода значения. Перед повторным запуском сохраните прежний отчёт, если нужно сравнить результаты по датам.

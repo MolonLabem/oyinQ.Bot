@@ -35,7 +35,7 @@ internal static class CommunityEndpoints
             items.Add(new
             {
                 community.Key, community.Name, Mode = community.Mode.ToString(), community.TimeZoneId,
-                community.StartDate, community.EndDate,
+                community.StartDate, community.EndDate, community.StartsAtUtc, community.EndsAtUtc,
                 AvatarUrl = await photos.GetDataUrlAsync(community.TelegramChatId, cancellationToken)
             });
         return Results.Ok(new
@@ -58,24 +58,15 @@ internal static class CommunityEndpoints
     }
 
     private static async Task<IResult> GetGamesAsync(HttpRequest request, string community,
-        AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, EffectiveCampCatalogService campCatalog,
-        CancellationToken cancellationToken)
+        TelegramMiniAppAuthenticator authenticator,
+        CommunityContextResolver resolver,
+        oyinQ.Bot.Features.Catalog.GameCatalogService catalog, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator,
             resolver, cancellationToken);
         if (access is null) return Results.Forbid();
-        if (access.Community.Mode == BotMode.Club)
-        {
-            var json = await dbContext.Clubs.AsNoTracking().Where(x => x.BotChatKey == community)
-                .Select(x => x.CollectionJson).SingleAsync(cancellationToken);
-            return Results.Ok(ClubCollectionSerializer.Deserialize(json).Games.Select(PresentGame));
-        }
-        var participantId = await dbContext.Participants.AsNoTracking()
-            .Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
-            .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
-        return Results.Ok((await campCatalog.LoadAsync(community, participantId, cancellationToken))
-            .Select(x => PresentGame(x.Game)));
+        var games = await catalog.LoadAsync(community, access.Community.Mode, access.Identity.TelegramUserId, cancellationToken);
+        return Results.Ok(games.Select(x => PresentGame(x.Game)));
     }
 
     private static object PresentGame(ClubCollectionGame game)

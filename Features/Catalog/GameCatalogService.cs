@@ -8,15 +8,15 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 namespace oyinQ.Bot.Features.Catalog;
 
 public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollection<GameType> Types,
-    IReadOnlyCollection<long> CategoryIds, string? Sort);
+    IReadOnlyCollection<long> CategoryIds, string? Sort, string? Ownership = null, string? Availability = null, string? Planning = null);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
 public sealed record GameListItemResponse(long BggId, string Name, string? OriginalName, string? ThumbnailImageUrl,
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     string AvailabilitySummary, bool IsDefinitelyAvailable,
-    bool NeedsProviderCoordination);
+    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
-    bool HasCommittedProvider);
+    bool HasCommittedProvider, bool IsOwned = false);
 public sealed record GameDetailsResponse(long BggId, string Name, string? OriginalName, string? ImageUrl, string? Description,
     int? YearPublished, GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
@@ -33,13 +33,42 @@ public sealed class GameNotInCollectionException(long bggId)
     public long BggId { get; } = bggId;
 }
 
-public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog)
+public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog, TimeProvider? timeProvider = null)
 {
     public async Task<GameCatalogResponse> ListAsync(string communityKey, BotMode mode, long telegramUserId,
         CatalogQuery query, CancellationToken cancellationToken)
     {
         var effective = await LoadAsync(communityKey, mode, telegramUserId, cancellationToken);
+        var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var plannedSnapshots = await dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == communityKey
+            && x.StartsAtUtc > now && Features.Gatherings.GatheringLifecycle.ScheduledStatuses.Contains(x.Status))
+            .Select(x => x.GameSnapshotJson).ToArrayAsync(cancellationToken);
+        var playedSnapshots = await dbContext.GatheringPlayRecords.AsNoTracking().Where(x => x.WasPlayed && x.Gathering.CommunityKey == communityKey)
+            .Select(x => x.GameSnapshotJson).ToArrayAsync(cancellationToken);
+        var planned = plannedSnapshots.Select(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId)
+            .Where(x => x.HasValue).GroupBy(x => x!.Value).ToDictionary(x => x.Key, x => x.Count());
+        var played = playedSnapshots.Select(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId)
+            .Where(x => x.HasValue).GroupBy(x => x!.Value).ToDictionary(x => x.Key, x => x.Count());
         IEnumerable<EffectiveGame> filtered = effective;
+        filtered = query.Ownership switch
+        {
+            "club" => filtered.Where(x => x.IsInBaseCollection),
+            "mine" => filtered.Where(x => x.IsOwned),
+            "participants" => filtered.Where(x => x.Providers.Count > 0),
+            _ => filtered
+        };
+        filtered = query.Availability switch
+        {
+            "confirmed" => filtered.Where(x => GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed),
+            "possible" => filtered.Where(x => !GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed && x.Providers.Count > 0),
+            _ => filtered
+        };
+        filtered = query.Planning switch
+        {
+            "planned" => filtered.Where(x => planned.ContainsKey(x.Game.BggId)),
+            "unplanned" => filtered.Where(x => !planned.ContainsKey(x.Game.BggId)),
+            _ => filtered
+        };
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var search = query.Search.Trim();
@@ -50,10 +79,11 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
 
         filtered = query.Sort?.ToLowerInvariant() switch
         {
-            "players" => filtered.OrderBy(value => value.Game.MinPlayers ?? int.MaxValue).ThenBy(value => value.Game.Name),
-            _ => filtered.OrderBy(value => value.Game.Name, StringComparer.OrdinalIgnoreCase)
+            "popular" => filtered.OrderByDescending(value => played.GetValueOrDefault(value.Game.BggId)).ThenBy(value => value.Game.Name).ThenBy(value => value.Game.BggId),
+            "players" => filtered.OrderBy(value => value.Game.MinPlayers ?? int.MaxValue).ThenBy(value => value.Game.Name).ThenBy(value => value.Game.BggId),
+            _ => filtered.OrderBy(value => value.Game.Name, StringComparer.OrdinalIgnoreCase).ThenBy(value => value.Game.BggId)
         };
-        var items = filtered.Select(ToListItem).ToArray();
+        var items = filtered.Select(x => ToListItem(x) with { ScheduledGatherings = planned.GetValueOrDefault(x.Game.BggId), RecordedPlays = played.GetValueOrDefault(x.Game.BggId) }).ToArray();
         var categories = effective.SelectMany(value => value.Game.CategoryItems ?? [])
             .DistinctBy(value => value.BggId).OrderBy(value => BggTaxonomyCatalog.LocalizeCategory(value))
             .Select(value => new LocalizedTaxonomyItem(value.BggId, BggTaxonomyCatalog.LocalizeCategory(value))).ToArray();
@@ -80,32 +110,58 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             (game.Mechanics ?? []).Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeMechanic(x))).ToArray(),
             game.Expansions, BggGameUrl.FromId(game.BggId)!,
             new GameAvailabilityResponse(value.IsInBaseCollection, value.Providers,
-                value.Providers.Any(x => x.Commitment == CampBringCommitment.Bringing)));
+                GameProviderService.Describe(false, value.Providers).IsConfirmed, value.IsOwned));
     }
 
-    private async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
+    public async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
         CancellationToken cancellationToken)
     {
         if (mode == BotMode.Club)
         {
-            var json = await dbContext.Clubs.AsNoTracking().Where(x => x.BotChatKey == key)
-                .Select(x => x.CollectionJson).SingleAsync(cancellationToken);
-            return ClubCollectionSerializer.Deserialize(json).Games
-                .Select(game => new EffectiveGame(game, true, [])).ToArray();
+            return await LoadClubAsync(key, telegramUserId, cancellationToken);
         }
 
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == telegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
+        var owned = await dbContext.ParticipantCollectionItems.Where(x => x.ParticipantId == participantId).Select(x => x.BggId).ToArrayAsync(cancellationToken);
         return (await campCatalog.LoadAsync(key, participantId, cancellationToken))
-            .Select(x => new EffectiveGame(x.Game, x.IsInBaseCollection, x.Providers)).ToArray();
+            .Select(x => new EffectiveGame(x.Game, x.IsInBaseCollection, x.Providers, owned.Contains(x.Game.BggId))).ToArray();
+    }
+
+    public async Task<IReadOnlyList<EffectiveGame>> LoadClubAsync(string key, long telegramUserId,
+        CancellationToken cancellationToken)
+    {
+        var json = await dbContext.Clubs.AsNoTracking().Where(x => x.BotChatKey == key)
+            .Select(x => x.CollectionJson).SingleAsync(cancellationToken);
+        var personal = await dbContext.ParticipantCollectionItems.AsNoTracking()
+            .Where(x => x.Participant.TelegramUserId == telegramUserId).ToArrayAsync(cancellationToken);
+        var ownedIds = personal.Select(x => x.BggId).ToHashSet();
+        var document = ClubCollectionSerializer.Deserialize(json);
+        var clubOwnedIds = document.Games.Select(x => x.BggId)
+            .Concat(document.Games.SelectMany(x => x.Expansions).Select(x => x.BggId)).ToHashSet();
+        var games = document.Games
+            .Select(x => new EffectiveGame(x, true, [], ownedIds.Contains(x.BggId))).ToList();
+        var personalSnapshots = personal.Select(x => (Item: x, Snapshot: x.ReadSnapshot())).ToArray();
+        foreach (var (item, snapshot) in personalSnapshots.Where(x => games.All(g => g.Game.BggId != x.Item.BggId)))
+            games.Add(new(snapshot.ToCollectionGame(item.BggId), clubOwnedIds.Contains(item.BggId), [], true));
+        var expansionsByParent = personalSnapshots.Where(x => x.Item.ItemType == CollectionItemType.Expansion)
+            .SelectMany(x => (x.Snapshot.ParentBggIds ?? (x.Item.ParentBggId is { } parent ? [parent] : []))
+                .Select(parent => (Parent: parent, Expansion: new ClubCollectionExpansion(x.Item.BggId, x.Snapshot.Name, x.Snapshot.OriginalName))))
+            .ToLookup(x => x.Parent, x => x.Expansion);
+        return games.Select(value => value with { Game = value.Game with
+        {
+            Expansions = value.Game.Expansions.Concat(expansionsByParent[value.Game.BggId]).DistinctBy(x => x.BggId).ToArray()
+        }}).ToArray();
     }
 
     private static GameListItemResponse ToListItem(EffectiveGame value)
     {
-        var committed = value.Providers.Any(x => x.Commitment == CampBringCommitment.Bringing);
-        var coordination = !value.IsInBaseCollection && value.Providers.Count > 1 && !committed;
-        var summary = value.IsInBaseCollection ? "Есть в коллекции клуба" : committed ? "Точно будет"
-            : coordination ? "Нужно решить, кто привезёт" : value.Providers.Count > 0 ? "Можно привезти" : string.Empty;
+        var provider = GameProviderService.Describe(value.IsInBaseCollection, value.Providers);
+        var committed = provider.IsConfirmed;
+        var coordination = !provider.IsConfirmed;
+        var summary = value.IsOwned ? (value.IsInBaseCollection ? "Есть в клубе · Есть у вас" : "Есть у вас")
+            : value.IsInBaseCollection ? "Есть в клубе" : committed ? "Точно будет"
+            : provider.Summary;
         var presentation = BggTaxonomyCatalog.Present(value.Game);
         return new GameListItemResponse(value.Game.BggId, value.Game.Name, value.Game.OriginalName,
             value.Game.ThumbnailImageUrl,
@@ -123,6 +179,6 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             || query.CategoryIds.All(id => game.CategoryItems?.Any(x => x.BggId == id) == true);
     }
 
-    private sealed record EffectiveGame(ClubCollectionGame Game, bool IsInBaseCollection,
-        IReadOnlyList<CampCatalogProvider> Providers);
+    public sealed record EffectiveGame(ClubCollectionGame Game, bool IsInBaseCollection,
+        IReadOnlyList<CampCatalogProvider> Providers, bool IsOwned = false);
 }

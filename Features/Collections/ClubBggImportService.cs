@@ -134,9 +134,9 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     public static ClubBggImportMergeResult Merge(ClubCollectionDocument current,
         IReadOnlyCollection<CampImportSelectionItem> imported)
     {
-        var bases = imported.Where(x => x.ItemType == CampContributionItemType.BaseGame)
+        var bases = imported.Where(x => x.ItemType == CollectionItemType.BaseGame)
             .DistinctBy(x => x.BggId).ToDictionary(x => x.BggId);
-        var expansions = imported.Where(x => x.ItemType == CampContributionItemType.Expansion)
+        var expansions = imported.Where(x => x.ItemType == CollectionItemType.Expansion)
             .DistinctBy(x => x.BggId).ToArray();
         var allBaseIds = current.Games.Select(x => x.BggId).Concat(bases.Keys).ToHashSet();
         var addedExpansions = 0;

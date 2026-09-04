@@ -50,34 +50,19 @@ internal static class MiniAppEndpointSupport
         return community is null ? null : new(identity, community);
     }
 
-    public static async Task<Participant> GetOrCreateParticipantAsync(AppDbContext dbContext,
-        TelegramMiniAppIdentity identity, string communityKey, CancellationToken cancellationToken)
-    {
-        var participant = await dbContext.Participants.SingleOrDefaultAsync(
-            x => x.TelegramUserId == identity.TelegramUserId, cancellationToken);
-        var now = DateTimeOffset.UtcNow;
-        if (participant is null)
-        {
-            participant = ParticipantIdentityPolicy.Create(identity.TelegramUserId,
-                identity.TelegramUsername, identity.DisplayName, now);
-            dbContext.Participants.Add(participant);
-        }
-        else
-        {
-            ParticipantIdentityPolicy.RefreshTrustedPresentation(participant, identity.TelegramUsername,
-                identity.DisplayName, now);
-        }
-        participant.ActiveCommunityKey = communityKey;
-        participant.UpdatedAt = now;
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return participant;
-    }
+    public static Task<Participant> GetOrCreateParticipantAsync(AppDbContext dbContext,
+        TelegramMiniAppIdentity identity, string communityKey, CancellationToken cancellationToken) =>
+        new ParticipantIdentityService(dbContext, TimeProvider.System).GetOrCreateAsync(
+            identity.TelegramUserId, identity.TelegramUsername, identity.DisplayName, communityKey, cancellationToken);
 
     public static IResult Problem(string code, string message, int status = 400) =>
         Results.Json(new { code, message }, statusCode: status);
 
     public static IResult FromException(Exception exception) => exception switch
     {
+        oyinQ.Bot.Features.Gatherings.GatheringPlayConflictException conflict => Problem("play_outcome_conflict", conflict.Message, 409),
+        oyinQ.Bot.Features.Gatherings.GatheringScheduleConflictException conflict => Results.Json(new
+        { code = "gathering_schedule_conflict", message = conflict.Message, conflicts = conflict.Conflicts }, statusCode: 409),
         CampAttendanceDateRequiredException attendance => Results.Json(new
         {
             code = "camp_attendance_date_required",

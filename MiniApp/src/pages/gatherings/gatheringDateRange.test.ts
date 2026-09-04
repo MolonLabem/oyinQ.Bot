@@ -11,11 +11,20 @@ const camp: Community = {
   name: "Кэмп",
   mode: "Camp",
   timeZoneId: "Asia/Qyzylorda",
+  startsAtUtc: "2026-09-09T19:00:00Z",
+  endsAtUtc: "2026-09-13T19:00:00Z",
   startDate: "2026-09-10",
   endDate: "2026-09-13",
 };
 
 describe("camp gathering date range", () => {
+  it("сохраняет последнее утро и исключает точный момент закрытия", () => {
+    const timed = { ...camp, startsAtUtc: "2026-09-10T04:00:00Z", endsAtUtc: "2026-09-13T04:00:00Z" };
+    expect(gatheringDateTimeBounds(timed, "2026-09-03T12:00")).toEqual({ min: "2026-09-10T09:00", max: "2026-09-13T08:59" });
+    expect(isWithinCampDateRange("2026-09-10T08:59", timed)).toBe(false);
+    expect(isWithinCampDateRange("2026-09-13T08:59", timed)).toBe(true);
+    expect(isWithinCampDateRange("2026-09-13T09:00", timed)).toBe(false);
+  });
   it("uses inclusive datetime-local bounds for a multi-day camp", () => {
     expect(gatheringDateTimeBounds(camp, "2026-09-03T12:00")).toEqual({
       min: "2026-09-10T00:00",
@@ -28,7 +37,7 @@ describe("camp gathering date range", () => {
   });
 
   it("allows only the configured date for a single-day camp", () => {
-    const singleDay = { ...camp, startDate: "2026-09-20", endDate: "2026-09-20" };
+    const singleDay = { ...camp, startsAtUtc: "2026-09-19T19:00:00Z", endsAtUtc: "2026-09-20T19:00:00Z" };
     expect(gatheringDateTimeBounds(singleDay, "2026-09-03T12:00")).toEqual({
       min: "2026-09-20T00:00",
       max: "2026-09-20T23:59",

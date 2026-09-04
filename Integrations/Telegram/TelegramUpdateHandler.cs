@@ -44,11 +44,10 @@ public sealed class TelegramUpdateHandler(
         var callback = update.CallbackQuery;
         var user = callback?.From ?? update.Message?.From;
         if (user is null) return;
-        var participant = await dbContext.Participants.SingleOrDefaultAsync(
-            value => value.TelegramUserId == user.Id, cancellationToken);
-        if (participant is not null && ParticipantIdentityPolicy.RefreshTrustedPresentation(participant,
-                user.Username, BuildDisplayName(user), DateTimeOffset.UtcNow))
-            await dbContext.SaveChangesAsync(cancellationToken);
+        var participant = update.Message is { Chat.Type: ChatType.Private }
+            ? await new ParticipantIdentityService(dbContext, TimeProvider.System).GetOrCreateAsync(
+                user.Id, user.Username, BuildDisplayName(user), null, cancellationToken, privateMessageReceived: true)
+            : await dbContext.Participants.SingleOrDefaultAsync(value => value.TelegramUserId == user.Id, cancellationToken);
 
         if (callback is not null && CampImportCallbackData.TryParse(callback.Data, out var importId,
                 out var resolution))
@@ -116,16 +115,6 @@ public sealed class TelegramUpdateHandler(
         }
 
         var isAdministrator = await adminAuthorization.CanOpenAdminPanelAsync(user.Id, cancellationToken);
-        if (participant is null && (command is "/start" or "/menu" or "/help"
-                || command == "/admin" && isAdministrator))
-        {
-            var now = DateTimeOffset.UtcNow;
-            participant = ParticipantIdentityPolicy.Create(user.Id, user.Username,
-                BuildDisplayName(user), now);
-            dbContext.Participants.Add(participant);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-
         if (message is { Chat.Type: ChatType.Private } privateMessage && command == "/admin")
         {
             await adminHandler.HandleCommandAsync(privateMessage, user.Id, cancellationToken);
@@ -154,8 +143,7 @@ public sealed class TelegramUpdateHandler(
 
         var startContext = command == "/start" ? MiniAppStartParameter.Parse(message?.Text) : null;
         await SendMiniAppEntryAsync(participant, user.Id, user.Id, startContext, isAdministrator,
-            command == "/start",
-            command == "/help" ? TelegramEntryText.Help : null,
+            TelegramEntryText.ForPrivateCommand(command),
             cancellationToken);
     }
 
@@ -311,7 +299,6 @@ public sealed class TelegramUpdateHandler(
         long telegramUserId,
         MiniAppStartContext? startContext,
         bool isAdministrator,
-        bool includeWelcome,
         string? overrideText,
         CancellationToken cancellationToken)
     {
@@ -345,11 +332,7 @@ public sealed class TelegramUpdateHandler(
         var rows = communities.Select(community => (IEnumerable<InlineKeyboardButton>)[
             InlineKeyboardButton.WithWebApp(
                 communities.Count == 1 ? "Открыть OyinQ" : community.Name,
-                new WebAppInfo { Url = startContext?.GatheringPublicId is { } gatheringId
-                    ? links.Gathering(community.Key, gatheringId)
-                    : startContext?.CollectionBggId is { } bggId
-                        ? links.CollectionGame(community.Key, bggId)
-                        : links.Community(community.Key) })
+                new WebAppInfo { Url = startContext is not null ? links.FromStartContext(startContext) : links.Community(community.Key) })
         ]).ToList();
         if (overrideText is not null && rows.Count == 0)
         {
@@ -365,9 +348,7 @@ public sealed class TelegramUpdateHandler(
                     new WebAppInfo { Url = links.Admin() })
             ]);
         }
-        var text = overrideText ?? (includeWelcome
-            ? BuildWelcomeText(communities, isAdministrator)
-            : communities.Count == 0
+        var text = overrideText ?? (communities.Count == 0
                 ? "Управление OyinQ доступно в админ-панели."
                 : communities.Count == 1
                     ? $"🎲 {communities[0].Name}\n\nОткройте OyinQ кнопкой ниже."
@@ -393,27 +374,6 @@ public sealed class TelegramUpdateHandler(
             logger.LogWarning(exception, "Could not configure Mini App menu button for {TelegramUserId}.",
                 privateChatId);
         }
-    }
-
-    private static string BuildWelcomeText(IReadOnlyList<BotCommunity> communities, bool isAdministrator)
-    {
-        var destination = communities.Count switch
-        {
-            0 when isAdministrator => "Откройте админ-панель, чтобы настроить клубы и кэмпы.",
-            1 => $"Сейчас доступно сообщество: {communities[0].Name}.",
-            _ => "Выберите нужное сообщество кнопкой ниже."
-        };
-        return $"""
-            👋 Добро пожаловать в OyinQ!
-
-            Здесь можно:
-            • смотреть коллекцию и находить игры;
-            • создавать сборы и присоединяться к ним;
-            • отмечать игры, которые вы привезёте в кэмп.
-
-            {destination}
-            Кнопка «Открыть OyinQ» также останется рядом с полем ввода в этом чате.
-            """;
     }
 
     private static string BuildDisplayName(User user)

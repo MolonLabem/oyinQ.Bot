@@ -48,8 +48,8 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<long>("CreatedByTelegramUserId")
                         .HasColumnType("bigint");
 
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("date");
+                    b.Property<DateTimeOffset?>("EndsAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -59,8 +59,8 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<long?>("SourceClubId")
                         .HasColumnType("bigint");
 
-                    b.Property<DateOnly?>("StartDate")
-                        .HasColumnType("date");
+                    b.Property<DateTimeOffset?>("StartsAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -78,13 +78,13 @@ namespace oyinQ.Bot.Data.Migrations
                     b.HasIndex("BotChatKey", "BotChatMode")
                         .IsUnique();
 
-                    b.HasIndex("Status", "EndDate", "Id");
+                    b.HasIndex("Status", "EndsAtUtc", "Id");
 
                     b.ToTable("Camps", null, t =>
                         {
                             t.HasCheckConstraint("CK_Camps_BotChatMode", "\"BotChatMode\" = 1");
 
-                            t.HasCheckConstraint("CK_Camps_DateRange", "(\"StartDate\" IS NULL AND \"EndDate\" IS NULL) OR (\"StartDate\" IS NOT NULL AND \"EndDate\" IS NOT NULL AND \"StartDate\" <= \"EndDate\")");
+                            t.HasCheckConstraint("CK_Camps_OperatingWindow", "(\"StartsAtUtc\" IS NULL AND \"EndsAtUtc\" IS NULL) OR (\"StartsAtUtc\" IS NOT NULL AND \"EndsAtUtc\" IS NOT NULL AND \"StartsAtUtc\" < \"EndsAtUtc\")");
                         });
                 });
 
@@ -104,7 +104,7 @@ namespace oyinQ.Bot.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<long>("CampId")
+                    b.Property<long?>("CampId")
                         .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset?>("CancellationRequestedAt")
@@ -158,7 +158,10 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ParticipantId");
+                    b.HasIndex("ParticipantId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CampBggImports_ActiveProfileParticipant")
+                        .HasFilter("\"CampId\" IS NULL AND \"Status\" IN (0, 1)");
 
                     b.HasIndex("PublicId")
                         .IsUnique();
@@ -504,6 +507,9 @@ namespace oyinQ.Bot.Data.Migrations
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.GameGathering", b =>
                 {
+                    b.Property<string>("LegacyPlayOutcomeJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
@@ -527,6 +533,9 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("ConfirmedWasPlayed")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -553,6 +562,15 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.Property<long>("OrganizerParticipantId")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("OutcomeRecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("OutcomeRecordedByParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("OutcomeRevision")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
@@ -651,12 +669,20 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<long>("GameGatheringId")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid>("PublicId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByParticipantId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
 
                     b.HasIndex("GameGatheringId", "Id");
 
@@ -701,6 +727,132 @@ namespace oyinQ.Bot.Data.Migrations
                     b.ToTable("GameGatheringParticipants", (string)null);
                 });
 
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringExternalPlayReference", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("AddedByParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("GatheringPlayRecordId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AddedByParticipantId");
+
+                    b.HasIndex("GatheringPlayRecordId", "Url")
+                        .IsUnique();
+
+                    b.ToTable("GatheringExternalPlayReferences");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringPlayPlayer", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long?>("ParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PlayRecordId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("SourcePlayerId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParticipantId");
+
+                    b.HasIndex("PlayRecordId", "SourcePlayerId")
+                        .IsUnique();
+
+                    b.ToTable("GatheringPlayPlayers");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringPlayRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("EndedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("GameSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("GatheringId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("RecordedByParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("WasPlayed")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GatheringId")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RecordedByParticipantId");
+
+                    b.ToTable("GatheringPlayRecords", t =>
+                        {
+                            t.HasCheckConstraint("CK_PlayRecord_Outcome", "(\"WasPlayed\" AND \"EndedAtUtc\" IS NOT NULL) OR (NOT \"WasPlayed\" AND \"EndedAtUtc\" IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.KnownTelegramChat", b =>
                 {
                     b.Property<long>("TelegramChatId")
@@ -738,6 +890,118 @@ namespace oyinQ.Bot.Data.Migrations
                     b.HasIndex("IsBotPresent");
 
                     b.ToTable("KnownTelegramChats", (string)null);
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.Notification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CommunityKey")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeduplicationKey")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("GatheringPublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ImportPublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCategory")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("ParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TelegramMessageId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeduplicationKey")
+                        .IsUnique();
+
+                    b.HasIndex("ParticipantId");
+
+                    b.HasIndex("GatheringPublicId", "ParticipantId");
+
+                    b.HasIndex("State", "NextAttemptAt");
+
+                    b.ToTable("Notifications");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.NotificationPreferences", b =>
+                {
+                    b.Property<long>("ParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("GatheringDetailsChanged")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("GatheringFull")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ImportCompleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("OrganizerBelowMinimum")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("OrganizerMissingProvider")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("OrganizerParticipantLeft")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("OrganizerReplacement")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ReminderLeadMinutes")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ParticipantId");
+
+                    b.ToTable("NotificationPreferences", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_NotificationPreferences_Reminder", "\"ReminderLeadMinutes\" IN (0, 30, 60, 120, 360, 720, 1440)");
+                        });
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.OyinQCommunity", b =>
@@ -813,6 +1077,17 @@ namespace oyinQ.Bot.Data.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<DateTimeOffset?>("PrivateChatStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PublicId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset?>("TelegramDeliveryBlockedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<long>("TelegramUserId")
                         .HasColumnType("bigint");
 
@@ -825,10 +1100,57 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
                     b.HasIndex("TelegramUserId")
                         .IsUnique();
 
                     b.ToTable("Participants", (string)null);
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ParticipantCollectionItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("BggId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ItemType")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("ParentBggId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParticipantId", "BggId", "ItemType")
+                        .IsUnique();
+
+                    b.ToTable("ParticipantCollectionItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ParticipantCollectionItems_BggId", "\"BggId\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.PendingTelegramPeerSelection", b =>
@@ -884,6 +1206,63 @@ namespace oyinQ.Bot.Data.Migrations
                     b.HasIndex("RequestedByTelegramUserId", "Status", "ExpiresAt");
 
                     b.ToTable("PendingTelegramPeerSelections", (string)null);
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ReleaseAnnouncement", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("CreatedByParticipantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(3500)
+                        .HasColumnType("character varying(3500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByParticipantId");
+
+                    b.ToTable("ReleaseAnnouncements");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ReleaseAnnouncementDelivery", b =>
+                {
+                    b.Property<string>("ReleaseId")
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("CommunityKey")
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("AttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TelegramMessageId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ReleaseId", "CommunityKey");
+
+                    b.HasIndex("CommunityKey");
+
+                    b.HasIndex("State", "AttemptedAt");
+
+                    b.ToTable("ReleaseAnnouncementDeliveries");
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.TelegramForumTopic", b =>
@@ -975,8 +1354,7 @@ namespace oyinQ.Bot.Data.Migrations
                     b.HasOne("oyinQ.Bot.Data.Entities.Camp", "Camp")
                         .WithMany("BggImports")
                         .HasForeignKey("CampId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
                         .WithMany()
@@ -1151,6 +1529,123 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("Participant");
                 });
 
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringExternalPlayReference", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "AddedByParticipant")
+                        .WithMany()
+                        .HasForeignKey("AddedByParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("oyinQ.Bot.Data.Entities.GatheringPlayRecord", "PlayRecord")
+                        .WithMany()
+                        .HasForeignKey("GatheringPlayRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AddedByParticipant");
+
+                    b.Navigation("PlayRecord");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringPlayPlayer", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
+                        .WithMany()
+                        .HasForeignKey("ParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("oyinQ.Bot.Data.Entities.GatheringPlayRecord", "PlayRecord")
+                        .WithMany("Players")
+                        .HasForeignKey("PlayRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Participant");
+
+                    b.Navigation("PlayRecord");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringPlayRecord", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.GameGathering", "Gathering")
+                        .WithOne()
+                        .HasForeignKey("oyinQ.Bot.Data.Entities.GatheringPlayRecord", "GatheringId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "RecordedByParticipant")
+                        .WithMany()
+                        .HasForeignKey("RecordedByParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Gathering");
+
+                    b.Navigation("RecordedByParticipant");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.Notification", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
+                        .WithMany()
+                        .HasForeignKey("ParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Participant");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.NotificationPreferences", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
+                        .WithOne()
+                        .HasForeignKey("oyinQ.Bot.Data.Entities.NotificationPreferences", "ParticipantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Participant");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ParticipantCollectionItem", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", "Participant")
+                        .WithMany()
+                        .HasForeignKey("ParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Participant");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ReleaseAnnouncement", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Participant", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByParticipantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.ReleaseAnnouncementDelivery", b =>
+                {
+                    b.HasOne("oyinQ.Bot.Data.Entities.OyinQCommunity", "Community")
+                        .WithMany()
+                        .HasForeignKey("CommunityKey")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("oyinQ.Bot.Data.Entities.ReleaseAnnouncement", "Release")
+                        .WithMany()
+                        .HasForeignKey("ReleaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Community");
+
+                    b.Navigation("Release");
+                });
+
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.TelegramForumTopic", b =>
                 {
                     b.HasOne("oyinQ.Bot.Data.Entities.KnownTelegramChat", null)
@@ -1186,6 +1681,11 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Navigation("Guests");
 
                     b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.GatheringPlayRecord", b =>
+                {
+                    b.Navigation("Players");
                 });
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.OyinQCommunity", b =>

@@ -35,7 +35,7 @@ public sealed class GatheringManagementCampDateTests
                     new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.FromHours(5)),
                     2, 3, 4, null, true), default));
 
-        Assert.Equal("Дата сбора должна быть в пределах дат кэмпа: 10–13 сентября.", error.Message);
+        Assert.Equal("Время сбора должно входить в рабочий интервал кэмпа: начиная с открытия и до окончания.", error.Message);
         Assert.Empty(fixture.Db.GameGatherings);
     }
 
@@ -63,7 +63,7 @@ public sealed class GatheringManagementCampDateTests
                     new DateTimeOffset(2026, 9, 14, 18, 0, 0, TimeSpan.FromHours(5)),
                     2, 3, 4, null, true, []), default));
 
-        Assert.Equal("Дата сбора должна быть в пределах дат кэмпа: 10–13 сентября.", error.Message);
+        Assert.Equal("Время сбора должно входить в рабочий интервал кэмпа: начиная с открытия и до окончания.", error.Message);
         Assert.Equal(new DateTimeOffset(2026, 9, 12, 13, 0, 0, TimeSpan.Zero), gathering.StartsAtUtc);
     }
 
@@ -98,7 +98,7 @@ public sealed class GatheringManagementCampDateTests
             var camp = new Camp
             {
                 BotChat = community, BotChatKey = community.Key, Name = community.Name,
-                Status = CampStatus.Active, StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13)
+                Status = CampStatus.Active, StartsAtUtc = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero).AddHours(-5), EndsAtUtc = new DateTimeOffset(2026, 9, 13, 0, 0, 0, TimeSpan.Zero).AddDays(1).AddHours(-5)
             };
             var participant = new Participant
             {

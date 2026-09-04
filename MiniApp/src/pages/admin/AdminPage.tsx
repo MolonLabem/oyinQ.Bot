@@ -1,3 +1,4 @@
+import { ReleaseAnnouncementPage } from "./ReleaseAnnouncementPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
 import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
@@ -6,12 +7,12 @@ import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
-import { campStatusLabel, formatDate, plural } from "../../app/format";
+import { campStatusLabel, currentLocalMinute, formatInstant, formatDate, plural } from "../../app/format";
 import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
 import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
 import { canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
 
-type Section = "clubs" | "camps" | "administrators" | "export" | "collection" | "participants";
+type Section = "release" | "clubs" | "camps" | "administrators" | "export" | "collection" | "participants";
 type CommunityCreated = {
   id: number;
   telegramOnboardingSent: boolean;
@@ -42,6 +43,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
       <aside className="admin-sidebar">
         <h1>Администрирование</h1>
         <nav>
+          {isSuperAdmin && <button className={section === "release" ? "active" : ""} onClick={() => setSection("release")}>Обновление OyinQ</button>}
           {nav.map((item) => (
             <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => setSection(item.id)}>
               <span aria-hidden>{item.icon}</span>
@@ -51,7 +53,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
         </nav>
       </aside>
       <div className="admin-main">
-        {section === "clubs" ? (
+        {section === "release" && isSuperAdmin ? <ReleaseAnnouncementPage /> : section === "clubs" ? (
           <Communities
             view="clubs"
             isSuperAdmin={isSuperAdmin}
@@ -250,7 +252,7 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                     <div>
                       <h3>{camp.name}</h3>
                       <p>
-                        {formatDate(camp.startDate)} — {formatDate(camp.endDate)}
+                        {camp.startsAtUtc ? formatInstant(camp.startsAtUtc, camp.timeZoneId) : "Не указано"} — {camp.endsAtUtc ? formatInstant(camp.endsAtUtc, camp.timeZoneId) : "Не указано"}
                       </p>
                       <p className="muted">{camp.sourceClubName ? `Коллекция: ${camp.sourceClubName}` : "Без исходного клуба"}</p>
                       <p>
@@ -447,21 +449,21 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
 function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminOverview; done: () => void }) {
   const [name, setName] = useState(camp.name);
   const [zone, setZone] = useState(camp.timeZoneId);
-  const [start, setStart] = useState(camp.startDate ?? "");
-  const [end, setEnd] = useState(camp.endDate ?? "");
+  const [start, setStart] = useState(camp.startsAtUtc ? currentLocalMinute(camp.timeZoneId, new Date(camp.startsAtUtc)) : "");
+  const [end, setEnd] = useState(camp.endsAtUtc ? currentLocalMinute(camp.timeZoneId, new Date(camp.endsAtUtc)) : "");
   const [source, setSource] = useState<number | "">(camp.sourceClubId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const sourceClub = overview?.clubs.find((item) => item.id === source);
   async function save() {
-    if (!start || !end || end < start) {
+    if (!start || !end || end <= start) {
       setError("Укажите корректный диапазон дат кэмпа.");
       return;
     }
     setBusy(true);
     setError(undefined);
     try {
-      await api(`/admin/camps/${camp.id}`, json("PUT", { name, timeZoneId: zone, startDate: start, endDate: end }));
+      await api(`/admin/camps/${camp.id}`, json("PUT", { name, timeZoneId: zone, startsAtLocal: start, endsAtLocal: end }));
       telegram.success("Настройки кэмпа сохранены");
       done();
     } catch (e) {
@@ -492,11 +494,11 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
           <input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} />
         </Field>
         <div className="date-range">
-          <Field label="Начало">
-            <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+          <Field label="Начало кэмпа">
+            <input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} />
           </Field>
-          <Field label="Окончание">
-            <input type="date" min={start} value={end} onChange={(event) => setEnd(event.target.value)} />
+          <Field label="Окончание кэмпа">
+            <input type="datetime-local" min={start} value={end} onChange={(event) => setEnd(event.target.value)} />
           </Field>
         </div>
         <Field label="Часовой пояс" hint={camp.gatherings > 0 ? "Нельзя изменить после создания первого сбора" : "Выберите город с тем же местным временем"}>
@@ -588,7 +590,7 @@ function PostingTopicSetting({ communityKey }: { communityKey: string }) {
           </button>
         </>
       )}
-      <Notice>Если нужной темы нет в списке, откройте её в Telegram и отправьте там команду <code>/oyinq topic</code>.</Notice>
+      <Notice>Если нужной темы нет в списке, откройте её в Telegram и отправьте там команду <code>/oiynq topic</code>.</Notice>
       {state.data.messageThreadId !== null && <button disabled={busy} onClick={() => save(null)}>Основная тема</button>}
       {error && <Notice kind="danger">{error}</Notice>}
     </Card>
@@ -711,7 +713,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
     }
   }
   async function choose() {
-    if (!start || !end || end < start) {
+    if (!start || !end || end <= start) {
       setError("Укажите корректный диапазон дат кэмпа.");
       return;
     }
@@ -738,8 +740,8 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
           selectionId: selection?.publicId,
           knownTelegramChatId: knownChat?.telegramChatId,
           name,
-          startDate: start,
-          endDate: end,
+          startsAtLocal: start,
+          endsAtLocal: end,
           sourceClubId: source || null,
           timeZoneId: zone,
         }),
@@ -763,11 +765,11 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
           <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="date-range">
-          <Field label="Начало">
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+          <Field label="Начало кэмпа">
+            <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
           </Field>
-          <Field label="Окончание">
-            <input type="date" min={start} value={end} onChange={(e) => setEnd(e.target.value)} />
+          <Field label="Окончание кэмпа">
+            <input type="datetime-local" min={start} value={end} onChange={(e) => setEnd(e.target.value)} />
           </Field>
         </div>
         <Field label="Исходный клуб">

@@ -25,9 +25,16 @@ public static class ParticipantPresentation
         return participant.TelegramUserId.ToString();
     }
 
-    public static string ToHtmlLink(Participant participant)
+    public static string ToHtmlLink(Participant participant, int? maximumNameLength = null)
     {
-        var name = WebUtility.HtmlEncode(GetDisplayName(participant));
+        var displayName = GetDisplayName(participant);
+        if (maximumNameLength is { } limit && displayName.Length > limit)
+        {
+            var end = limit - 1;
+            if (end > 0 && char.IsHighSurrogate(displayName[end - 1])) end--;
+            displayName = displayName[..end] + "…";
+        }
+        var name = WebUtility.HtmlEncode(displayName);
         return participant.TelegramUserId > 0
             ? $"<a href=\"tg://user?id={participant.TelegramUserId}\">{name}</a>"
             : name;

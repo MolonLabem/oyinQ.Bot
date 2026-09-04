@@ -22,5 +22,5 @@ public sealed class OyinQCommunity
     public ICollection<ChatAdminPermission> AdminPermissions { get; set; } = [];
 
     public BotCommunity ToBotCommunity() =>
-        new(Key, Name, TelegramChatId, Mode, TimeZoneId, Camp?.StartDate, Camp?.EndDate);
+        new(Key, Name, TelegramChatId, Mode, TimeZoneId, Camp?.StartDate, Camp?.EndDate, Camp?.StartsAtUtc, Camp?.EndsAtUtc);
 }

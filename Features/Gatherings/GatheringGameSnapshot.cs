@@ -43,7 +43,7 @@ public sealed record GatheringGameSnapshot(
             players.Minimum,
             players.Maximum,
             game.BestPlayers,
-            game.Expansions.Where(value => selectedExpansionIds.Contains(value.BggId)).ToArray(),
+            GatheringExpansionSelection.Select(game.Expansions, selectedExpansionIds),
             source,
             game.Expansions.ToArray(),
             game.Description,
@@ -57,6 +57,17 @@ public sealed record GatheringGameSnapshot(
             game.Mechanics,
             players.WasDefaulted,
             game.OriginalName);
+    }
+}
+
+public static class GatheringExpansionSelection
+{
+    public static IReadOnlyList<ClubCollectionExpansion> Select(IReadOnlyCollection<ClubCollectionExpansion> available, IReadOnlyCollection<long> selected)
+    {
+        var known = available.Select(x => x.BggId).ToHashSet();
+        if (selected.Any(id => !known.Contains(id)))
+            throw new InvalidOperationException("Выбрано дополнение, которое не относится к этой игре.");
+        return available.Where(x => selected.Contains(x.BggId)).DistinctBy(x => x.BggId).ToArray();
     }
 }
 
@@ -104,7 +115,7 @@ public static class GatheringGameSnapshotSerializer
         ArgumentNullException.ThrowIfNull(snapshot);
         if (snapshot.Version is not 1 and not 2 and not GatheringGameSnapshot.CurrentVersion)
         {
-            throw new InvalidOperationException($"Unsupported gathering game snapshot version {snapshot.Version}.");
+            throw new InvalidOperationException($"Неподдерживаемая версия снимка игры сбора: {snapshot.Version}.");
         }
 
         if (string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.OriginalName?.Length > 300)

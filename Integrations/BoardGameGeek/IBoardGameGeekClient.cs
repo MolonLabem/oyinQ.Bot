@@ -2,7 +2,7 @@ using oyinQ.Bot.Integrations;
 
 namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
-public sealed record ExternalGameSearchResult(
+public sealed record BggBaseGameSearchResult(
     long BggId,
     string Name,
     int? YearPublished,
@@ -25,7 +25,7 @@ public sealed record BggCollectionItem(
 
 public interface IBoardGameGeekClient
 {
-    Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
+    Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(
         string query,
         CancellationToken cancellationToken);
 

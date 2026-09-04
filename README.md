@@ -2,20 +2,38 @@
 
 OyinQ is a .NET 10 ASP.NET Core backend, React Telegram Mini App, and one Telegram bot serving multiple board-game communities. PostgreSQL is the source of truth. A community is either a `Club` or a `Camp`.
 
-The Mini App owns registration, collections, contributions, game discovery, gathering lifecycle, and all administration. Telegram is deliberately thin: private `/start`, `/menu`, `/help`, `/privacy`, `/admin`, group `/oyinq`, contextual deep links, native prepared user/chat selection, group announcements, and notifications.
+The Mini App owns registration, collections, contributions, game discovery, gathering lifecycle, and all administration. Telegram is deliberately thin: private `/start`, `/menu`, `/help`, `/privacy`, `/admin`, group `/oiynq`, contextual deep links, native prepared user/chat selection, group announcements, and notifications.
 
 ## Current model
 
 - Clubs have no registration gate and store their revisioned, versioned OyinQ JSON collection in PostgreSQL `Club.CollectionJson`. Administrators can add a whole BGG Owned collection by username through a persisted additive job; it never removes existing games or selected expansions.
-- Camps have inclusive local dates, lifecycle status, scoped `CampRegistration` with exact `CampRegistrationDays`, an immutable source-Club snapshot in `Camp.BaseCollectionJson`, and typed participant availability in `CampGameContributions`. `DaysStaying` is derived compatibility data, not attendance authority.
+- Кэмпы хранят точные UTC-границы открытия и закрытия (окончание исключено), статус, регистрации `CampRegistration` с выбранными `CampRegistrationDays`, неизменяемый снимок базы `Camp.BaseCollectionJson` и явную доступность игр в `CampGameContributions`. `DaysStaying` — производное поле совместимости, а не основание допуска.
 - Both modes use `GameGathering`; presentation is immutable `GameSnapshotJson`, and signup concurrency is enforced in PostgreSQL. `GatheringCapacity` derives occupied seats from the organizer, confirmed registered participants, and manual guests; the API transports that result as `occupiedSeats`.
 - `GatheringLifecycle` owns active/upcoming/due status semantics, `GatheringListQuery` owns list/history filtering, and the profile schedule composes that query instead of maintaining a second schedule model.
 - Gathering instants are stored and transported as UTC. The Mini App interprets and validates `datetime-local` values in the selected community's validated IANA time zone, never in the browser or server machine time zone.
-- Personal BGG imports are Camp-only persisted jobs. A hosted worker owns the authoritative selection draft and survives request cancellation/restarts.
+- Личная коллекция хранится глобально в `ParticipantCollectionItems`: импорт BGG и ручное добавление доступны в Профиль → Моя коллекция. Она сохраняется после отмены регистрации и переключения сообществ. Кэмп получает только явно выбранные отметки «Могу привезти» / «Точно привезу».
+- Поиск клуба объединяет клубную коллекцию и личные игры только текущего пользователя; `Club.CollectionJson` остаётся клубным. Поиск кэмпа использует прежнюю проекцию базовой коллекции и вкладов участников.
+- Профиль содержит внутренние вкладки «Моя коллекция», «Календарь», «Настройки». Календарь по-прежнему показывает сборы из доступных сообществ. `tab=mine` совместим, старые ключи localStorage сохранены.
+- Все Mini App API создают/обновляют Participant через `ParticipantIdentityService` после проверки `initData`. Личный `/start` не требуется для записи на сбор. Для уведомлений показывается отдельное приглашение запустить бота; ссылка сохраняет контекст сбора и использует `getMe()`.
+- Личные импорты переиспользуют существующий worker и `CampBggImports` с `CampId = null`; старые задания продолжают работать. Повторное подтверждение идемпотентно, импорт не удаляет ручные игры.
 - BGG is the only external board-game provider. Missing BGG credentials visibly disable search/add/import without disabling stored collections, contributions, or gatherings.
 - BGG XML API calls are server-side, authenticated with the application token, throttled, and limited to 20 IDs per `/thing` request. Public Mini App screens include the required linked “Powered by BGG” attribution.
 - Telegram user/chat assignment uses prepared native peer selectors. Raw Telegram IDs are not accepted by normal administration APIs.
 - Runtime community resolution uses `OyinQCommunities` through `ICommunityStore`. Optional bootstrap JSON only inserts missing rows.
+
+## Планирование и история партий
+
+У кэмпа задаются начало и окончание с временем в часовом поясе сообщества. Регистрация остаётся по пересекающимся календарным дням; первое и последнее утро подписаны точным временем. Исторические полные дни мигрируют без сокращения интервала.
+
+Профиль показывает «Что дальше», межсообщественный календарь, личную коллекцию, настройки и отдельно подтверждённые партии. Обзор организатора доступен из списка сборов. Каталог фильтруется по владельцу, обеспечению коробки и будущим сборам; популярность считается по подтверждённым партиям.
+
+Личные уведомления сохраняются в PostgreSQL и доставляются отдельным worker. Напоминания и сообщения о полном сборе по умолчанию выключены. Перенос времени, отмена, повышение из очереди и несостоявшийся сбор обязательны. Потерянный ответ Telegram не повторяется автоматически.
+
+`Completed` не означает «сыграно»: организатор явно подтверждает партию и уточняет состав. BG Stats открывается через документированную createPlay-ссылку. Фактические игроки могут делиться отдельными ссылками на свои записи; файлов экспорта нет. Telegram ID в ссылку не попадает.
+
+[Архитектура, миграции, настройки, ограничения и ручная проверка](docs/planning-notifications-plays.md).
+
+[Перенос существующих данных и порядок выпуска](docs/database-rollout.md): миграции выполняются до запуска обработчиков; этот выпуск требует остановки старых экземпляров и проверки на восстановленной копии базы.
 
 ## Configuration
 
@@ -30,6 +48,7 @@ The Mini App owns registration, collections, contributions, game discovery, gath
 | `Telegram:UseLongPolling` | `Telegram__UseLongPolling` | no | Defaults to `false`; Development configuration sets `true`. Do not set it in production. |
 | `BoardGameGeek:ApiToken` | `BoardGameGeek__ApiToken` | no | Server-only BGG API token. |
 | `Administration:SuperAdminTelegramUserIds` | `Administration__SuperAdminTelegramUserIds` | yes | Comma-separated configuration-only Super Admin IDs. Set the owner account here. |
+| `Gatherings:ScheduleConflictWarningWindowMinutes` | `Gatherings__ScheduleConflictWarningWindowMinutes` | нет | Возможное пересечение начал ±120 минут; 0 выключает предупреждение. |
 | `CommunityBootstrap:CommunitiesJson` | `CommunityBootstrap__CommunitiesJson` | no | Optional one-time JSON bootstrap for a fresh database. Remove after rows exist. |
 
 `appsettings.json` contains stable non-secret defaults. `appsettings.Development.json` enables long polling and contains the non-secret local Docker PostgreSQL connection. Secrets are never committed.
@@ -118,7 +137,7 @@ The Dockerfile builds the Mini App and backend in separate stages. Northflank su
 
 | Exact key | Example |
 |---|---|
-| `Telegram__PublicBaseUrl` | `https://oyinq.example.com` |
+| `Telegram__PublicBaseUrl` | `https://oiynq.example.com` |
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
 | `Administration__SuperAdminTelegramUserIds` | `123456789` for the owner/Super Admin account |
 | `CommunityBootstrap__CommunitiesJson` | optional one-time bootstrap JSON; delete after successful bootstrap |
@@ -144,3 +163,25 @@ The public privacy policy is served at `{Telegram:PublicBaseUrl}/privacy`; the M
 button are configured by application startup in webhook and long-polling modes. Main Mini App
 enablement, previews, artwork, privacy URL, splash settings, and the immutable current username are
 manual BotFather settings documented in [docs/botfather-setup.md](docs/botfather-setup.md).
+
+## Миграция личных коллекций
+
+`20260904072034_PersistentParticipantCollection` добавляет глобальную коллекцию и nullable `Participant.PrivateChatStartedAt`, разрешает профильные задания импорта без CampId. Backfill берёт только положительные BGG ID из существующих CampGameContributions, дедуплицирует по участнику/ID/типу и сохраняет снимки; при конфликте предпочитает ручную запись, затем последнюю обновлённую. Вклады, обязательства, регистрации, клубные/базовые коллекции и история сборов не переписываются. Миграция только вперёд; перед применением на production проверьте резервную копию и прогон на staging.
+
+Неизвестный исторический факт личного запуска остаётся `null`: Mini App не доказывает возможность написать пользователю. После реального личного сообщения CTA исчезает. Доставка уведомлений остаётся best effort и может не состояться, если пользователь блокирует бота. Обязательные уведомления о месте, изменении, отмене и недоборе участников не отключаются. Необязательных глобальных рассылок сейчас нет; фиктивные переключатели не добавлены. Старое уведомление о результатах Camp-импорта остаётся частью совместимого потока выбора копий.
+
+Сверка RollMoveClub от 04.09.2026: 51 явный ID подтверждён BGG; уже Owned — 0, отсутствуют — 51; из них 14 уже были в recovery JSON, 37 добавлены (итого 374 базы). Аккаунт не изменялся по просьбе владельца. Списки и детали: [отчёт](Data/Imports/RollMove/reconciliation-report.json), [список для ручного добавления](Data/Imports/RollMove/bgg-missing-owned.csv). XML API2 документирует чтение коллекции, но не официальный write endpoint; ручное добавление выполняется через интерфейс BGG.
+
+### Подтверждённые партии и обновления OyinQ
+
+Завершение сбора по расписанию не считается сыгранной партией. Организатор отдельно подтверждает исход и фактических игроков. «Не состоялась» остаётся в истории сбора, но не создаёт партию и не увеличивает игровую статистику. BG Stats открывается по поддерживаемой ссылке; файлы экспорта не создаются. Организатор и фактические игроки могут добавлять отдельные ссылки BG Stats, автор и организатор — удалять их.
+
+При создании сбора по игре BGG можно явно добавить игру и выбранные дополнения в личную коллекцию, а в кэмпе отдельно подтвердить, что привезёте их. Эти изменения и сбор сохраняются вместе. Клубная коллекция не меняется.
+
+В админ-панели суперадминистратора появился раздел «Обновление OyinQ»: получатели, предпросмотр, подтверждение, результат доставки и повтор ошибочных отправок. Автоматической рассылки при запуске нет. Текст текущего выпуска встроен из [объявления](docs/releases/2026-09-04.md); для нового текста нужен новый стабильный идентификатор выпуска. Состояние доставки хранится в PostgreSQL, темы выбирает существующий групповой отправитель.
+
+Полный отчёт о текущем цикле: [релизная проверка](docs/releases/2026-09-04-review.md). Изменения для пользователей: [CHANGELOG.md](CHANGELOG.md).
+
+Стабилизация после аудита: [порядок проверок и PostgreSQL-тесты](docs/stabilization-verification.md).
+Результат исправления A1–A10: [итоговый отчёт](docs/audits/2026-09-04-stabilization-result.md).
+Профиль и личная коллекция доступны через «Профиль» даже без выбранного сообщества. Календарь включает только сообщества, доступ к которым подтверждён; регистрация и отметки кэмпа появляются только в выбранном кэмпе.

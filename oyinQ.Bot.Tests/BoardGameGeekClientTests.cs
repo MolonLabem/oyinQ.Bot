@@ -24,33 +24,21 @@ public sealed class BoardGameGeekClientTests
     }
 
     [Fact]
-    public async Task SearchAsync_EncodesQuery_AndReturnsUpToTwentyFivePrimaryNames()
+    public async Task SearchAsync_ReturnsUniqueBaseGamesWithoutThingEnrichment()
     {
+        var requests = new List<Uri>();
         var handler = new StubHttpMessageHandler(request =>
         {
+            requests.Add(request.RequestUri!);
             if (request.RequestUri!.AbsolutePath == "/xmlapi2/search")
             {
                 Assert.Contains("query=Terraforming%20Mars", request.RequestUri.Query, StringComparison.Ordinal);
                 Assert.Contains("type=boardgame", request.RequestUri.Query, StringComparison.Ordinal);
                 return XmlResponse(HttpStatusCode.OK, """
                 <items>
-                  <item id="1"><name type="alternate" value="Ignore me" /><name type="primary" value="Game 1" /><yearpublished value="2020" /></item>
-                  <item id="2"><name type="primary" value="Game 2" /></item>
-                  <item id="3"><name type="primary" value="Game 3" /></item>
-                  <item id="4"><name type="primary" value="Game 4" /></item>
-                  <item id="5"><name type="primary" value="Game 5" /></item>
-                  <item id="6"><name type="primary" value="Game 6" /></item>
-                </items>
-                """);
-            }
-
-            Assert.Equal("/xmlapi2/thing", request.RequestUri.AbsolutePath);
-            Assert.Contains("versions=1", request.RequestUri.Query, StringComparison.Ordinal);
-            return XmlResponse(HttpStatusCode.OK, """
-                <items>
-                  <item type="boardgame" id="1"><name type="primary" value="Game 1" /><yearpublished value="2020" />
-                    <versions><item><name type="primary" value="Russian edition" /><canonicalname value="Игра 1" /><link type="language" id="2202" value="Russian" /></item></versions>
-                  </item>
+                  <item type="boardgame" id="1"><name type="alternate" value="Ignore me" /><name type="primary" value="Game 1" /><yearpublished value="2020" /></item>
+                  <item type="boardgame" id="1"><name type="primary" value="Игра 1" /></item>
+                  <item type="boardgameexpansion" id="7"><name type="primary" value="Expansion" /></item>
                   <item type="boardgame" id="2"><name type="primary" value="Game 2" /></item>
                   <item type="boardgame" id="3"><name type="primary" value="Game 3" /></item>
                   <item type="boardgame" id="4"><name type="primary" value="Game 4" /></item>
@@ -58,15 +46,19 @@ public sealed class BoardGameGeekClientTests
                   <item type="boardgame" id="6"><name type="primary" value="Game 6" /></item>
                 </items>
                 """);
+            }
+            throw new InvalidOperationException("Search must not enrich candidates through /thing.");
         });
 
         var games = await CreateClient(handler).SearchAsync("  Terraforming Mars  ", default);
 
         Assert.Equal(6, games.Count);
-        Assert.Equal(new[] { "Игра 1", "Game 2", "Game 3", "Game 4", "Game 5", "Game 6" },
+        Assert.Equal(new[] { "Game 1", "Game 2", "Game 3", "Game 4", "Game 5", "Game 6" },
             games.Select(game => game.Name));
         Assert.Equal("Game 1", games[0].OriginalName);
         Assert.Equal(2020, games[0].YearPublished);
+        Assert.DoesNotContain(games, game => game.BggId == 7);
+        Assert.Single(requests);
     }
 
     [Fact]
@@ -169,6 +161,7 @@ public sealed class BoardGameGeekClientTests
                 <link type="boardgamecategory" id="1021" value="Economic" />
                 <link type="boardgamemechanic" id="2040" value="Hand Management" />
                 <link type="boardgameexpansion" id="247030" value="Terraforming Mars: Prelude" inbound="true" />
+                <link type="boardgameexpansion" id="247030" value="Покорение Марса: Пролог" inbound="true" />
                 <link type="boardgameexpansion" id="231965" value="Terraforming Mars: Hellas &amp; Elysium" inbound="true" />
                 <link type="boardgameexpansion" id="999" value="Unrelated outbound link" />
                 <link type="boardgamecategory" id="1016" value="Science Fiction" inbound="true" />
@@ -322,6 +315,22 @@ public sealed class BoardGameGeekClientTests
             default);
 
         Assert.Equal([20, 1], batchSizes);
+    }
+
+    [Fact]
+    public async Task OwnedCollection_Retries202ThroughExistingClientAndUsesOwnedFilter()
+    {
+        var calls = 0;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+            Assert.Contains("own=1", request.RequestUri!.Query);
+            Assert.Contains("excludesubtype=boardgameexpansion", request.RequestUri.Query);
+            calls++;
+            return XmlResponse(calls == 1 ? HttpStatusCode.Accepted : HttpStatusCode.OK, "<items />");
+        });
+        Assert.Empty(await CreateClient(handler).GetOwnedBaseGamesAsync("RollMoveClub", default));
+        Assert.Equal(2, calls);
     }
 
     private static BoardGameGeekClient CreateClient(HttpMessageHandler handler)

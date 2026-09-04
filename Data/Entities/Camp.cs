@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Features.Collections;
 
@@ -12,8 +14,10 @@ public sealed class Camp
     public long? SourceClubId { get; set; }
     public string BaseCollectionJson { get; set; } = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty);
     public CampStatus Status { get; set; }
-    public DateOnly? StartDate { get; set; }
-    public DateOnly? EndDate { get; set; }
+    public DateTimeOffset? StartsAtUtc { get; set; }
+    public DateTimeOffset? EndsAtUtc { get; set; }
+    [NotMapped] public DateOnly? StartDate => StartsAtUtc is { } value ? CommunityTime.LocalDate(value, BotChat?.TimeZoneId ?? "UTC") : null;
+    [NotMapped] public DateOnly? EndDate => EndsAtUtc is { } value ? CommunityTime.LocalDate(value.AddTicks(-1), BotChat?.TimeZoneId ?? "UTC") : null;
     public long CreatedByTelegramUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

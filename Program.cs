@@ -1,3 +1,4 @@
+using oyinQ.Bot.Features.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Text.Json.Serialization;
@@ -16,6 +17,12 @@ using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
+
+if (args.Contains("--reconcile-rollmove"))
+{
+    Environment.ExitCode = await RollMoveReconciliation.RunAsync(builder.Configuration);
+    return;
+}
 
 if (args.Any(x => string.Equals(x, "--refresh-club-collection", StringComparison.OrdinalIgnoreCase)))
 {
@@ -81,7 +88,14 @@ builder.Services.AddScoped<ClubCollectionService>();
 builder.Services.AddScoped<ClubMetadataRefreshService>();
 builder.Services.AddScoped<ClubBggImportService>();
 builder.Services.AddScoped<CampContributionSelectionService>();
+builder.Services.AddScoped<ParticipantCollectionService>();
 builder.Services.AddScoped<GameCatalogService>();
+builder.Services.AddScoped<GameProviderService>();
+builder.Services.AddScoped<ReleaseAnnouncementService>();
+builder.Services.AddHostedService<ReleaseAnnouncementWorker>();
+builder.Services.AddScoped<GatheringPlayService>();
+builder.Services.AddScoped<ExternalPlayReferenceService>();
+builder.Services.AddScoped<GatheringDashboardService>();
 builder.Services.AddScoped<EffectiveCampCatalogService>();
 builder.Services.AddScoped<CampBggImportService>();
 builder.Services.AddScoped<CampBggImportCoordinator>();
@@ -90,9 +104,17 @@ builder.Services.AddScoped<TelegramPeerSelectionService>();
 builder.Services.AddSingleton<ITelegramCommunityOnboardingService, TelegramCommunityOnboardingService>();
 builder.Services.AddScoped<GatheringGameSelectionService>();
 builder.Services.AddScoped<GatheringService>();
+builder.Services.Configure<GatheringPlanningOptions>(builder.Configuration.GetSection("Gatherings"));
+builder.Services.AddScoped<GatheringScheduleConflictService>();
 builder.Services.AddScoped<GatheringManagementService>();
 builder.Services.AddScoped<GatheringPublicationService>();
 builder.Services.AddScoped<GatheringNotificationService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<ProviderAttentionService>();
+builder.Services.AddScoped<NotificationDispatcher>();
+builder.Services.AddScoped<GatheringReminderService>();
+builder.Services.AddScoped<INotificationTransport, TelegramNotificationTransport>();
+builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<TelegramMessageCleanupProcessor>();
 builder.Services.AddSingleton<ITelegramMessageDeletionClient, TelegramMessageDeletionClient>();
 builder.Services.AddSingleton<TelegramMessageDeletionHandler>();
@@ -102,6 +124,8 @@ builder.Services.AddScoped<GatheringTelegramPublisher>();
 builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddScoped<ParticipantIdentityService>();
+builder.Services.AddScoped<PrivateChatCapability>();
 builder.Services.AddHostedService<CampBggImportWorker>();
 builder.Services.AddHostedService<CampLifecycleWorker>();
 builder.Services.AddHostedService<ClubMetadataRefreshWorker>();
@@ -127,7 +151,11 @@ app.UseStaticFiles();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var pendingMigrations = (await dbContext.Database.GetPendingMigrationsAsync()).ToArray();
+    app.Logger.LogInformation("Обновление базы перед запуском: {Count} миграций. {Migrations}",
+        pendingMigrations.Length, string.Join(", ", pendingMigrations));
     await dbContext.Database.MigrateAsync();
+    app.Logger.LogInformation("Миграции базы завершены. Продолжается подготовка приложения.");
 
     var existingCommunities = await dbContext.OyinQCommunities
         .Select(value => new { value.Key, value.TelegramChatId })

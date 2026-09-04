@@ -19,17 +19,18 @@ public sealed record CreateClubCommand(string Name, long TelegramChatId, string 
     long CreatedByTelegramUserId, bool RequireCreatorTelegramAdmin = true);
 
 public sealed record CreateCampCommand(string Name, long TelegramChatId, string TimeZoneId,
-    long CreatedByTelegramUserId, long? SourceClubId, DateOnly StartDate, DateOnly EndDate,
+    long CreatedByTelegramUserId, long? SourceClubId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc,
     bool RequireCreatorTelegramAdmin = true);
 
-public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
+public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc);
 public sealed record CampStatusTransitionResult(IReadOnlyList<Guid> CancelledGatheringIds);
 public sealed record ManagedChatMigrationResult(bool Updated, string? CommunityKey);
 public enum ManagedChatMigrationAction { Ignore, Update, Replay, Collision }
 
 public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChatValidator chatValidator,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider, GatheringNotificationService? notificationService = null)
 {
+    private readonly GatheringNotificationService notifications = notificationService ?? new(dbContext, new Features.Notifications.NotificationService(dbContext, timeProvider));
     public async Task<Club> CreateClubAsync(CreateClubCommand command, CancellationToken cancellationToken)
     {
         var key = CreateKey("club");
@@ -88,7 +89,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
 
     public async Task<Camp> CreateCampAsync(CreateCampCommand command, CancellationToken cancellationToken)
     {
-        _ = CampRules.InclusiveDuration(command.StartDate, command.EndDate);
+        CampOperatingWindow.Validate(command.StartsAtUtc, command.EndsAtUtc);
         var key = CreateKey("camp");
         var definition = CommunityOptions.CreateValidated(key, command.Name, command.TelegramChatId,
             nameof(BotMode.Camp), command.TimeZoneId);
@@ -109,7 +110,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             BotChat = community, BotChatKey = key, Name = community.Name,
             SourceClubId = sourceClub?.Id,
             BaseCollectionJson = sourceClub?.CollectionJson ?? ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
-            Status = CampStatus.Draft, StartDate = command.StartDate, EndDate = command.EndDate,
+            Status = CampStatus.Draft, StartsAtUtc = command.StartsAtUtc.ToUniversalTime(), EndsAtUtc = command.EndsAtUtc.ToUniversalTime(),
             CreatedByTelegramUserId = command.CreatedByTelegramUserId, CreatedAt = now, UpdatedAt = now
         };
         dbContext.Camps.Add(camp);
@@ -152,6 +153,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         camp.BotChat.IsActive = status == CampStatus.Active;
         camp.UpdatedAt = camp.BotChat.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (status == CampStatus.Cancelled) foreach (var g in future) await notifications.NotifyCancellationAsync(g.PublicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(status == CampStatus.Cancelled ? future.Select(x => x.PublicId).ToArray() : []);
     }
@@ -162,7 +164,8 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         if (string.IsNullOrWhiteSpace(command.Name) || command.Name.Trim().Length > 160)
             throw new InvalidOperationException("Название кэмпа некорректно.");
         var timeZone = CommunityOptions.RequireTimeZone(command.TimeZoneId);
-        var duration = CampRules.InclusiveDuration(command.StartDate, command.EndDate);
+        var dates = CampOperatingWindow.AttendanceDates(command.StartsAtUtc, command.EndsAtUtc, command.TimeZoneId);
+        var duration = CampRules.InclusiveDuration(dates.Start, dates.End);
         var camp = await dbContext.Camps.Include(x => x.BotChat)
             .Include(x => x.Registrations).ThenInclude(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
@@ -172,7 +175,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
                 cancellationToken));
         foreach (var registration in camp.Registrations)
             CampRules.EnsureRegistrationDatesWithinRange(
-                registration.SelectedDays.Select(x => x.Date), command.StartDate, command.EndDate);
+                registration.SelectedDays.Select(x => x.Date), dates.Start, dates.End);
         if (camp.Registrations.Any(x => x.SelectedDays.Count == 0 && x.DaysStaying > duration))
             throw new InvalidOperationException("Новый диапазон короче уже подтверждённого срока проживания участника.");
         var gatheringStarts = await dbContext.GameGatherings.AsNoTracking()
@@ -180,14 +183,13 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             .Select(x => x.StartsAtUtc).ToArrayAsync(cancellationToken);
         if (gatheringStarts.Any(startsAt =>
             {
-                var localDate = CampRules.GetLocalGatheringDate(startsAt, timeZone.Id);
-                return localDate < command.StartDate || localDate > command.EndDate;
+                return startsAt < command.StartsAtUtc || startsAt >= command.EndsAtUtc;
             }))
             throw new InvalidOperationException("Новый диапазон не включает один или несколько сборов кэмпа.");
         camp.Name = camp.BotChat.Name = command.Name.Trim();
         camp.BotChat.TimeZoneId = command.TimeZoneId;
-        camp.StartDate = command.StartDate;
-        camp.EndDate = command.EndDate;
+        camp.StartsAtUtc = command.StartsAtUtc.ToUniversalTime();
+        camp.EndsAtUtc = command.EndsAtUtc.ToUniversalTime();
         camp.UpdatedAt = camp.BotChat.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
     }

@@ -6,7 +6,7 @@ using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Collections;
 
-public sealed record CampImportSelectionItem(long BggId, CampContributionItemType ItemType, long? ParentBggId,
+public sealed record CampImportSelectionItem(long BggId, CollectionItemType ItemType, long? ParentBggId,
     string Name, bool Selected, string? ThumbnailImageUrl = null, string? ImageUrl = null,
     int? MinPlayers = null, int? MaxPlayers = null, string? BestPlayers = null,
     IReadOnlyList<string>? Types = null, IReadOnlyList<string>? Categories = null,
@@ -18,8 +18,8 @@ public sealed record CampImportSelectionItem(long BggId, CampContributionItemTyp
     IReadOnlyList<long>? ParentBggIds = null,
     string? OriginalName = null);
 
-public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemType ItemType,
-    IReadOnlyList<long> ParentBggIds, CampContributionSnapshot Snapshot, int CopyCount,
+public sealed record EffectiveCampCatalogItem(long BggId, CollectionItemType ItemType,
+    IReadOnlyList<long> ParentBggIds, CollectionItemSnapshot Snapshot, int CopyCount,
     IReadOnlyList<CampCatalogProvider> Providers)
 {
     public string Name => Snapshot.Name;
@@ -29,7 +29,7 @@ public sealed record EffectiveCampCatalogItem(long BggId, CampContributionItemTy
 }
 
 public sealed record CampCatalogProvider(long? ParticipantId, string DisplayName, string? City,
-    CampContributionSource? Source, CampBringCommitment Commitment = CampBringCommitment.Available,
+    CollectionItemSource? Source, CampBringCommitment Commitment = CampBringCommitment.Available,
     bool IsCurrentUser = false, string? ContactUrl = null);
 
 public sealed class CampContributionSelectionService(
@@ -44,38 +44,38 @@ public sealed class CampContributionSelectionService(
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
         var selectedBase = selectedBaseGameIds.Distinct().ToHashSet();
         var selectedExpansions = selectedExpansionIds.Distinct().ToHashSet();
-        var draftBase = draft.Items.Where(x => x.ItemType == CampContributionItemType.BaseGame).Select(x => x.BggId).ToHashSet();
-        var draftExpansions = draft.Items.Where(x => x.ItemType == CampContributionItemType.Expansion).Select(x => x.BggId).ToHashSet();
+        var draftBase = draft.Items.Where(x => x.ItemType == CollectionItemType.BaseGame).Select(x => x.BggId).ToHashSet();
+        var draftExpansions = draft.Items.Where(x => x.ItemType == CollectionItemType.Expansion).Select(x => x.BggId).ToHashSet();
         if (!selectedBase.IsSubsetOf(draftBase) || !selectedExpansions.IsSubsetOf(draftExpansions))
             throw new InvalidOperationException("Выбранный BGG ID отсутствует в серверном черновике импорта.");
 
         var existing = await dbContext.CampGameContributions
             .Where(x => x.CampId == campId && x.ParticipantId == participantId)
             .ToArrayAsync(cancellationToken);
-        var desired = draft.Items.Where(x => x.SkipReason is null && (x.ItemType == CampContributionItemType.BaseGame
+        var desired = draft.Items.Where(x => x.SkipReason is null && (x.ItemType == CollectionItemType.BaseGame
                 ? selectedBase.Contains(x.BggId) : selectedExpansions.Contains(x.BggId))
             )
             .ToDictionary(x => (x.BggId, x.ItemType));
         dbContext.CampGameContributions.RemoveRange(existing.Where(x =>
-            x.Source == CampContributionSource.BggImport && !desired.ContainsKey((x.BggId, x.ItemType))));
+            x.Source == CollectionItemSource.BggImport && !desired.ContainsKey((x.BggId, x.ItemType))));
 
         foreach (var item in desired.Values)
         {
             var contribution = existing.SingleOrDefault(x => x.BggId == item.BggId && x.ItemType == item.ItemType);
-            if (contribution is not null && contribution.Source is CampContributionSource.Manual or CampContributionSource.Legacy)
+            if (contribution is not null && contribution.Source is CollectionItemSource.Manual or CollectionItemSource.Legacy)
                 continue;
             if (contribution is null)
             {
                 contribution = new CampGameContribution
                 {
                     CampId = campId, ParticipantId = participantId, BggId = item.BggId,
-                    ItemType = item.ItemType, Source = CampContributionSource.BggImport,
+                    ItemType = item.ItemType, Source = CollectionItemSource.BggImport,
                     CreatedAt = now.ToUniversalTime()
                 };
                 dbContext.CampGameContributions.Add(contribution);
             }
             contribution.ParentBggId = item.ParentBggId;
-            contribution.SnapshotJson = CampContributionSnapshotSerializer.Serialize(item.Snapshot with
+            contribution.SnapshotJson = CollectionItemSnapshotSerializer.Serialize(item.Snapshot with
             {
                 ParentBggIds = item.ParentBggIds ?? item.Snapshot.ParentBggIds
                     ?? (item.ParentBggId is { } parent ? [parent] : [])
@@ -102,9 +102,9 @@ public sealed class CampContributionSelectionService(
             dbContext.CampGameContributions.Add(new CampGameContribution
             {
                 CampId = campId, ParticipantId = participantId, BggId = item.BggId, ItemType = item.ItemType,
-                ParentBggId = item.ParentBggId, Source = CampContributionSource.BggImport,
+                ParentBggId = item.ParentBggId, Source = CollectionItemSource.BggImport,
                 Commitment = CampBringCommitment.Available,
-                SnapshotJson = CampContributionSnapshotSerializer.Serialize(item.Snapshot with
+                SnapshotJson = CollectionItemSnapshotSerializer.Serialize(item.Snapshot with
                 {
                     ParentBggIds = item.ParentBggIds ?? item.Snapshot.ParentBggIds
                         ?? (item.ParentBggId is { } parent ? [parent] : [])
@@ -116,17 +116,13 @@ public sealed class CampContributionSelectionService(
     }
 
     public async Task AddManualAsync(long campId, long participantId, long bggId,
-        CampContributionItemType itemType, long? parentBggId, CampContributionSnapshot snapshot,
+        CollectionItemType itemType, long? parentBggId, CollectionItemSnapshot snapshot,
         DateTimeOffset now, CancellationToken cancellationToken)
     {
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
-        if (itemType == CampContributionItemType.BaseGame)
-        {
-            var baseCollectionJson = await dbContext.Camps.AsNoTracking()
-                .Where(x => x.Id == campId).Select(x => x.BaseCollectionJson).SingleAsync(cancellationToken);
-            if (ClubCollectionSerializer.Deserialize(baseCollectionJson).Games.Any(x => x.BggId == bggId))
-                throw new InvalidOperationException("Эта игра уже есть в общей коллекции кэмпа. Добавить её как личную можно при импорте коллекции BGG.");
-        }
+        await new ParticipantCollectionService(dbContext).UpsertAsync(participantId,
+            [new CampBggImportDraftItem(bggId, itemType, parentBggId, snapshot)],
+            CollectionItemSource.Manual, now, cancellationToken);
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
             cancellationToken);
@@ -139,9 +135,9 @@ public sealed class CampContributionSelectionService(
             };
             dbContext.CampGameContributions.Add(contribution);
         }
-        contribution.Source = CampContributionSource.Manual;
+        contribution.Source = CollectionItemSource.Manual;
         contribution.ParentBggId = parentBggId;
-        contribution.SnapshotJson = CampContributionSnapshotSerializer.Serialize(snapshot with
+        contribution.SnapshotJson = CollectionItemSnapshotSerializer.Serialize(snapshot with
         {
             ParentBggIds = snapshot.ParentBggIds ?? (parentBggId is { } parent ? [parent] : [])
         });
@@ -150,7 +146,7 @@ public sealed class CampContributionSelectionService(
     }
 
     public async Task RemoveAsync(long campId, long participantId, long bggId,
-        CampContributionItemType itemType, CancellationToken cancellationToken)
+        CollectionItemType itemType, CancellationToken cancellationToken)
     {
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
@@ -162,22 +158,55 @@ public sealed class CampContributionSelectionService(
     }
 
     public async Task SetCommitmentAsync(long campId, long participantId, long bggId,
-        CampContributionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken)
+        CollectionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken, DateTimeOffset? gatheringStartsAt = null)
     {
+        if (!Enum.IsDefined(itemType) || !Enum.IsDefined(commitment))
+            throw new ArgumentException("Неизвестный тип игры или отметка доступности.");
+        await using var transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (dbContext.Database.IsRelational())
+        {
+            await dbContext.Camps.FromSqlInterpolated(
+                $"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE").SingleAsync(cancellationToken);
+            await dbContext.Participants.FromSqlInterpolated(
+                $"SELECT * FROM \"Participants\" WHERE \"Id\" = {participantId} FOR UPDATE").SingleAsync(cancellationToken);
+        }
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
+        if (gatheringStartsAt is { } instant)
+        {
+            var camp = await dbContext.Camps.Include(x => x.BotChat).SingleAsync(x => x.Id == campId, cancellationToken);
+            await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken,
+                CommunityTime.LocalDate(instant, camp.BotChat.TimeZoneId), instant);
+        }
+        var owned = await dbContext.ParticipantCollectionItems.SingleOrDefaultAsync(x => x.ParticipantId == participantId
+            && x.BggId == bggId && x.ItemType == itemType, cancellationToken)
+            ?? throw new KeyNotFoundException("Сначала добавьте игру в свою коллекцию.");
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
-            cancellationToken) ?? throw new KeyNotFoundException("Игра отсутствует в вашем списке.");
+            cancellationToken);
+        if (contribution is null)
+        {
+            contribution = new CampGameContribution { CampId = campId, ParticipantId = participantId,
+                BggId = bggId, ItemType = itemType, ParentBggId = owned.ParentBggId,
+                SnapshotJson = owned.SnapshotJson, Source = owned.Source, CreatedAt = timeProvider.GetUtcNow() };
+            dbContext.CampGameContributions.Add(contribution);
+        }
         contribution.Commitment = commitment;
         contribution.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<EffectiveCampCatalogItem>> GetEffectiveContributionsAsync(
-        long campId, CancellationToken cancellationToken, long? currentParticipantId = null)
+        long campId, CancellationToken cancellationToken, long? currentParticipantId = null, DateOnly? attendanceDate = null)
     {
+        var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.Id == campId, cancellationToken);
+        var registrations = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
+            .Where(x => x.CampId == campId).ToArrayAsync(cancellationToken);
+        var eligible = registrations.Where(x => CampParticipationPolicy.IsRegistrationComplete(x, camp)
+            && (attendanceDate == null || x.SelectedDays.Any(d => d.Date == attendanceDate))).Select(x => x.ParticipantId).ToArray();
         var values = await dbContext.CampGameContributions.AsNoTracking()
-            .Where(x => x.CampId == campId)
+            .Where(x => x.CampId == campId && eligible.Contains(x.ParticipantId))
             .Select(x => new { Contribution = x, x.Participant.DisplayName, x.Participant.PreferredDisplayName,
                 x.Participant.TelegramUserId, x.Participant.TelegramUsername,
                 CampDisplayName = x.Participant.CampRegistrations.Where(r => r.CampId == campId)
@@ -196,7 +225,7 @@ public sealed class CampContributionSelectionService(
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    private static CampContributionSnapshot RichestSnapshot(IEnumerable<CampContributionSnapshot> snapshots) =>
+    private static CollectionItemSnapshot RichestSnapshot(IEnumerable<CollectionItemSnapshot> snapshots) =>
         snapshots.OrderByDescending(snapshot =>
             (snapshot.ThumbnailImageUrl is null ? 0 : 1)
             + (snapshot.ImageUrl is null ? 0 : 1)

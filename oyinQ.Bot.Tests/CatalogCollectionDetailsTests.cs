@@ -48,18 +48,20 @@ public sealed class CatalogCollectionDetailsTests
         await using var fixture = Fixture.Create();
         var camp = fixture.AddCamp("camp", Game(10, "Brass"));
         var participant = new Participant { TelegramUserId = 100, DisplayName = "Игрок" };
+        fixture.Db.CampRegistrations.Add(new CampRegistration { Camp = camp, Participant = participant,
+            City = "Алматы", NeedsAccommodation = false, SelectedDays = [new() { Date = new DateOnly(2026, 9, 4) }] });
         camp.Contributions.Add(new CampGameContribution
         {
-            Participant = participant, BggId = 10, ItemType = CampContributionItemType.BaseGame,
-            Source = CampContributionSource.Manual, Commitment = CampBringCommitment.Bringing,
-            SnapshotJson = CampContributionSnapshotSerializer.Serialize(Snapshot("Brass"))
+            Participant = participant, BggId = 10, ItemType = CollectionItemType.BaseGame,
+            Source = CollectionItemSource.Manual, Commitment = CampBringCommitment.Bringing,
+            SnapshotJson = CollectionItemSnapshotSerializer.Serialize(Snapshot("Brass"))
         });
         camp.Contributions.Add(new CampGameContribution
         {
-            Participant = participant, BggId = 30, ItemType = CampContributionItemType.Expansion,
-            Source = CampContributionSource.Manual, Commitment = CampBringCommitment.Available,
+            Participant = participant, BggId = 30, ItemType = CollectionItemType.Expansion,
+            Source = CollectionItemSource.Manual, Commitment = CampBringCommitment.Available,
             ParentBggId = 10,
-            SnapshotJson = CampContributionSnapshotSerializer.Serialize(Snapshot("Brass: Birmingham", [10]))
+            SnapshotJson = CollectionItemSnapshotSerializer.Serialize(Snapshot("Brass: Birmingham", [10]))
         });
         await fixture.Db.SaveChangesAsync();
 
@@ -75,8 +77,8 @@ public sealed class CatalogCollectionDetailsTests
         IReadOnlyList<ClubCollectionExpansion>? expansions = null) =>
         new(bggId, name, null, null, 2, 4, "3", expansions ?? [], OriginalName: "Canonical English Name");
 
-    private static CampContributionSnapshot Snapshot(string name, IReadOnlyList<long>? parents = null) =>
-        new(CampContributionSnapshot.CurrentVersion, name, null, null, 2, 4, "3",
+    private static CollectionItemSnapshot Snapshot(string name, IReadOnlyList<long>? parents = null) =>
+        new(CollectionItemSnapshot.CurrentVersion, name, null, null, 2, 4, "3",
             ParentBggIds: parents, OriginalName: name);
 
     private sealed class Fixture : IAsyncDisposable
@@ -116,6 +118,7 @@ public sealed class CatalogCollectionDetailsTests
             var camp = new Camp
             {
                 BotChatKey = key, Name = key, Status = CampStatus.Active,
+                StartsAtUtc = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 8, 0, 0, 0, TimeSpan.Zero),
                 BaseCollectionJson = ClubCollectionSerializer.Serialize(
                     new ClubCollectionDocument(ClubCollectionDocument.CurrentVersion, games))
             };

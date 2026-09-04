@@ -52,6 +52,15 @@ public sealed class TelegramGroupMessageSenderTests
         Assert.True(fixture.Db.TelegramForumTopics.Single().IsDeleted);
     }
 
+    [Fact]
+    public async Task InvalidThread_QueuesAdministrativeNoticeThroughCentralDelivery()
+    {
+        await using var fixture = new Fixture(42, true, notifyAdministrator: true);
+        await fixture.Sender.SendMessageAsync("club", "Сбор", ParseMode.Html, null, default);
+        Assert.Equal(2, fixture.Handler.Bodies.Count);
+        Assert.Equal(NotificationKind.PostingTopicUnavailable, Assert.Single(fixture.Db.Notifications).Kind);
+    }
+
     [Theory]
     [InlineData("Bad Request: message thread not found", 400, true)]
     [InlineData("Bad Request: TOPIC_CLOSED", 400, true)]
@@ -65,7 +74,7 @@ public sealed class TelegramGroupMessageSenderTests
 
     private sealed class Fixture : IAsyncDisposable
     {
-        public Fixture(int? configuredThreadId = null, bool failFirstAsMissingThread = false)
+        public Fixture(int? configuredThreadId = null, bool failFirstAsMissingThread = false, bool notifyAdministrator = false)
         {
             Db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -86,13 +95,14 @@ public sealed class TelegramGroupMessageSenderTests
                     TelegramChatId = -1001, MessageThreadId = threadId, Name = "Сборы",
                     LastSeenAt = DateTimeOffset.UtcNow
                 });
+            if (notifyAdministrator) Db.Participants.Add(new() { TelegramUserId = 123, DisplayName = "Администратор" });
             Db.SaveChanges();
             Handler = new RecordingHandler(failFirstAsMissingThread);
             var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO",
                 new HttpClient(Handler));
             var botOptions = Options.Create(new BotOptions { PublicBaseUrl = "https://example.test" });
             Sender = new TelegramGroupMessageSender(Db, bot,
-                Options.Create(new AdministrationOptions()), new MiniAppLinkBuilder(botOptions),
+                Options.Create(new AdministrationOptions { SuperAdminTelegramUserIds = notifyAdministrator ? new HashSet<long> { 123 } : new HashSet<long>() }), new Features.Notifications.NotificationService(Db, TimeProvider.System),
                 TimeProvider.System, NullLogger<TelegramGroupMessageSender>.Instance);
         }
 

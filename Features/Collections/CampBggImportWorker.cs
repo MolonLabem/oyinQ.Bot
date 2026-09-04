@@ -77,16 +77,19 @@ public sealed class CampBggImportWorker(
                     import.UpdatedAt = timeProvider.GetUtcNow();
                     await dbContext.SaveChangesAsync(stoppingToken);
                 });
+            if (import.CampId is not null)
+            {
             var baseCollection = (await dbContext.Camps.AsNoTracking().SingleAsync(x => x.Id == import.CampId, stoppingToken))
                 .ReadBaseCollection();
             var baseIds = baseCollection.Games.Select(x => x.BggId)
                 .Concat(baseCollection.Games.SelectMany(x => x.Expansions).Select(x => x.BggId)).ToHashSet();
             var manualIds = (await dbContext.CampGameContributions.AsNoTracking()
                 .Where(x => x.CampId == import.CampId && x.ParticipantId == import.ParticipantId
-                    && x.Source == CampContributionSource.Manual)
+                    && x.Source == CollectionItemSource.Manual)
                 .Select(x => new { x.BggId, x.ItemType }).ToArrayAsync(stoppingToken))
                 .Select(x => (x.BggId, x.ItemType)).ToHashSet();
             draft = CampBggImportService.ClassifySkips(draft, baseIds, manualIds);
+            }
             await dbContext.Entry(import).ReloadAsync(stoppingToken);
             if (import.LeaseId != leaseId) return true;
             if (import.CancellationRequestedAt is not null)
@@ -111,8 +114,18 @@ public sealed class CampBggImportWorker(
             logger.LogWarning(exception, "Camp BGG import {ImportPublicId} failed.", import.PublicId);
         }
 
+        await using var completionTransaction = await dbContext.Database.BeginTransactionAsync(CancellationToken.None);
         import.LeaseId = null; import.LeaseExpiresAt = null; import.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(CancellationToken.None);
+        if (import.Status == CampBggImportStatus.Completed)
+        {
+            var userId = await dbContext.Participants.Where(x => x.Id == import.ParticipantId).Select(x => x.TelegramUserId).SingleAsync(stoppingToken);
+            var communityKey = import.CampId is { } campId ? await dbContext.Camps.Where(x => x.Id == campId).Select(x => x.BotChatKey).SingleAsync(stoppingToken) : null;
+            await scope.ServiceProvider.GetRequiredService<oyinQ.Bot.Features.Notifications.NotificationService>().EnqueueAsync(
+                new(userId, NotificationKind.ImportCompleted, import.PublicId.ToString("N"),
+                    "Коллекция BGG загружена. Откройте «Моя коллекция» в профиле и подтвердите выбор игр.", CommunityKey: communityKey, ImportPublicId: import.PublicId), stoppingToken);
+        }
+        await completionTransaction.CommitAsync(CancellationToken.None);
         return true;
     }
 }

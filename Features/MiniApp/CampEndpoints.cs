@@ -59,7 +59,7 @@ internal static class CampEndpoints
             resolver, cancellationToken);
         if (access is null) return Results.Forbid();
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Регистрация нужна только для кэмпа.");
-        var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == community, cancellationToken);
+        var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == community, cancellationToken);
         var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
             .Where(x => x.CampId == camp.Id && x.Participant.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => new { Row = x, x.DisplayName }).SingleOrDefaultAsync(cancellationToken);
@@ -76,7 +76,8 @@ internal static class CampEndpoints
             : selectedDates.Length == 0 && registration.Row.DaysStaying == availableDates.Length
                 ? availableDates : [];
         var baseGameIds = camp.ReadBaseCollection().Games.Select(x => x.BggId).Order().ToArray();
-        return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate,
+        return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate, camp.StartsAtUtc, camp.EndsAtUtc,
+            DateLabels = CampOperatingWindow.AttendanceLabels(camp),
             AvailableDates = availableDates, BaseGameIds = baseGameIds, DisplayName = participantDisplayName,
             Registration = registration is null ? null : new
             {
@@ -93,7 +94,8 @@ internal static class CampEndpoints
     private static async Task<IResult> SaveRegistrationAsync(HttpRequest request, CampRegistrationRequest body,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, CampRegistrationService registrations,
-        GatheringPublicationService publication, TimeProvider timeProvider,
+        GatheringPublicationService publication,
+        TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
@@ -149,13 +151,11 @@ internal static class CampEndpoints
     }
 
     private static async Task PublishRegistrationChangesAsync(CampRegistrationMutationResult result,
-        GatheringPublicationService publication, CancellationToken cancellationToken)
+        GatheringPublicationService publication,
+        CancellationToken cancellationToken)
     {
         foreach (var gatheringId in result.ChangedGatheringIds)
             await publication.PublishAsync(gatheringId, cancellationToken);
-        foreach (var promotion in result.Promotions)
-            await publication.NotifyPromotionAsync(promotion.Promotion, promotion.GatheringPublicId,
-                cancellationToken);
     }
 
     private static async Task<IResult> QueueImportAsync(HttpRequest request, QueueCampImportRequest body,
@@ -278,12 +278,12 @@ internal static class CampEndpoints
             if (selected.Any(id => details.Expansions.All(x => x.BggId != id)))
                 throw new InvalidOperationException("Выбрано неизвестное дополнение.");
             await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, bggId.Value,
-                CampContributionItemType.BaseGame, null, BggGameMapper.ToContributionSnapshot(details.Game),
+                CollectionItemType.BaseGame, null, BggGameMapper.ToCollectionSnapshot(details.Game),
                 DateTimeOffset.UtcNow, cancellationToken);
             foreach (var expansion in details.Expansions.Where(x => selected.Contains(x.BggId)))
                 await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, expansion.BggId,
-                    CampContributionItemType.Expansion, bggId.Value,
-                    new CampContributionSnapshot(CampContributionSnapshot.CurrentVersion,
+                    CollectionItemType.Expansion, bggId.Value,
+                    new CollectionItemSnapshot(CollectionItemSnapshot.CurrentVersion,
                         expansion.Name, null, null, null, null, null,
                         ParentBggIds: [bggId.Value], OriginalName: expansion.OriginalName),
                     DateTimeOffset.UtcNow, cancellationToken);
@@ -306,7 +306,7 @@ internal static class CampEndpoints
     {
         var owned = await OwnedCampAsync(request, community, dbContext, authenticator, resolver, cancellationToken);
         if (owned.Error is not null) return owned.Error;
-        if (!Enum.TryParse<CampContributionItemType>(itemType, true, out var parsedType))
+        if (!Enum.TryParse<CollectionItemType>(itemType, true, out var parsedType))
             return MiniAppEndpointSupport.Problem("validation", "Неизвестный тип игры.");
         try { await contributions.RemoveAsync(owned.CampId, owned.ParticipantId, bggId, parsedType, cancellationToken); return Results.NoContent(); }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
@@ -319,7 +319,7 @@ internal static class CampEndpoints
     {
         var owned = await OwnedCampAsync(request, body.CommunityKey, dbContext, authenticator, resolver, cancellationToken);
         if (owned.Error is not null) return owned.Error;
-        if (!Enum.TryParse<CampContributionItemType>(itemType, true, out var parsedType))
+        if (!Enum.TryParse<CollectionItemType>(itemType, true, out var parsedType))
             return MiniAppEndpointSupport.Problem("validation", "Неизвестный тип игры.");
         try
         {
@@ -332,25 +332,24 @@ internal static class CampEndpoints
 
     private static async Task<IResult> GetCatalogAsync(HttpRequest request, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
-        EffectiveCampCatalogService catalog, CancellationToken cancellationToken)
+        GameCatalogService catalog, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Каталог кэмпа недоступен.");
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
-        var effective = await catalog.LoadAsync(community, participantId, cancellationToken);
+        var effective = await catalog.LoadAsync(community, access.Community.Mode, access.Identity.TelegramUserId, cancellationToken);
         return Results.Ok(effective.Select(x => { var metadata = BggTaxonomyCatalog.Present(x.Game); return new CampCatalogResponse(
-            x.Game.BggId, CampContributionItemType.BaseGame.ToString(), null, x.Game.Name,
+            x.Game.BggId, CollectionItemType.BaseGame.ToString(), null, x.Game.Name,
             x.Game.OriginalName,
             x.Game.ThumbnailImageUrl, x.Game.ImageUrl, x.Game.MinPlayers, x.Game.MaxPlayers,
             x.Game.BestPlayers, x.Game.Type, metadata.TypeName, metadata.TypeNames,
             metadata.CategoryNames, metadata.MechanicNames,
             (x.IsInBaseCollection ? 1 : 0) + x.Providers.Count, x.Providers,
             x.Game.Expansions, x.IsInBaseCollection,
-            x.Providers.Any(p => p.Commitment == CampBringCommitment.Bringing),
-            !x.IsInBaseCollection && x.Providers.Count > 1
-                && x.Providers.All(p => p.Commitment != CampBringCommitment.Bringing)); }));
+            GameProviderService.Describe(false, x.Providers).IsConfirmed,
+            !GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed); }));
     }
 
     private static async Task<(long CampId, long ParticipantId, IResult? Error)> OwnedCampAsync(

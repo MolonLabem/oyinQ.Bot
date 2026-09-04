@@ -58,9 +58,9 @@ public sealed class StabilizationDomainTests
     [Fact]
     public void ContributionSnapshot_RejectsUnsupportedVersionAndMalformedMetadata()
     {
-        Assert.Throws<InvalidOperationException>(() => CampContributionSnapshotSerializer.Serialize(
+        Assert.Throws<InvalidOperationException>(() => CollectionItemSnapshotSerializer.Serialize(
             new(9, "Game", null, null, 2, 4, null)));
-        Assert.Throws<InvalidOperationException>(() => CampContributionSnapshotSerializer.Serialize(
+        Assert.Throws<InvalidOperationException>(() => CollectionItemSnapshotSerializer.Serialize(
             new(1, "Game", null, null, 5, 2, null)));
     }
 
@@ -70,7 +70,7 @@ public sealed class StabilizationDomainTests
         var collection = ClubCollectionSerializer.Deserialize("""
             {"version":1,"games":[{"bggId":10,"name":"Base","minPlayers":2,"maxPlayers":4,"expansions":[]}]}
             """);
-        var contribution = CampContributionSnapshotSerializer.Deserialize("""
+        var contribution = CollectionItemSnapshotSerializer.Deserialize("""
             {"version":1,"name":"Base","minPlayers":2,"maxPlayers":4}
             """);
 
@@ -82,8 +82,8 @@ public sealed class StabilizationDomainTests
     public void ImportDraft_DefaultsAllItemsAndRoundTripsAuthoritatively()
     {
         var draft = new CampBggImportDraft(1, "owner", [
-            new(10, CampContributionItemType.BaseGame, null, Snapshot("Base")),
-            new(20, CampContributionItemType.Expansion, 10, Snapshot("Expansion"))]);
+            new(10, CollectionItemType.BaseGame, null, Snapshot("Base")),
+            new(20, CollectionItemType.Expansion, 10, Snapshot("Expansion"))]);
         var restored = CampBggImportDraftSerializer.Deserialize(CampBggImportDraftSerializer.Serialize(draft));
         Assert.All(restored.Items, item => Assert.True(item.SelectedByDefault));
         Assert.Equal([10L, 20L], restored.Items.Select(x => x.BggId));
@@ -121,7 +121,7 @@ public sealed class StabilizationDomainTests
     }
 
     private static ClubCollectionGame Game(long id, string name) => new(id, name, null, null, 2, 4, null, []);
-    private static CampContributionSnapshot Snapshot(string name) => new(1, name, null, null, 2, 4, null);
+    private static CollectionItemSnapshot Snapshot(string name) => new(1, name, null, null, 2, 4, null);
     private static GameGathering FutureGathering()
     {
         var snapshot = new GatheringGameSnapshot(2, 10, "Game", null, null, 1, 4, null, [], "catalog", []);

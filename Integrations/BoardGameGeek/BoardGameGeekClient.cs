@@ -23,7 +23,7 @@ public sealed class BoardGameGeekClient(
     private static readonly TimeSpan TransientRetryJitter = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromSeconds(5);
 
-    public async Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(
+    public async Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(
         string query,
         CancellationToken cancellationToken)
     {
@@ -39,6 +39,8 @@ public sealed class BoardGameGeekClient(
 
         var results = document.Root?
             .Elements("item")
+            .Where(item => string.Equals((string?)item.Attribute("type"), "boardgame",
+                StringComparison.OrdinalIgnoreCase))
             .Select(item =>
             {
                 var id = ReadLongAttribute(item, "id");
@@ -52,24 +54,18 @@ public sealed class BoardGameGeekClient(
 
                 return id is null || string.IsNullOrWhiteSpace(name)
                     ? null
-                    : new ExternalGameSearchResult(id.Value, name, year, name);
+                    : new BggBaseGameSearchResult(id.Value, name.Trim(), year, name.Trim());
             })
             .Where(result => result is not null)
-            .Cast<ExternalGameSearchResult>()
+            .Cast<BggBaseGameSearchResult>()
+            .DistinctBy(result => result.BggId)
             .ToArray()
             ?? [];
-        var ranked = RankSearchResults(results, normalizedQuery).Take(25).ToArray();
-        var enriched = await FetchThingsAsync(ranked.Select(result => result.BggId).ToArray(),
-            cancellationToken);
-        return ranked.Select(result => enriched.TryGetValue(result.BggId, out var game)
-                ? new ExternalGameSearchResult(result.BggId, game.Name,
-                    game.YearPublished ?? result.YearPublished, game.OriginalName)
-                : result)
-            .ToArray();
+        return RankSearchResults(results, normalizedQuery).Take(25).ToArray();
     }
 
-    public static IReadOnlyList<ExternalGameSearchResult> RankSearchResults(
-        IEnumerable<ExternalGameSearchResult> results, string query)
+    public static IReadOnlyList<BggBaseGameSearchResult> RankSearchResults(
+        IEnumerable<BggBaseGameSearchResult> results, string query)
     {
         var normalized = NormalizeSearch(query);
         return results.OrderBy(result => BestSearchRank(result, normalized))
@@ -78,7 +74,7 @@ public sealed class BoardGameGeekClient(
             .ToArray();
     }
 
-    private static (int Tier, int Position) BestSearchRank(ExternalGameSearchResult result, string query)
+    private static (int Tier, int Position) BestSearchRank(BggBaseGameSearchResult result, string query)
     {
         var display = SearchRank(NormalizeSearch(result.Name), query);
         var original = string.IsNullOrWhiteSpace(result.OriginalName)

@@ -83,6 +83,7 @@ public sealed class GatheringLifecycleWorker(
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
+            if (underfilled is not null) await scope.ServiceProvider.GetRequiredService<GatheringNotificationService>().NotifyUnderfilledAsync(underfilled, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
 
@@ -90,11 +91,6 @@ public sealed class GatheringLifecycleWorker(
         {
             var publication = scope.ServiceProvider.GetRequiredService<GatheringPublicationService>();
             await publication.PublishAsync(publicId, cancellationToken);
-        }
-        if (underfilled is not null)
-        {
-            var notifications = scope.ServiceProvider.GetRequiredService<GatheringNotificationService>();
-            await notifications.NotifyUnderfilledAsync(underfilled, cancellationToken);
         }
         return true;
     }

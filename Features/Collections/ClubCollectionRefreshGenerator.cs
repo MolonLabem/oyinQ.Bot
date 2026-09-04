@@ -43,6 +43,14 @@ public static class ClubCollectionRefreshGenerator
             invalidEntries += source.InvalidEntries;
         }
 
+        // Explicitly reviewed additions supplement the original four external sources.
+        var supplement = Path.Combine("Data", "Imports", "RollMove", "reconciliation-candidates.txt");
+        if (File.Exists(supplement))
+            ids.UnionWith(RollMoveReconciliation.ParseCandidates(await File.ReadAllTextAsync(supplement, cancellationToken)));
+        var reviewPath = Path.Combine("Data", "Imports", "RollMove", "edition-review-ids.txt");
+        if (File.Exists(reviewPath))
+            ids.ExceptWith(RollMoveReconciliation.ParseCandidates(await File.ReadAllTextAsync(reviewPath, cancellationToken)));
+
         using var bggHttpClient = new HttpClient
         {
             BaseAddress = new Uri("https://boardgamegeek.com"),
@@ -127,12 +135,12 @@ public static class ClubCollectionRefreshGenerator
         return merged.Document;
     }
 
-    private static CampImportSelectionItem ToSelection(BggCollectionItem item)
+    public static CampImportSelectionItem ToSelection(BggCollectionItem item)
     {
         var game = item.Game;
         var parentId = item.ParentBggIds.FirstOrDefault();
         return new CampImportSelectionItem(game.BggId!.Value,
-            item.IsExpansion ? CampContributionItemType.Expansion : CampContributionItemType.BaseGame,
+            item.IsExpansion ? CollectionItemType.Expansion : CollectionItemType.BaseGame,
             parentId > 0 ? parentId : null,
             game.Name, true, game.ThumbnailImageUrl, game.ImageUrl, game.MinPlayers, game.MaxPlayers,
             game.BestPlayers, game.Types, game.Categories, game.Description, game.YearPublished,

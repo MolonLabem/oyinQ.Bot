@@ -4,7 +4,7 @@ public sealed class CampBggImport
 {
     public long Id { get; set; }
     public Guid PublicId { get; set; }
-    public long CampId { get; set; }
+    public long? CampId { get; set; }
     public long ParticipantId { get; set; }
     public string BggUsername { get; set; } = string.Empty;
     public CampBggImportStatus Status { get; set; }
@@ -23,6 +23,6 @@ public sealed class CampBggImport
     public CampImportOverrideResolution? OverrideResolution { get; set; }
     public DateTimeOffset? OverrideResolvedAt { get; set; }
 
-    public Camp Camp { get; set; } = null!;
+    public Camp? Camp { get; set; } = null!;
     public Participant Participant { get; set; } = null!;
 }

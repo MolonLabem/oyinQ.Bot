@@ -16,13 +16,13 @@ public sealed class EffectiveCampCatalogService(
     CampContributionSelectionService contributions)
 {
     public async Task<IReadOnlyList<EffectiveCampGame>> LoadAsync(string communityKey,
-        long? currentParticipantId, CancellationToken cancellationToken)
+        long? currentParticipantId, CancellationToken cancellationToken, DateOnly? attendanceDate = null)
     {
         var camp = await dbContext.Camps.AsNoTracking()
             .SingleOrDefaultAsync(x => x.BotChatKey == communityKey, cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
         var contributed = await contributions.GetEffectiveContributionsAsync(camp.Id, cancellationToken,
-            currentParticipantId);
+            currentParticipantId, attendanceDate);
         return Build(camp.ReadBaseCollection(), contributed);
     }
 
@@ -32,16 +32,16 @@ public sealed class EffectiveCampCatalogService(
         var bases = new List<(ClubCollectionGame Game, bool InBase, IReadOnlyList<CampCatalogProvider> Providers)>();
         foreach (var game in baseCollection.Games)
         {
-            var personal = contributions.SingleOrDefault(x => x.ItemType == CampContributionItemType.BaseGame
+            var personal = contributions.SingleOrDefault(x => x.ItemType == CollectionItemType.BaseGame
                 && x.BggId == game.BggId);
             bases.Add((personal is null ? game : MergeMetadata(game, personal.Snapshot), true,
                 personal?.Providers ?? []));
         }
-        bases.AddRange(contributions.Where(x => x.ItemType == CampContributionItemType.BaseGame
+        bases.AddRange(contributions.Where(x => x.ItemType == CollectionItemType.BaseGame
                 && bases.All(existing => existing.Game.BggId != x.BggId))
             .Select(x => (ToGame(x), false, x.Providers)));
 
-        var contributedExpansions = contributions.Where(x => x.ItemType == CampContributionItemType.Expansion)
+        var contributedExpansions = contributions.Where(x => x.ItemType == CollectionItemType.Expansion)
             .ToArray();
         return bases.Select(value =>
         {
@@ -66,19 +66,11 @@ public sealed class EffectiveCampCatalogService(
         }).OrderBy(x => x.Game.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    private static ClubCollectionGame ToGame(EffectiveCampCatalogItem value)
-    {
-        var s = value.Snapshot;
-        return new ClubCollectionGame(value.BggId, s.Name, s.ThumbnailImageUrl, s.ImageUrl, s.MinPlayers,
-            s.MaxPlayers, s.BestPlayers, [], s.Types, s.Categories, s.Description, s.YearPublished,
-            s.MinPlayTimeMinutes, s.MaxPlayTimeMinutes, s.MinAge,
-            BggTaxonomyCatalog.ResolveType(s.Type, s.Subdomains, s.Types, s.CategoryItems, s.Categories),
-            s.Subdomains, s.CategoryItems,
-            s.Mechanics, s.OriginalName);
-    }
+    private static ClubCollectionGame ToGame(EffectiveCampCatalogItem value) =>
+        value.Snapshot.ToCollectionGame(value.BggId);
 
     private static ClubCollectionGame MergeMetadata(ClubCollectionGame current,
-        CampContributionSnapshot fallback) => current with
+        CollectionItemSnapshot fallback) => current with
     {
         ThumbnailImageUrl = current.ThumbnailImageUrl ?? fallback.ThumbnailImageUrl,
         ImageUrl = current.ImageUrl ?? fallback.ImageUrl,

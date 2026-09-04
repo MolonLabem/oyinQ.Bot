@@ -26,7 +26,7 @@ public sealed class CampParticipantAdminServiceTests
         var camp = new Camp
         {
             BotChat = community, BotChatKey = community.Key, Name = community.Name,
-            Status = CampStatus.Active, StartDate = new(2026, 9, 1), EndDate = new(2026, 9, 3),
+            Status = CampStatus.Active, StartsAtUtc = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero).AddDays(1),
             CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
         };
         var participant = new Participant

@@ -1,12 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api/client";
-import type { BggDetails, BggSearchResult, ClubGame } from "../api/types";
+import type { BggBaseGameSearchResult, BggDetails, ClubGame } from "../api/types";
 import { Cover, Notice } from "./Ui";
 import { normalizeGameSearch, rankGames } from "./gameSearch";
+import {
+  dismissGamePickerSearch,
+  mergeGameSearchCandidates,
+  resolveGameSelection,
+  uniqueByBggId,
+  type GameSearchCandidate,
+  type GameSource,
+} from "./gamePickerModel";
 
 export { normalizeGameSearch, searchGames } from "./gameSearch";
-
-type GameSource = "catalog" | "bgg";
 
 export function GamePicker({
   catalog = [], catalogLoading = false, catalogError, bggAvailable, selected, onSelect, onClear,
@@ -23,19 +29,23 @@ export function GamePicker({
   hint?: string;
 }) {
   const [input, setInput] = useState("");
-  const [results, setResults] = useState<BggSearchResult[]>([]);
+  const [results, setResults] = useState<BggBaseGameSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [loadingGame, setLoadingGame] = useState(false);
   const [open, setOpen] = useState(false);
-  const [remoteLimit, setRemoteLimit] = useState(9);
   const [error, setError] = useState<string>();
+  const [visibleViewport, setVisibleViewport] = useState<{ height: number; top: number }>();
   const requestVersion = useRef(0);
   const container = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  const resultsId = useId();
   const normalized = normalizeGameSearch(input);
-  const catalogMatches = useMemo(() => rankGames(catalog, normalized).slice(0, 8), [catalog, normalized]);
-  const remoteResults = results.filter(result => !catalogMatches.some(game => game.bggId === result.bggId));
+  const catalogMatches = useMemo(() => rankGames(catalog, normalized).slice(0, 25), [catalog, normalized]);
+  const candidates = useMemo(() => mergeGameSearchCandidates(catalogMatches, results), [catalogMatches, results]);
   const isReference = looksLikeBggReference(input);
   const selectionCurrent = Boolean(selected && input.trim() === selected.name);
+  const searchMode = open && normalized.length > 0 && !selectionCurrent;
 
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -57,7 +67,7 @@ export function GamePicker({
       setSearching(true);
       setError(undefined);
       try {
-        const value = await api<BggSearchResult[]>(`/bgg/search?query=${encodeURIComponent(input.trim())}`, { signal: controller.signal });
+        const value = await api<BggBaseGameSearchResult[]>(`/bgg/search?query=${encodeURIComponent(input.trim())}`, { signal: controller.signal });
         if (version === requestVersion.current) setResults(value);
       } catch (reason) {
         if (!controller.signal.aborted && version === requestVersion.current)
@@ -65,35 +75,73 @@ export function GamePicker({
       } finally {
         if (version === requestVersion.current) setSearching(false);
       }
-    }, 550);
+    }, 400);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [bggAvailable, input, isReference, normalized, selectionCurrent]);
 
+  useEffect(() => {
+    if (!searchMode) return;
+    const viewport = window.visualViewport;
+    const update = () => setVisibleViewport({
+      height: viewport?.height ?? window.innerHeight,
+      top: viewport?.offsetTop ?? 0,
+    });
+    update();
+    viewport?.addEventListener("resize", update);
+    viewport?.addEventListener("scroll", update);
+    document.body.classList.add("game-picker-open");
+    return () => {
+      viewport?.removeEventListener("resize", update);
+      viewport?.removeEventListener("scroll", update);
+      document.body.classList.remove("game-picker-open");
+    };
+  }, [searchMode]);
+
   function changeInput(value: string) {
     setInput(value);
-    setRemoteLimit(9);
     setOpen(true);
     setError(undefined);
     if (selected && value.trim() !== selected.name) onClear?.();
   }
 
-  function chooseCatalog(game: ClubGame) {
-    setInput(game.name);
-    setResults([]);
+  function closeSearch() {
     setOpen(false);
-    setError(undefined);
-    onSelect(game, "catalog");
+    dismissGamePickerSearch(inputRef.current);
   }
 
-  async function chooseBgg(inputOrId: string) {
+  async function chooseCandidate(candidate: GameSearchCandidate) {
     setLoadingGame(true);
     setError(undefined);
+    closeSearch();
     try {
-      const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(inputOrId)}`);
-      const game = { ...details.game, expansions: details.expansions };
+      const resolved = await resolveGameSelection(candidate, bggAvailable, bggId =>
+        api<BggDetails>(`/bgg/game?input=${encodeURIComponent(String(bggId))}`)
+      );
+      setInput(resolved.game.name);
+      setResults([]);
+      setError(resolved.fallbackWarning);
+      onSelect(resolved.game, resolved.source);
+    } catch (reason) {
+      setOpen(true);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoadingGame(false);
+    }
+  }
+
+  async function chooseReference(value: string) {
+    if (!bggAvailable) {
+      setError("BGG сейчас недоступен. Выберите игру из сохранённой коллекции.");
+      return;
+    }
+    setLoadingGame(true);
+    setError(undefined);
+    closeSearch();
+    try {
+      const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}`);
+      const game = { ...details.game, expansions: uniqueByBggId(details.expansions) };
       setInput(game.name);
       setResults([]);
-      setOpen(false);
       onSelect(game, "bgg");
     } catch (reason) {
       setOpen(true);
@@ -106,10 +154,19 @@ export function GamePicker({
   async function searchNow() {
     const value = input.trim();
     if (!value) return;
-    if (isReference) { await chooseBgg(value); return; }
-    const exactLocal = catalogMatches.find(game => normalizeGameSearch(game.name) === normalized
-      || (game.originalName && normalizeGameSearch(game.originalName) === normalized));
-    if (exactLocal) { chooseCatalog(exactLocal); return; }
+    if (isReference) {
+      const localId = /^\d+$/.test(value) ? Number(value) : undefined;
+      const local = localId ? catalog.find(game => game.bggId === localId) : undefined;
+      if (local) await chooseCandidate({ bggId: local.bggId, name: local.name, originalName: local.originalName, yearPublished: local.yearPublished, localGame: local });
+      else await chooseReference(value);
+      return;
+    }
+    const exact = candidates.find(candidate => normalizeGameSearch(candidate.name) === normalized
+      || (candidate.originalName && normalizeGameSearch(candidate.originalName) === normalized));
+    if (exact) {
+      await chooseCandidate(exact);
+      return;
+    }
     if (!bggAvailable) {
       setError(catalog.length ? "Такой игры нет в доступной коллекции, а BGG сейчас недоступен." : "BGG сейчас недоступен.");
       return;
@@ -118,7 +175,7 @@ export function GamePicker({
     setSearching(true);
     setError(undefined);
     try {
-      const valueResults = await api<BggSearchResult[]>(`/bgg/search?query=${encodeURIComponent(value)}`);
+      const valueResults = await api<BggBaseGameSearchResult[]>(`/bgg/search?query=${encodeURIComponent(value)}`);
       setResults(valueResults);
       setOpen(true);
       if (!valueResults.length && !catalogMatches.length)
@@ -130,40 +187,50 @@ export function GamePicker({
     }
   }
 
-  const showResults = open && normalized.length > 0 && (catalogMatches.length > 0 || remoteResults.length > 0 || searching);
-  return <div className="game-picker" ref={container}>
-    <label className="field">
-      <span>{label}</span>
+  const hasResults = candidates.length > 0;
+  const overlayStyle = visibleViewport ? {
+    "--game-picker-visible-height": `${visibleViewport.height}px`,
+    "--game-picker-visible-top": `${visibleViewport.top}px`,
+  } as CSSProperties : undefined;
+
+  return <div className={`game-picker${searchMode ? " search-mode" : ""}`} ref={container} style={overlayStyle}
+    role={searchMode ? "dialog" : undefined} aria-modal={searchMode || undefined} aria-label={searchMode ? "Поиск настольной игры" : undefined}>
+    <div className="field">
+      <div className="game-picker-heading"><label htmlFor={inputId}>{label}</label>{searchMode && <button type="button" className="ghost" onClick={closeSearch}>Закрыть</button>}</div>
       <div className="search-box">
-        <input type="search" role="combobox" aria-expanded={showResults} aria-controls="game-picker-results"
+        <input id={inputId} ref={inputRef} type="search" role="combobox" aria-expanded={searchMode} aria-controls={resultsId}
           autoComplete="off" value={input} onFocus={() => setOpen(true)} onChange={event => changeInput(event.target.value)}
           onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void searchNow(); } }}
           placeholder="Например, Nemesis" />
         <button type="button" className="primary" disabled={!input.trim() || loadingGame || searching || selectionCurrent}
           onClick={() => void searchNow()}>{selectionCurrent ? "Выбрано" : loadingGame ? "Открываем…" : searching ? "Ищем…" : "Найти"}</button>
       </div>
-      <small>{hint}</small>
-    </label>
-    {showResults && <div id="game-picker-results" className="game-picker-results" role="listbox"
-      onPointerDown={event => event.preventDefault()}>
-      {catalogMatches.length > 0 && <section><strong className="result-group-title">В коллекции</strong>
-        {catalogMatches.map(game => <button type="button" role="option" aria-selected={selected?.bggId === game.bggId}
-          className="game-search-result" key={`catalog-${game.bggId}`} onClick={() => chooseCatalog(game)}>
-          <Cover src={game.thumbnailImageUrl} name={game.name} /><span><strong>{game.name}</strong><GameMeta game={game} compact /></span><span aria-hidden>›</span>
-        </button>)}</section>}
-      {bggAvailable && (remoteResults.length > 0 || searching) && <section><strong className="result-group-title">BoardGameGeek</strong>
-        {remoteResults.slice(0, remoteLimit).map(game => <button type="button" role="option" aria-selected="false" className="game-search-result"
-          key={`bgg-${game.bggId}`} onClick={() => void chooseBgg(String(game.bggId))}>
-          <span className="result-icon" aria-hidden>BGG</span><span><strong>{game.name}</strong><small>{game.yearPublished ? `${game.yearPublished} год` : "Год не указан"}</small></span><span aria-hidden>›</span>
-        </button>)}
-        {remoteResults.length > remoteLimit && <button type="button" className="ghost" onClick={() => setRemoteLimit(limit => limit + 9)}>Показать ещё ({remoteResults.length - remoteLimit})</button>}
-        {searching && <p className="picker-status">Ищем в BGG…</p>}
-      </section>}
+      {!searchMode && <small>{hint}</small>}
+    </div>
+    {searchMode && <div id={resultsId} className="game-picker-results" role="listbox" aria-busy={searching}>
+      {candidates.map(candidate => <button type="button" role="option" aria-selected={selected?.bggId === candidate.bggId}
+        className="game-search-result" key={candidate.bggId} onClick={() => void chooseCandidate(candidate)}>
+        {candidate.localGame?.thumbnailImageUrl
+          ? <Cover src={candidate.localGame.thumbnailImageUrl} name={candidate.name} />
+          : <span className="result-icon" aria-hidden>BGG</span>}
+        <span><strong>{candidate.name}</strong><SearchResultMeta candidate={candidate} /></span><span aria-hidden>›</span>
+      </button>)}
+      {searching && <p className="picker-status">Ищем в BGG…</p>}
+      {!searching && !hasResults && normalized.length < 2 && <p className="picker-status">Введите хотя бы два символа.</p>}
+      {!searching && !hasResults && normalized.length >= 2 && !error && <p className="picker-status">Совпадений пока нет.</p>}
     </div>}
-    {catalogLoading && <p className="picker-status">Загружаем коллекцию…</p>}
-    {catalogError && <Notice kind="warning">Коллекцию загрузить не удалось: {catalogError}</Notice>}
-    {error && <Notice kind="danger">{error}</Notice>}
+    {!searchMode && catalogLoading && <p className="picker-status">Загружаем коллекцию…</p>}
+    {!searchMode && catalogError && <Notice kind="warning">Коллекцию загрузить не удалось: {catalogError}</Notice>}
+    {error && <Notice kind={error.startsWith("BGG не ответил") ? "warning" : "danger"}>{error}</Notice>}
   </div>;
+}
+
+function SearchResultMeta({ candidate }: { candidate: GameSearchCandidate }) {
+  const originalName = candidate.originalName?.trim();
+  const differs = originalName && normalizeGameSearch(originalName) !== normalizeGameSearch(candidate.name);
+  const details = [differs ? originalName : undefined, candidate.yearPublished ? String(candidate.yearPublished) : undefined]
+    .filter((value): value is string => Boolean(value));
+  return <small>{details.length ? details.join(" · ") : "Настольная игра"}{candidate.localGame && <span className="local-result-note"> · В вашей коллекции</span>}</small>;
 }
 
 export function GameMeta({ game, compact = false }: { game: ClubGame; compact?: boolean }) {

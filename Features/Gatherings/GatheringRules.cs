@@ -2,6 +2,12 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
+public sealed record GatheringParticipantWithdrawal(
+    GatheringParticipationStatus PreviousStatus,
+    GameGatheringParticipant DepartingParticipant,
+    GameGatheringParticipant? PromotedParticipant,
+    int OccupiedSeats);
+
 public static class GatheringRules
 {
     public const int DescriptionMaxLength = 300;
@@ -86,9 +92,7 @@ public static class GatheringRules
 
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
         var known = snapshot.KnownExpansions ?? snapshot.SelectedExpansions;
-        if (selectedExpansionIds.Any(id => known.All(x => x.BggId != id)))
-            throw new InvalidOperationException("Выбрано неизвестное дополнение.");
-        var selected = known.Where(x => selectedExpansionIds.Contains(x.BggId)).ToArray();
+        var selected = GatheringExpansionSelection.Select(known, selectedExpansionIds);
         snapshot = snapshot with { Version = GatheringGameSnapshot.CurrentVersion,
             SelectedExpansions = selected, KnownExpansions = known };
         gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot);
@@ -158,11 +162,12 @@ public static class GatheringRules
         return normalized;
     }
 
-    public static GameGatheringParticipant? WithdrawParticipant(GameGathering gathering,
+    public static GatheringParticipantWithdrawal? WithdrawParticipant(GameGathering gathering,
         GameGatheringParticipant membership, DateTimeOffset now)
     {
         if (membership.Status == GatheringParticipationStatus.Withdrawn) return null;
-        var shouldPromote = membership.Status == GatheringParticipationStatus.Confirmed;
+        var previousStatus = membership.Status;
+        var shouldPromote = previousStatus == GatheringParticipationStatus.Confirmed;
         membership.Status = GatheringParticipationStatus.Withdrawn;
         membership.WithdrawnAt = now.ToUniversalTime();
         membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
@@ -170,7 +175,7 @@ public static class GatheringRules
         GatheringCapacity.SynchronizeScheduledStatus(gathering);
         gathering.PublicationStatus = GatheringPublicationStatus.Pending;
         gathering.UpdatedAt = now.ToUniversalTime();
-        return promoted;
+        return new(previousStatus, membership, promoted, GatheringCapacity.OccupiedSeats(gathering));
     }
 
     public static string NormalizeGuestDisplayName(string? displayName)

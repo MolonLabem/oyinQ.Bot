@@ -154,7 +154,7 @@ public sealed class ClubCampDomainTests
                     Mechanics: [new(2023, "Cooperative Game")], Type: GameType.Thematic),
                 [new BggExpansion(99, "Expansion")]));
 
-        public Task<IReadOnlyList<ExternalGameSearchResult>> SearchAsync(string query, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(string query, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string username, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string username, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> bggIds, CancellationToken cancellationToken) => throw new NotSupportedException();

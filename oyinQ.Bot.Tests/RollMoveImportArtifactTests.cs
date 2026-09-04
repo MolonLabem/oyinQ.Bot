@@ -26,7 +26,7 @@ public sealed class RollMoveImportArtifactTests
     }
 
     [Fact]
-    public void CurrentSnapshot_IsValidV2AndMatchesFourSourceRefresh()
+    public void CurrentSnapshot_IsValidV2AndIncludesReviewedSupplement()
     {
         var repositoryRoot = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -36,7 +36,9 @@ public sealed class RollMoveImportArtifactTests
         var expansions = document.Games.SelectMany(game => game.Expansions).ToArray();
 
         Assert.Equal(ClubCollectionDocument.CurrentVersion, document.Version);
-        Assert.Equal(337, document.Games.Count);
+        Assert.Equal(374, document.Games.Count);
+        var candidates = RollMoveReconciliation.ParseCandidates(File.ReadAllText(Path.Combine(Path.GetDirectoryName(path)!, "reconciliation-candidates.txt")));
+        Assert.All(candidates, id => Assert.Contains(document.Games, game => game.BggId == id));
         Assert.Empty(expansions);
         Assert.Contains(document.Games, game => (game.Subdomains?.Count ?? 0) > 1);
         Assert.All(document.Games, game => Assert.NotEmpty(game.CategoryItems ?? []));

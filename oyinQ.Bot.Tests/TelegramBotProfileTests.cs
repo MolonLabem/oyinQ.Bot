@@ -18,7 +18,7 @@ public sealed class TelegramBotProfileTests
 
     [Fact]
     public void GroupCommands_ContainOnlyOyinQ() =>
-        Assert.Equal(["oyinq:Открыть OyinQ"],
+        Assert.Equal(["oiynq:Открыть OyinQ"],
             TelegramBotProfile.GroupCommands.Select(x => $"{x.Command}:{x.Description}"));
 
     [Fact]
@@ -72,7 +72,23 @@ public sealed class TelegramBotProfileTests
     [Fact]
     public void HelpAndPrivacyCopy_AreConciseAndActionable()
     {
-        Assert.Contains("Основные действия находятся в Mini App", TelegramEntryText.Help);
+        Assert.Equal(TelegramEntryText.FunctionalityGuide, TelegramEntryText.Help);
+        Assert.DoesNotContain("Mini App", TelegramEntryText.Help);
+        Assert.Contains("Профиль", TelegramEntryText.Help);
+        Assert.Contains("напоминания", TelegramBotProfile.Description);
         Assert.Equal("Политика конфиденциальности OyinQ:", TelegramEntryText.Privacy);
+    }
+    [Fact]
+    public void StartAndHelpShareGuide_MenuStaysFocused_AndContextualDestinationSurvives()
+    {
+        Assert.Equal(TelegramEntryText.ForPrivateCommand("/start"), TelegramEntryText.ForPrivateCommand("/help"));
+        Assert.Null(TelegramEntryText.ForPrivateCommand("/menu"));
+        var links = new MiniAppLinkBuilder(Microsoft.Extensions.Options.Options.Create(new oyinQ.Bot.Common.Options.BotOptions { PublicBaseUrl = "https://test.example" }));
+        var id = Guid.NewGuid();
+        var gathering = MiniAppStartParameter.Parse("/start " + MiniAppStartParameter.ForGathering("club", id));
+        Assert.Equal(links.Gathering("club", id), links.FromStartContext(gathering!));
+        var import = MiniAppStartParameter.Parse("/start " + MiniAppStartParameter.ForCampImport("camp", id));
+        Assert.Equal(links.CampImport("camp", id), links.FromStartContext(import!));
+        Assert.Equal(links.Community("club"), links.FromStartContext(MiniAppStartParameter.Parse("/start community-club")!));
     }
 }

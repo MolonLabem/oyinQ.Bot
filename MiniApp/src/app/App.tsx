@@ -4,7 +4,7 @@ import type { Bootstrap, Capabilities, Community } from "../api/types";
 import { Navigation } from "../components/Navigation";
 import { ErrorState, Loading, Notice, Page } from "../components/Ui";
 import { AdminPage } from "../pages/admin/AdminPage";
-import { CampRegistrationGate, MyGamesPage } from "../pages/camp/MyGamesPage";
+import { CampRegistrationGate } from "../pages/profile/ProfileCollectionPage";
 import { GamesPage } from "../pages/games/GamesPage";
 import { GatheringsPage } from "../pages/gatherings/GatheringsPage";
 import { ProfilePage } from "../pages/profile/ProfilePage";
@@ -12,7 +12,7 @@ import { telegram } from "../telegram/webApp";
 import { fullscreenLabel } from "../pages/camp/registrationLogic";
 import { collectionVisitFromGathering, positiveGameId } from "./collectionNavigation";
 import { CommunityAvatar } from "../components/CommunityAvatar";
-import { miniAppLaunchContext } from "./launchContext";
+import { mainTab, miniAppLaunchContext } from "./launchContext";
 
 export function App() {
   const [launchContext] = useState(() => miniAppLaunchContext(location.search, telegram.startParam));
@@ -32,18 +32,30 @@ export function App() {
   if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
   if (adminMode) return bootstrap.canOpenAdminPanel ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} isSuperAdmin={bootstrap.isSuperAdmin} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна администраторам зарегистрированных чатов OyinQ.</Notice></Page>;
-  if (!community) return <CommunityPicker communities={bootstrap.communities} choose={key => { setCommunityKey(key); if (!new URLSearchParams(location.search).get("tab")) setTab("gatherings"); }} admin={bootstrap.canOpenAdminPanel} />;
-  const tabs = community.mode === "Camp" ? [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "mine", label: "Мои игры", icon: "🧳" }, { id: "profile", label: "Профиль", icon: "👤" }] : [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "profile", label: "Профиль", icon: "👤" }];
-  const activeTab = tabs.some(item => item.id === tab) ? tab : "gatherings";
+  if (!community) return <GlobalProfileShell profile={mainTab(tab) === "profile"}
+    select={setTab} communities={<CommunityPicker communities={bootstrap.communities} choose={key => { setCommunityKey(key); setTab("gatherings"); }} admin={bootstrap.canOpenAdminPanel} />}>
+    <ProfilePage communities={bootstrap.communities} bggAvailable={capabilities.boardGameGeekAvailable}
+      openGathering={(key, id) => { setProfileReturnCommunityKey(""); setCommunityKey(key); setInitialGatheringId(id); setTab("gatherings"); }} />
+  </GlobalProfileShell>;
+  const tabs = [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "profile", label: "Профиль", icon: "👤" }];
+  const activeTab = mainTab(tab);
   const fullscreenActionLabel = fullscreenLabel(fullscreen);
-  const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("mine"); };
+  const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("profile"); };
   const openCollection = (bggId: number, gatheringId: string) => { const visit = collectionVisitFromGathering(bggId, gatheringId); setInitialCollectionGameId(visit.bggId); setCollectionReturnGatheringId(visit.returnGatheringId); setTab("games"); };
   const backToGathering = collectionReturnGatheringId ? () => { setInitialGatheringId(collectionReturnGatheringId); setCollectionReturnGatheringId(undefined); setTab("gatherings"); } : undefined;
   const openProfileGathering = (targetCommunityKey: string, gatheringId: string) => { setProfileReturnCommunityKey(community.key); setCommunityKey(targetCommunityKey); setInitialGatheringId(gatheringId); setTab("gatherings"); };
-  const backToProfile = profileReturnCommunityKey ? () => { setCommunityKey(profileReturnCommunityKey); setProfileReturnCommunityKey(undefined); setTab("profile"); } : undefined;
-  const content = activeTab === "gatherings" ? <GatheringsPage key={community.key} community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} openCollection={openCollection} backFromInitial={backToProfile} /> : activeTab === "games" ? <GamesPage community={community} initialGameId={initialCollectionGameId} onInitialConsumed={() => setInitialCollectionGameId(undefined)} backToGathering={backToGathering} /> : activeTab === "profile" ? <ProfilePage community={community} communities={bootstrap.communities} openGathering={openProfileGathering} /> : <MyGamesPage community={community} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
+  const backToProfile = profileReturnCommunityKey !== undefined ? () => { setCommunityKey(profileReturnCommunityKey); setProfileReturnCommunityKey(undefined); setTab("profile"); } : undefined;
+  const content = activeTab === "gatherings" ? <GatheringsPage key={community.key} community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} openCollection={openCollection} backFromInitial={backToProfile} /> : activeTab === "games" ? <GamesPage community={community} initialGameId={initialCollectionGameId} onInitialConsumed={() => setInitialCollectionGameId(undefined)} backToGathering={backToGathering} /> : <ProfilePage community={community} communities={bootstrap.communities} openGathering={openProfileGathering} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
   const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} canOpenAdminPanel={bootstrap.canOpenAdminPanel}>{content}</CampRegistrationGate> : content;
   return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} /><span className="context-name">{community.name}</span><span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}{telegram.canFullscreen && <button type="button" className="fullscreen-action" aria-label={fullscreenActionLabel} title={fullscreenActionLabel} aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}><FullscreenIcon fullscreen={fullscreen} /></button>}</div></header><div className="content">{gatedContent}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
+}
+
+export function GlobalProfileShell({ profile, select, communities, children }: {
+  profile: boolean; select: (tab: string) => void; communities: React.ReactNode; children: React.ReactNode;
+}) {
+  return <div className="app-shell"><div className="content">{profile ? children : communities}</div>
+    <Navigation tabs={[{ id: "communities", label: "Сообщества", icon: "👥" }, { id: "profile", label: "Профиль", icon: "👤" }]}
+      active={profile ? "profile" : "communities"} onChange={select} /></div>;
 }
 
 function FullscreenIcon({ fullscreen }: { fullscreen: boolean }) {

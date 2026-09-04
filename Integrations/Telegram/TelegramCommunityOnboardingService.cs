@@ -48,7 +48,7 @@ public static class TelegramCommunityOnboardingDelivery
         {
             onFailure?.Invoke(exception);
             return new(false,
-                "Сообщество создано, но Telegram не принял приветственное сообщение. Проверьте права бота в группе и отправьте участникам команду /oyinq.");
+                "Сообщество создано, но Telegram не принял приветственное сообщение. Проверьте права бота в группе и отправьте участникам команду /oiynq.");
         }
     }
 }

@@ -46,9 +46,9 @@ public sealed class CampRulesTests
     [InlineData(2026, 9, 13)]
     public void GatheringDateRange_AcceptsInclusiveBoundaries(int year, int month, int day)
     {
-        var camp = new Camp { StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13) };
+        var camp = new Camp { StartsAtUtc = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 13, 0, 0, 0, TimeSpan.Zero).AddDays(1) };
 
-        CampRules.EnsureGatheringDateWithinRange(camp, new DateOnly(year, month, day));
+        CampOperatingWindow.RequireContains(camp, new DateTimeOffset(year, month, day, 0, 0, 0, TimeSpan.Zero));
     }
 
     [Theory]
@@ -56,30 +56,30 @@ public sealed class CampRulesTests
     [InlineData(2026, 9, 14)]
     public void GatheringDateRange_RejectsDatesOutsideCamp(int year, int month, int day)
     {
-        var camp = new Camp { StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13) };
+        var camp = new Camp { StartsAtUtc = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 13, 0, 0, 0, TimeSpan.Zero).AddDays(1) };
 
         var error = Assert.Throws<InvalidOperationException>(() =>
-            CampRules.EnsureGatheringDateWithinRange(camp, new DateOnly(year, month, day)));
+            CampOperatingWindow.RequireContains(camp, new DateTimeOffset(year, month, day, 0, 0, 0, TimeSpan.Zero)));
 
-        Assert.Equal("Дата сбора должна быть в пределах дат кэмпа: 10–13 сентября.", error.Message);
+        Assert.Equal("Время сбора должно входить в рабочий интервал кэмпа: начиная с открытия и до окончания.", error.Message);
     }
 
     [Fact]
     public void GatheringDateRange_SingleDayAcceptsOnlyThatDate()
     {
-        var camp = new Camp { StartDate = new(2026, 9, 20), EndDate = new(2026, 9, 20) };
+        var camp = new Camp { StartsAtUtc = new DateTimeOffset(2026, 9, 20, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 20, 0, 0, 0, TimeSpan.Zero).AddDays(1) };
 
-        CampRules.EnsureGatheringDateWithinRange(camp, new(2026, 9, 20));
+        CampOperatingWindow.RequireContains(camp, new DateTimeOffset(2026, 9, 20, 0, 0, 0, TimeSpan.Zero));
         Assert.Throws<InvalidOperationException>(() =>
-            CampRules.EnsureGatheringDateWithinRange(camp, new(2026, 9, 19)));
+            CampOperatingWindow.RequireContains(camp, new DateTimeOffset(2026, 9, 19, 0, 0, 0, TimeSpan.Zero)));
         Assert.Throws<InvalidOperationException>(() =>
-            CampRules.EnsureGatheringDateWithinRange(camp, new(2026, 9, 21)));
+            CampOperatingWindow.RequireContains(camp, new DateTimeOffset(2026, 9, 21, 0, 0, 0, TimeSpan.Zero)));
     }
 
     [Fact]
     public void GatheringDateRange_UsesCampTimezoneAndAllowsLastDayEvening()
     {
-        var camp = new Camp { StartDate = new(2026, 9, 10), EndDate = new(2026, 9, 13) };
+        var camp = new Camp { StartsAtUtc = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 13, 0, 0, 0, TimeSpan.Zero).AddDays(1) };
         var firstLocalMidnight = new DateTimeOffset(2026, 9, 9, 19, 0, 0, TimeSpan.Zero);
         var lastLocalEvening = new DateTimeOffset(2026, 9, 13, 18, 30, 0, TimeSpan.Zero);
 
@@ -88,8 +88,9 @@ public sealed class CampRulesTests
 
         Assert.Equal(new DateOnly(2026, 9, 10), firstDate);
         Assert.Equal(new DateOnly(2026, 9, 13), lastDate);
-        CampRules.EnsureGatheringDateWithinRange(camp, firstDate);
-        CampRules.EnsureGatheringDateWithinRange(camp, lastDate);
+        camp.StartsAtUtc = firstLocalMidnight;
+        CampOperatingWindow.RequireContains(camp, firstLocalMidnight);
+        CampOperatingWindow.RequireContains(camp, lastLocalEvening);
     }
 
     [Fact]

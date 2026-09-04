@@ -12,8 +12,10 @@ public sealed class TelegramUpdateRoutingTests
         Assert.Equal(expected, TelegramUpdateRouting.GetCommand(text));
 
     [Theory]
+    [InlineData("/oiynq", true)]
     [InlineData("/oyinq", true)]
     [InlineData("/OYINQ@CurrentBot", true)]
+    [InlineData("/OIYNQ@CurrentBot", true)]
     [InlineData("/start", false)]
     [InlineData("/menu", false)]
     [InlineData("/admin", false)]
@@ -25,11 +27,12 @@ public sealed class TelegramUpdateRoutingTests
         Assert.Equal(expected, TelegramUpdateRouting.IsGroupEntryRequest(text, TelegramUpdateRouting.GetCommand(text)));
 
     [Theory]
+    [InlineData("/oiynq topic", true)]
     [InlineData("/oyinq topic", true)]
-    [InlineData("/OYINQ@CurrentBot TOPIC", true)]
-    [InlineData("/oyinq", false)]
-    [InlineData("/oyinq other", false)]
-    [InlineData("/oyinq topic extra", false)]
+    [InlineData("/OIYNQ@CurrentBot TOPIC", true)]
+    [InlineData("/oiynq", false)]
+    [InlineData("/oiynq other", false)]
+    [InlineData("/oiynq topic extra", false)]
     public void PostingTopicSelection_UsesOyinQSubcommand(string text, bool expected) =>
         Assert.Equal(expected, TelegramUpdateRouting.IsPostingTopicSelectionRequest(
             text, TelegramUpdateRouting.GetCommand(text)));

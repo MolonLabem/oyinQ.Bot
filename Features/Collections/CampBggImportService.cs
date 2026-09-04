@@ -7,9 +7,10 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 {
     public static CampBggImportDraft ClassifySkips(CampBggImportDraft draft,
         IReadOnlySet<long> baseCollectionIds,
-        IReadOnlySet<(long BggId, CampContributionItemType ItemType)> currentParticipantManualItems) =>
+        IReadOnlySet<(long BggId, CollectionItemType ItemType)> currentParticipantManualItems) =>
         draft with { Items = draft.Items.Select(item =>
         {
+            if (item.SkipReason is CampImportSkipReason.InvalidOrUnsupportedItem or CampImportSkipReason.ProviderDataIncomplete) return item;
             if (currentParticipantManualItems.Contains((item.BggId, item.ItemType)))
                 return item with { SelectedByDefault = false, SkipReason = CampImportSkipReason.AlreadyAddedManually };
             if (baseCollectionIds.Contains(item.BggId))
@@ -28,8 +29,8 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
                 value.BggId,
                 value.ItemType,
                 value.ParentBggId,
-                new CampContributionSnapshot(
-                    CampContributionSnapshot.CurrentVersion,
+                new CollectionItemSnapshot(
+                    CollectionItemSnapshot.CurrentVersion,
                     value.Name,
                     value.ThumbnailImageUrl,
                     value.ImageUrl,
@@ -74,7 +75,7 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
         items.AddRange(baseGames.Where(value => value.BggId is > 0).Select(value =>
             new CampImportSelectionItem(
                 value.BggId!.Value,
-                CampContributionItemType.BaseGame,
+                CollectionItemType.BaseGame,
                 null,
                 value.Name,
                 true,
@@ -95,7 +96,7 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
             if (parentId <= 0) parentId = value.ParentBggIds.FirstOrDefault();
             return new CampImportSelectionItem(
                 value.Expansion.BggId!.Value,
-                CampContributionItemType.Expansion,
+                CollectionItemType.Expansion,
                 parentId > 0 ? parentId : null,
                 value.Expansion.Name,
                 true,

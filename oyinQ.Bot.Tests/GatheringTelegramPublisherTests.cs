@@ -15,6 +15,70 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class GatheringTelegramPublisherTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OldLargeGatheringWithGuestsEditsSameMessageWithinCaptionLimit(bool textMessage)
+    {
+        var handler = new RecordingHandler((method, _) => textMessage && method == "editMessageCaption"
+            ? Error("Bad Request: there is no caption in the message to edit") : null);
+        var gathering = Gathering();
+        gathering.CreatedAt = DateTimeOffset.UtcNow.AddDays(-14);
+        gathering.Description = "Новое описание " + new string('я', 200);
+        gathering.MaximumPlayers = 12;
+        gathering.DesiredPlayers = 10;
+        gathering.Status = GatheringStatus.Ready;
+        gathering.OrganizerParticipant.DisplayName = new string('О', 160);
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
+        {
+            Name = new string('И', 300), ImageUrl = "https://example.com/game.jpg"
+        });
+        for (var i = 0; i < 8; i++)
+            gathering.Participants.Add(new GameGatheringParticipant
+            {
+                Id = i + 1, Status = GatheringParticipationStatus.Confirmed,
+                Participant = new Participant { TelegramUserId = i + 1, DisplayName = new string('Я', 100) + "<&> 🎲" }
+            });
+        gathering.Guests.Add(new GameGatheringGuest { DisplayName = new string('Г', 80) });
+        for (var i = 0; i < 10; i++)
+            gathering.Expansions.Add(new GameGatheringExpansion { Name = new string('Д', 100), BggId = i + 2 });
+
+        await Publisher(handler).UpdateAsync(gathering,
+            new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC"), default);
+
+        using var body = JsonDocument.Parse(handler.Bodies.Last());
+        var html = body.RootElement.GetProperty(textMessage ? "text" : "caption").GetString()!;
+        var visible = System.Xml.Linq.XElement.Parse("<root>" + html + "</root>").Value;
+        Assert.InRange(visible.Length, 1, 1024);
+        Assert.Contains("Новое описание", visible);
+        Assert.Contains("10 / 10–12", visible);
+        Assert.Contains("гостей: 1", visible);
+        Assert.Contains("Выбрано: 10", visible);
+        Assert.Contains("Есть места", visible);
+        Assert.Contains("Полный состав", visible);
+        Assert.Equal(777, body.RootElement.GetProperty("message_id").GetInt32());
+        Assert.DoesNotContain(handler.Methods, x => x.StartsWith("send", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void HtmlMarkupLengthDoesNotPrematurelyHideRoster()
+    {
+        var gathering = Gathering();
+        for (var i = 0; i < 10; i++)
+            gathering.Participants.Add(new GameGatheringParticipant
+            {
+                Status = GatheringParticipationStatus.Confirmed,
+                Participant = new Participant { TelegramUserId = 1234567890 + i, DisplayName = "Игрок <&> " + new string('&', 10) }
+            });
+        var html = new GatheringPresentationService().BuildTelegramAnnouncement(gathering,
+            new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC")).HtmlText;
+        Assert.True(html.Length > 1024);
+        Assert.True(System.Xml.Linq.XElement.Parse("<root>" + html + "</root>").Value.Length <= 1024);
+        Assert.DoesNotContain("Полный состав", html);
+        Assert.Contains("tg://user?id=1234567899", html);
+    }
+
     [Fact]
     public async Task UpdateEditsOriginalMessageWithoutResolvingOrRepostingDestination()
     {

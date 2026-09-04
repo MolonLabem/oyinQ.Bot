@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
+using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Notifications;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -12,6 +14,9 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public interface ITelegramGroupMessageSender
 {
+    Task<Func<CancellationToken, Task<Message>>> PrepareMessageAsync(string communityKey, string text, ParseMode parseMode,
+        ReplyMarkup? replyMarkup, CancellationToken cancellationToken) =>
+        Task.FromResult<Func<CancellationToken, Task<Message>>>(ct => SendMessageAsync(communityKey, text, parseMode, replyMarkup, ct));
     Task<Message> SendMessageAsync(string communityKey, string text, ParseMode parseMode,
         ReplyMarkup? replyMarkup, CancellationToken cancellationToken);
     Task<Message> SendPhotoAsync(string communityKey, InputFile photo, string caption, ParseMode parseMode,
@@ -22,10 +27,18 @@ public sealed class TelegramGroupMessageSender(
     AppDbContext dbContext,
     ITelegramBotClient botClient,
     IOptions<AdministrationOptions> administrationOptions,
-    MiniAppLinkBuilder links,
+    NotificationService notifications,
     TimeProvider timeProvider,
     ILogger<TelegramGroupMessageSender> logger) : ITelegramGroupMessageSender
 {
+    public async Task<Func<CancellationToken, Task<Message>>> PrepareMessageAsync(string communityKey, string text,
+        ParseMode parseMode, ReplyMarkup? replyMarkup, CancellationToken cancellationToken)
+    {
+        var destination = await ResolveAsync(communityKey, cancellationToken);
+        return ct => SendResolvedAsync(communityKey, destination,
+            (target, token) => botClient.SendMessage(target.ChatId, text, parseMode: parseMode, replyMarkup: replyMarkup,
+                messageThreadId: target.MessageThreadId, cancellationToken: token), ct);
+    }
     public Task<Message> SendMessageAsync(string communityKey, string text, ParseMode parseMode,
         ReplyMarkup? replyMarkup, CancellationToken cancellationToken) => SendWithFallbackAsync(
         communityKey,
@@ -47,6 +60,12 @@ public sealed class TelegramGroupMessageSender(
         CancellationToken cancellationToken)
     {
         var destination = await ResolveAsync(communityKey, cancellationToken);
+        return await SendResolvedAsync(communityKey, destination, send, cancellationToken);
+    }
+
+    private async Task<Message> SendResolvedAsync(string communityKey, TelegramChatDestination destination,
+        Func<TelegramChatDestination, CancellationToken, Task<Message>> send, CancellationToken cancellationToken)
+    {
         try
         {
             return await send(destination, cancellationToken);
@@ -107,11 +126,10 @@ public sealed class TelegramGroupMessageSender(
         {
             try
             {
-                await botClient.SendMessage(telegramUserId,
+                await notifications.EnqueueAsync(new(telegramUserId, NotificationKind.PostingTopicUnavailable,
+                    $"{community.Key}:{community.PostingTopicInvalidatedAt?.UtcTicks}",
                     $"Тема для публикаций в группе «{community.Name}» больше недоступна. Выберите её заново в админ-панели.",
-                    replyMarkup: new InlineKeyboardMarkup([[
-                        InlineKeyboardButton.WithWebApp("Открыть настройки", new WebAppInfo { Url = links.Admin() })
-                    ]]), cancellationToken: cancellationToken);
+                    community.Key), cancellationToken);
             }
             catch (Exception notifyException) when (!cancellationToken.IsCancellationRequested)
             {

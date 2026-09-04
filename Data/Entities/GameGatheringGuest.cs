@@ -3,6 +3,7 @@ namespace oyinQ.Bot.Data.Entities;
 public sealed class GameGatheringGuest
 {
     public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
     public long GameGatheringId { get; set; }
     public string DisplayName { get; set; } = string.Empty;
     public long CreatedByParticipantId { get; set; }

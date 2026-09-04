@@ -131,7 +131,7 @@ public sealed class CommunityDeletionServiceTests
         public Fixture()
         {
             Db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+                .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning)).UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
             TelegramAdmins = new MutableTelegramAdmins();
             Authorization = new AdminAuthorizationService(Db, TelegramAdmins,
                 Options.Create(new AdministrationOptions { SuperAdminTelegramUserIds = new HashSet<long> { SuperAdminId } }),
@@ -157,7 +157,7 @@ public sealed class CommunityDeletionServiceTests
                 community.Camp = new Camp
                 {
                     BotChat = community, BotChatKey = community.Key, Name = community.Name,
-                    Status = CampStatus.Active, StartDate = new(2026, 9, 1), EndDate = new(2026, 9, 3),
+                    Status = CampStatus.Active, StartsAtUtc = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero).AddDays(1),
                     CreatedAt = Now, UpdatedAt = Now
                 };
             else

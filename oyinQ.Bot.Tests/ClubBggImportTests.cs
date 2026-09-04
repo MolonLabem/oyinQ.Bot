@@ -16,14 +16,14 @@ public sealed class ClubBggImportTests
         ]);
         CampImportSelectionItem[] imported =
         [
-            new(10, CampContributionItemType.BaseGame, null, "Fresh title", true,
+            new(10, CollectionItemType.BaseGame, null, "Fresh title", true,
                 Description: "Fresh metadata", Type: GameType.Strategy, OriginalName: "Fresh original"),
-            new(30, CampContributionItemType.BaseGame, null, "New game", true),
-            new(101, CampContributionItemType.Expansion, 10, "New expansion", true,
+            new(30, CollectionItemType.BaseGame, null, "New game", true),
+            new(101, CollectionItemType.Expansion, 10, "New expansion", true,
                 ParentBggIds: [10]),
-            new(102, CampContributionItemType.Expansion, 30, "Shared expansion", true,
+            new(102, CollectionItemType.Expansion, 30, "Shared expansion", true,
                 ParentBggIds: [10, 30]),
-            new(103, CampContributionItemType.Expansion, 999, "Orphan", true,
+            new(103, CollectionItemType.Expansion, 999, "Orphan", true,
                 ParentBggIds: [999])
         ];
 
@@ -54,7 +54,7 @@ public sealed class ClubBggImportTests
     [Fact]
     public void Merge_NormalizesInvalidProviderMetadata()
     {
-        var imported = new CampImportSelectionItem(10, CampContributionItemType.BaseGame, null,
+        var imported = new CampImportSelectionItem(10, CollectionItemType.BaseGame, null,
             "Omerta", true, Description: new string('x', 20_001), YearPublished: 0,
             MinPlayTimeMinutes: 60, MaxPlayTimeMinutes: 30, MinAge: 200);
 
@@ -74,11 +74,11 @@ public sealed class ClubBggImportTests
     {
         CampImportSelectionItem[] imported =
         [
-            new(10, CampContributionItemType.BaseGame, null, "Base", true),
-            new(20, CampContributionItemType.BaseGame, null, "Other base", true),
-            new(100, CampContributionItemType.Expansion, 10, "Shared expansion", true,
+            new(10, CollectionItemType.BaseGame, null, "Base", true),
+            new(20, CollectionItemType.BaseGame, null, "Other base", true),
+            new(100, CollectionItemType.Expansion, 10, "Shared expansion", true,
                 ParentBggIds: [10, 20]),
-            new(100, CampContributionItemType.Expansion, 10, "Duplicate provider row", true,
+            new(100, CollectionItemType.Expansion, 10, "Duplicate provider row", true,
                 ParentBggIds: [10, 20])
         ];
 

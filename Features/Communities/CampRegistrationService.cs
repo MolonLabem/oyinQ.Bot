@@ -7,9 +7,10 @@ using oyinQ.Bot.Features.Gatherings;
 namespace oyinQ.Bot.Features.Communities;
 
 public sealed record CampRegistrationGatheringImpact(Guid PublicId, string GameName, DateTimeOffset StartsAtUtc);
-public sealed record CampRegistrationPromotion(Guid GatheringPublicId, GatheringPromotion Promotion);
-public sealed record CampRegistrationMutationResult(IReadOnlyList<Guid> ChangedGatheringIds,
-    IReadOnlyList<CampRegistrationPromotion> Promotions);
+public sealed record CampRegistrationMutationResult(IReadOnlyList<GatheringWithdrawalOutcome> Withdrawals)
+{
+    public IReadOnlyList<Guid> ChangedGatheringIds => Withdrawals.Select(x => x.GatheringPublicId).Distinct().ToArray();
+}
 
 public sealed class CampRegistrationConflictException(
     string message, IReadOnlyList<CampRegistrationGatheringImpact> gatherings,
@@ -19,16 +20,20 @@ public sealed class CampRegistrationConflictException(
     public bool CanConfirm { get; } = canConfirm;
 }
 
-public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider timeProvider)
+public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider timeProvider, GatheringNotificationService? notificationService = null)
 {
+    private readonly GatheringNotificationService notifications = notificationService ?? new(dbContext, new Features.Notifications.NotificationService(dbContext, timeProvider));
     public async Task<CampRegistrationMutationResult> SaveAsync(long campId, long participantId,
         IReadOnlyCollection<DateOnly> selectedDates, bool needsAccommodation, string? displayName, string city,
         bool confirmAttendanceChanges, CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
-        var camp = await dbContext.Camps
-            .FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
+        var campQuery = IsNpgsql
+            ? dbContext.Camps.FromSqlInterpolated(
+                $"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
+            : dbContext.Camps.Where(x => x.Id == campId);
+        var camp = await campQuery
             .Include(x => x.BotChat).SingleAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         CampParticipationPolicy.EnsureAcceptsMutations(camp, camp.BotChat.TimeZoneId, now);
@@ -69,18 +74,16 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         foreach (var date in normalizedDates)
             registration.SelectedDays.Add(new CampRegistrationDay { Date = date });
 
-        var changed = new List<Guid>();
-        var promotions = new List<CampRegistrationPromotion>();
+        var withdrawals = new List<GatheringWithdrawalOutcome>();
         foreach (var value in participantImpacts)
         {
-            var promoted = GatheringRules.WithdrawParticipant(value.Gathering, value.Membership!, now);
-            changed.Add(value.Gathering.PublicId);
-            if (promoted is not null)
-                promotions.Add(new(value.Gathering.PublicId, ToPromotion(promoted)));
+            var withdrawal = GatheringRules.WithdrawParticipant(value.Gathering, value.Membership!, now)!;
+            withdrawals.Add(GatheringWithdrawalOutcome.Capture(value.Gathering, withdrawal));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
+        foreach (var withdrawal in withdrawals) await notifications.NotifyWithdrawalAsync(withdrawal, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(changed.Distinct().ToArray(), promotions);
+        return new(withdrawals);
     }
 
     private static string? NormalizeDisplayName(string? displayName)
@@ -106,7 +109,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         if (registration is null)
         {
             await transaction.CommitAsync(cancellationToken);
-            return new([], []);
+            return new([]);
         }
         var gatherings = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
@@ -116,6 +119,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
                         && (p.Status == GatheringParticipationStatus.Confirmed
                             || p.Status == GatheringParticipationStatus.Waitlisted))))
             .Include(x => x.Participants).ThenInclude(x => x.Participant)
+            .Include(x => x.OrganizerParticipant)
             .Include(x => x.Guests)
             .ToArrayAsync(cancellationToken);
         var organized = gatherings.Where(x => x.OrganizerParticipantId == participantId).ToArray();
@@ -124,28 +128,19 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
                 $"Сначала отмените сборы, которые вы организуете ({organized.Length}).",
                 organized.Select(ToImpact).ToArray());
 
-        var changed = new List<Guid>();
-        var promotions = new List<CampRegistrationPromotion>();
+        var withdrawals = new List<GatheringWithdrawalOutcome>();
         foreach (var gathering in gatherings)
         {
             var membership = gathering.Participants.Single(x => x.ParticipantId == participantId);
-            var promoted = GatheringRules.WithdrawParticipant(gathering, membership, now);
-            changed.Add(gathering.PublicId);
-            if (promoted is not null) promotions.Add(new(gathering.PublicId, ToPromotion(promoted)));
+            var withdrawal = GatheringRules.WithdrawParticipant(gathering, membership, now)!;
+            withdrawals.Add(GatheringWithdrawalOutcome.Capture(gathering, withdrawal));
         }
-        await dbContext.CampGameContributions.Where(x => x.CampId == campId
-            && x.ParticipantId == participantId).ExecuteDeleteAsync(cancellationToken);
-        await dbContext.CampBggImports.Where(x => x.CampId == campId && x.ParticipantId == participantId
-                && (x.Status == CampBggImportStatus.Queued || x.Status == CampBggImportStatus.Running
-                    || x.Status == CampBggImportStatus.Completed))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, CampBggImportStatus.Cancelled)
-                .SetProperty(x => x.CancellationRequestedAt, now)
-                .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+        await RemoveContributionsAndCancelImportsAsync(campId, participantId, now, cancellationToken);
         dbContext.CampRegistrations.Remove(registration);
         await dbContext.SaveChangesAsync(cancellationToken);
+        foreach (var withdrawal in withdrawals) await notifications.NotifyWithdrawalAsync(withdrawal, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(changed.Distinct().ToArray(), promotions);
+        return new(withdrawals);
     }
 
     private async Task<IReadOnlyList<ImpactedGathering>> LoadImpactedGatheringsAsync(string communityKey,
@@ -160,6 +155,8 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
                         && (p.Status == GatheringParticipationStatus.Confirmed
                             || p.Status == GatheringParticipationStatus.Waitlisted))))
             .Include(x => x.Participants).ThenInclude(x => x.Participant)
+            .Include(x => x.OrganizerParticipant)
+            .Include(x => x.Guests)
             .ToArrayAsync(cancellationToken);
         var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
         return values.Where(x => removedDates.Contains(DateOnly.FromDateTime(
@@ -174,9 +171,35 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson).Name,
         gathering.StartsAtUtc);
 
-    private static GatheringPromotion ToPromotion(GameGatheringParticipant value) => new(
-        value.Participant.TelegramUserId,
-        value.Participant.PreferredDisplayName ?? value.Participant.DisplayName);
+    private bool IsNpgsql => string.Equals(dbContext.Database.ProviderName,
+        "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal);
+
+    private async Task RemoveContributionsAndCancelImportsAsync(long campId, long participantId,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var contributions = dbContext.CampGameContributions.Where(x => x.CampId == campId
+            && x.ParticipantId == participantId);
+        var imports = dbContext.CampBggImports.Where(x => x.CampId == campId && x.ParticipantId == participantId
+            && (x.Status == CampBggImportStatus.Queued || x.Status == CampBggImportStatus.Running
+                || x.Status == CampBggImportStatus.Completed));
+        if (IsNpgsql)
+        {
+            await contributions.ExecuteDeleteAsync(cancellationToken);
+            await imports.ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, CampBggImportStatus.Cancelled)
+                .SetProperty(x => x.CancellationRequestedAt, now)
+                .SetProperty(x => x.UpdatedAt, now), cancellationToken);
+            return;
+        }
+
+        dbContext.CampGameContributions.RemoveRange(await contributions.ToArrayAsync(cancellationToken));
+        foreach (var import in await imports.ToArrayAsync(cancellationToken))
+        {
+            import.Status = CampBggImportStatus.Cancelled;
+            import.CancellationRequestedAt = now;
+            import.UpdatedAt = now;
+        }
+    }
 
     private sealed record ImpactedGathering(GameGathering Gathering, bool IsOrganizer,
         GameGatheringParticipant? Membership, CampRegistrationGatheringImpact Impact);

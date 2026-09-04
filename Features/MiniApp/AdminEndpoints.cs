@@ -16,10 +16,10 @@ internal sealed record PeerSelectionTokenRequest(Guid SelectionId, string Commun
 internal sealed record CreateClubRequest(Guid? SelectionId, long? KnownTelegramChatId, string? Name,
     string TimeZoneId);
 internal sealed record CreateCampRequest(Guid? SelectionId, long? KnownTelegramChatId, string? Name,
-    DateOnly StartDate, DateOnly EndDate,
+    string StartsAtLocal, string EndsAtLocal,
     long? SourceClubId, string? TimeZoneId);
 internal sealed record UpdateCommunityRequest(string Name, string TimeZoneId, bool IsActive);
-internal sealed record UpdateCampRequest(string Name, string TimeZoneId, DateOnly StartDate, DateOnly EndDate);
+internal sealed record UpdateCampRequest(string Name, string TimeZoneId, string StartsAtLocal, string EndsAtLocal);
 internal sealed record ChangeCampStatusRequest(string Status);
 internal sealed record CopyClubCollectionRequest(long SourceClubId, long ExpectedRevision);
 internal sealed record CopyCampCollectionRequest(long SourceClubId);
@@ -69,24 +69,24 @@ internal static class AdminEndpoints
 
     private static Task<IResult> DeleteClubAsync(HttpRequest request, long clubId,
         TelegramMiniAppAuthenticator authenticator, CommunityDeletionService deletion,
-        GatheringPublicationService publication, GatheringNotificationService notifications,
+        GatheringPublicationService publication,
         CancellationToken cancellationToken) =>
         DeleteCommunityAsync(request, authenticator,
-            (actor, token) => deletion.DeleteClubAsync(actor, clubId, token), publication, notifications,
+            (actor, token) => deletion.DeleteClubAsync(actor, clubId, token), publication,
             cancellationToken);
 
     private static Task<IResult> DeleteCampAsync(HttpRequest request, long campId,
         TelegramMiniAppAuthenticator authenticator, CommunityDeletionService deletion,
-        GatheringPublicationService publication, GatheringNotificationService notifications,
+        GatheringPublicationService publication,
         CancellationToken cancellationToken) =>
         DeleteCommunityAsync(request, authenticator,
-            (actor, token) => deletion.DeleteCampAsync(actor, campId, token), publication, notifications,
+            (actor, token) => deletion.DeleteCampAsync(actor, campId, token), publication,
             cancellationToken);
 
     private static async Task<IResult> DeleteCommunityAsync(HttpRequest request,
         TelegramMiniAppAuthenticator authenticator,
         Func<long, CancellationToken, Task<CommunityDeletionResult>> delete,
-        GatheringPublicationService publication, GatheringNotificationService notifications,
+        GatheringPublicationService publication,
         CancellationToken cancellationToken)
     {
         var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
@@ -97,7 +97,6 @@ internal static class AdminEndpoints
             foreach (var gatheringId in result.CancelledGatheringIds)
             {
                 await publication.PublishAsync(gatheringId, cancellationToken);
-                await notifications.NotifyCancellationAsync(gatheringId, cancellationToken);
             }
             return Results.Ok(new { result.AlreadyDeleted, result.Name });
         }
@@ -169,11 +168,11 @@ internal static class AdminEndpoints
             x.CollectionRevision, x.UpdatedAt, x.Gatherings });
         var camps = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).Include(x => x.SourceClub)
             .Where(x => approvedKeys.Contains(x.BotChatKey))
-            .OrderByDescending(x => x.StartDate).Select(x => new
+            .OrderByDescending(x => x.StartsAtUtc).Select(x => new
             {
                 x.Id, CommunityKey = x.BotChatKey, x.Name, TelegramTitle = x.BotChat.Name,
                 x.BotChat.TelegramChatId, x.BotChat.TimeZoneId, IsApproved = true,
-                Status = x.Status.ToString(), x.StartDate, x.EndDate,
+                Status = x.Status.ToString(), x.StartsAtUtc, x.EndsAtUtc,
                 SourceClubId = x.SourceClub != null && approvedKeys.Contains(x.SourceClub.BotChatKey)
                     ? x.SourceClubId : null,
                 SourceClubName = x.SourceClub != null && approvedKeys.Contains(x.SourceClub.BotChatKey)
@@ -392,7 +391,7 @@ internal static class AdminEndpoints
             var camp = await communities.CreateCampAsync(new(
                 string.IsNullOrWhiteSpace(body.Name) ? chat.Title ?? "Новый кэмп" : body.Name.Trim(),
                 chat.TelegramChatId, timeZone, identity.TelegramUserId, body.SourceClubId,
-                body.StartDate, body.EndDate, RequireCreatorTelegramAdmin: false), cancellationToken);
+                CommunityTime.ParseLocal(body.StartsAtLocal, timeZone), CommunityTime.ParseLocal(body.EndsAtLocal, timeZone), RequireCreatorTelegramAdmin: false), cancellationToken);
             var delivery = await onboarding.SendAsync(chat.TelegramChatId, cancellationToken);
             return Results.Created($"/api/miniapp/admin/camps/{camp.Id}", new
             {
@@ -476,7 +475,6 @@ internal static class AdminEndpoints
         ChangeCampStatusRequest body, TelegramMiniAppAuthenticator authenticator,
         AppDbContext dbContext, IAdminAuthorizationService authorization, ManagedCommunityService communities,
         GatheringPublicationService publication,
-        GatheringNotificationService notifications,
         CancellationToken cancellationToken)
     {
         var campKey = await dbContext.Camps.AsNoTracking().Where(x => x.Id == campId)
@@ -491,7 +489,6 @@ internal static class AdminEndpoints
             foreach (var gatheringId in result.CancelledGatheringIds)
             {
                 await publication.PublishAsync(gatheringId, cancellationToken);
-                await notifications.NotifyCancellationAsync(gatheringId, cancellationToken);
             }
             return Results.NoContent();
         }
@@ -510,7 +507,7 @@ internal static class AdminEndpoints
         try
         {
             await communities.UpdateCampAsync(campId,
-                new(body.Name, body.TimeZoneId, body.StartDate, body.EndDate), cancellationToken);
+                new(body.Name, body.TimeZoneId, CommunityTime.ParseLocal(body.StartsAtLocal, body.TimeZoneId), CommunityTime.ParseLocal(body.EndsAtLocal, body.TimeZoneId)), cancellationToken);
             return Results.NoContent();
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }

@@ -2,6 +2,11 @@ namespace oyinQ.Bot.Data.Entities;
 
 public sealed class GameGathering
 {
+    public bool? ConfirmedWasPlayed { get; set; }
+    public DateTimeOffset? OutcomeRecordedAt { get; set; }
+    public long? OutcomeRecordedByParticipantId { get; set; }
+    public int OutcomeRevision { get; set; }
+
     public long Id { get; set; }
     public Guid PublicId { get; set; }
     public string CommunityKey { get; set; } = string.Empty;

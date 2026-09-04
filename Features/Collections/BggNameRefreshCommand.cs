@@ -91,7 +91,7 @@ public static class BggNameRefreshCommand
         {
             if (!names.TryGetValue(contribution.BggId, out var name)) continue;
             var snapshot = contribution.ReadSnapshot();
-            var updatedJson = CampContributionSnapshotSerializer.Serialize(snapshot with
+            var updatedJson = CollectionItemSnapshotSerializer.Serialize(snapshot with
             {
                 Name = name.RussianName ?? snapshot.Name,
                 OriginalName = name.OriginalName

@@ -7,8 +7,13 @@ public sealed class MiniAppLinkBuilder(IOptions<BotOptions> options)
 {
     private readonly string baseUrl = options.Value.PublicBaseUrl.TrimEnd('/');
 
+    public string FromStartContext(MiniAppStartContext context) => context.GatheringPublicId is { } gathering
+        ? Gathering(context.CommunityKey, gathering) : context.ImportPublicId is { } import
+            ? CampImport(context.CommunityKey, import) : context.CollectionBggId is { } bgg
+                ? CollectionGame(context.CommunityKey, bgg) : Community(context.CommunityKey);
     public string App() => $"{baseUrl}/app/";
     public string Admin() => $"{App()}?admin=1";
+    public string ProfileCollection(Guid importId) => $"{App()}?tab=profile&profileImport={importId}";
     public string Privacy() => $"{baseUrl}/privacy";
     public string Community(string communityKey) =>
         $"{App()}?community={Uri.EscapeDataString(communityKey)}";

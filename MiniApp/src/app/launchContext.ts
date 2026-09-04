@@ -40,3 +40,8 @@ function dotNetGuid(bytes: Uint8Array): string {
 function nonEmpty(value: string | null): string | undefined {
   return value?.trim() || undefined;
 }
+
+export function mainTab(tab: string | null): string {
+  if (tab === "mine") return "profile";
+  return tab === "profile" || tab === "games" ? tab : "gatherings";
+}

@@ -15,7 +15,7 @@ public sealed record BotCommunity(
     BotMode Mode,
     string TimeZoneId,
     DateOnly? StartDate = null,
-    DateOnly? EndDate = null);
+    DateOnly? EndDate = null, DateTimeOffset? StartsAtUtc = null, DateTimeOffset? EndsAtUtc = null);
 
 public sealed class CommunityOptions
 {

@@ -15,7 +15,7 @@ public sealed class BggGameMapperTests
         var expansion = new ClubCollectionExpansion(296108, "Turmoil");
 
         var collection = BggGameMapper.ToCollectionGame(provider, [expansion]);
-        var contribution = BggGameMapper.ToContributionSnapshot(provider);
+        var contribution = BggGameMapper.ToCollectionSnapshot(provider);
         var gathering = GatheringGameSnapshot.FromClubGame(collection, [expansion.BggId], "bgg");
 
         Assert.Equal(provider.BggId, collection.BggId);
@@ -33,4 +33,13 @@ public sealed class BggGameMapperTests
     public void ProviderGame_RequiresCanonicalBggIdentity() =>
         Assert.Throws<InvalidOperationException>(() => BggGameMapper.ToCollectionGame(
             new ExternalGame(null, "No identity", 1, 4, null, null)));
+    [Theory]
+    [InlineData(0, 4)]
+    [InlineData(5, 2)]
+    public void OwnershipSnapshot_DoesNotStoreInvalidProviderPlayerRange(int min, int max)
+    {
+        var snapshot = BggGameMapper.ToCollectionSnapshot(new ExternalGame(42, "Игра", min, max, null, null));
+        Assert.Null(snapshot.MinPlayers); Assert.Null(snapshot.MaxPlayers);
+        Assert.NotEmpty(CollectionItemSnapshotSerializer.Serialize(snapshot));
+    }
 }

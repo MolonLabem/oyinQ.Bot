@@ -3,11 +3,11 @@ namespace oyinQ.Bot.Integrations.Telegram;
 public static class TelegramUpdateRouting
 {
     public static bool IsGroupEntryRequest(string? text, string? command) =>
-        command == "/oyinq";
+        command is "/oiynq" or "/oyinq";
 
     public static bool IsPostingTopicSelectionRequest(string? text, string? command)
     {
-        if (command != "/oyinq" || string.IsNullOrWhiteSpace(text)) return false;
+        if (command is not ("/oiynq" or "/oyinq") || string.IsNullOrWhiteSpace(text)) return false;
         var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length == 2 && string.Equals(parts[1], "topic", StringComparison.OrdinalIgnoreCase);
     }

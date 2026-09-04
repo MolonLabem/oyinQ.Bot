@@ -35,13 +35,13 @@ public enum CampStatus
     Cancelled = 3
 }
 
-public enum CampContributionItemType
+public enum CollectionItemType
 {
     BaseGame = 0,
     Expansion = 1
 }
 
-public enum CampContributionSource
+public enum CollectionItemSource
 {
     Legacy = 0,
     BggImport = 1,

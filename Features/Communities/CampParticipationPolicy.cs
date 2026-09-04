@@ -32,10 +32,7 @@ public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider
 
     public static bool HasEnded(Camp camp, string timeZoneId, DateTimeOffset now)
     {
-        if (camp.EndDate is not { } end) return false;
-        var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        var localDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
-        return localDate > end;
+        return camp.EndsAtUtc is { } end && now >= end;
     }
 
     public static void EnsureAcceptsMutations(Camp camp, string timeZoneId, DateTimeOffset now)
@@ -48,12 +45,13 @@ public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider
 
     public async Task<(Camp Camp, CampRegistration Registration)> RequireCompleteRegistrationAsync(
         long campId, long participantId, CancellationToken cancellationToken,
-        DateOnly? requiredDate = null)
+        DateOnly? requiredDate = null, DateTimeOffset? gatheringStartsAt = null)
     {
         var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat)
             .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
         EnsureAcceptsMutations(camp, camp.BotChat.TimeZoneId, timeProvider.GetUtcNow());
+        if (gatheringStartsAt is { } instant) CampOperatingWindow.RequireContains(camp, instant);
         var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.CampId == campId && x.ParticipantId == participantId,
                 cancellationToken);

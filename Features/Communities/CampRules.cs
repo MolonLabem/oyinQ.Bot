@@ -1,11 +1,10 @@
-using System.Globalization;
 using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Communities;
 
 public static class CampRules
 {
-    private static readonly CultureInfo RussianCulture = CultureInfo.GetCultureInfo("ru-RU");
+
 
     public static int InclusiveDuration(DateOnly startDate, DateOnly endDate)
     {
@@ -24,25 +23,7 @@ public static class CampRules
     }
 
     public static DateOnly GetLocalGatheringDate(DateTimeOffset startsAt, string timeZoneId) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(startsAt,
-            TimeZoneInfo.FindSystemTimeZoneById(timeZoneId)).DateTime);
-
-    public static void EnsureGatheringDateWithinRange(Camp camp, DateOnly gatheringDate)
-    {
-        if (camp.StartDate is not { } startDate || camp.EndDate is not { } endDate)
-            throw new InvalidOperationException("Для кэмпа ещё не настроены даты.");
-        if (gatheringDate < startDate || gatheringDate > endDate)
-            throw new InvalidOperationException(
-                $"Дата сбора должна быть в пределах дат кэмпа: {FormatDateRange(startDate, endDate)}.");
-    }
-
-    private static string FormatDateRange(DateOnly startDate, DateOnly endDate)
-    {
-        if (startDate == endDate) return startDate.ToString("d MMMM", RussianCulture);
-        return startDate.Month == endDate.Month && startDate.Year == endDate.Year
-            ? $"{startDate.Day}–{endDate.ToString("d MMMM", RussianCulture)}"
-            : $"{startDate.ToString("d MMMM", RussianCulture)} – {endDate.ToString("d MMMM", RussianCulture)}";
-    }
+        CommunityTime.LocalDate(startsAt, timeZoneId);
 
     public static IReadOnlyList<DateOnly> ValidateSelectedDates(IReadOnlyCollection<DateOnly> values,
         DateOnly startDate, DateOnly endDate)

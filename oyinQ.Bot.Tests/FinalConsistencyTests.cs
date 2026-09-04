@@ -75,7 +75,7 @@ public sealed class FinalConsistencyTests
 
         Assert.Equal([1L, 2L], restored.SelectedBaseGameIds);
         Assert.Equal(1, restored.Added);
-        Assert.Equal([new CampImportItemKey(2, CampContributionItemType.BaseGame)],
+        Assert.Equal([new CampImportItemKey(2, CollectionItemType.BaseGame)],
             restored.SelectedOverridableItems);
         Assert.DoesNotContain(restored.SelectedOverridableItems, x => x.BggId == 3);
     }
@@ -110,12 +110,12 @@ public sealed class FinalConsistencyTests
         [
             Game(10, "Base A"), Game(20, "Base B")
         ]);
-        var provider = new CampCatalogProvider(7, "Игрок", "Алматы", CampContributionSource.Manual,
+        var provider = new CampCatalogProvider(7, "Игрок", "Алматы", CollectionItemSource.Manual,
             CampBringCommitment.Bringing);
         var contributions = new[]
         {
-            new EffectiveCampCatalogItem(10, CampContributionItemType.BaseGame, [], Snapshot("Base A"), 1, [provider]),
-            new EffectiveCampCatalogItem(30, CampContributionItemType.Expansion, [10, 20], Snapshot("Expansion X"), 1, [provider])
+            new EffectiveCampCatalogItem(10, CollectionItemType.BaseGame, [], Snapshot("Base A"), 1, [provider]),
+            new EffectiveCampCatalogItem(30, CollectionItemType.Expansion, [10, 20], Snapshot("Expansion X"), 1, [provider])
         };
 
         var result = EffectiveCampCatalogService.Build(baseCollection, contributions);
@@ -208,7 +208,7 @@ public sealed class FinalConsistencyTests
             && x.GetFilter() == "\"Status\" IN (0, 1)");
         Assert.NotNull(refresh.FindProperty(nameof(ClubMetadataRefresh.LeaseId)));
         Assert.NotNull(refresh.FindProperty(nameof(ClubMetadataRefresh.LeaseExpiresAt)));
-        Assert.Equal(["20260901073247_CleanBaseline", "20260901125924_ForumPostingTopics", "20260901133621_CommunityDeletionAndTelegramPhotos", "20260903073138_AddGatheringGuests"],
+        Assert.Equal(["20260901073247_CleanBaseline", "20260901125924_ForumPostingTopics", "20260901133621_CommunityDeletionAndTelegramPhotos", "20260903073138_AddGatheringGuests", "20260904072034_PersistentParticipantCollection", "20260904080727_CampOperatingInstants", "20260904081750_NotificationDelivery", "20260904084352_GatheringPlayRecords", "20260904092743_PlayOutcomesReferencesAndReleases"],
             db.Database.GetMigrations());
     }
 
@@ -224,15 +224,15 @@ public sealed class FinalConsistencyTests
 
     private static Camp Camp() => new()
     {
-        Status = CampStatus.Active, StartDate = new DateOnly(2026, 8, 29), EndDate = new DateOnly(2026, 8, 31)
+        Status = CampStatus.Active, StartsAtUtc = new DateTimeOffset(2026, 8, 29, 0, 0, 0, TimeSpan.Zero), EndsAtUtc = new DateTimeOffset(2026, 8, 31, 0, 0, 0, TimeSpan.Zero).AddDays(1).AddHours(-5)
     };
 
     private static CampBggImportDraftItem Item(long id, CampImportSkipReason? skip = null,
-        bool overridable = false) => new(id, CampContributionItemType.BaseGame, null, Snapshot($"Game {id}"),
+        bool overridable = false) => new(id, CollectionItemType.BaseGame, null, Snapshot($"Game {id}"),
             SkipReason: skip, IsOverridable: overridable);
 
-    private static CampContributionSnapshot Snapshot(string name) => new(
-        CampContributionSnapshot.CurrentVersion, name, null, null, 2, 4, null);
+    private static CollectionItemSnapshot Snapshot(string name) => new(
+        CollectionItemSnapshot.CurrentVersion, name, null, null, 2, 4, null);
 
     private static ClubCollectionGame Game(long id, string name) => new(id, name, null, null, 2, 4, null, []);
 }

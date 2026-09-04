@@ -76,7 +76,7 @@ public sealed class TelegramMiniAppAuthenticator(
         {
             using var user = JsonDocument.Parse(userValue.ToString());
             if (!user.RootElement.TryGetProperty("id", out var id)
-                || !id.TryGetInt64(out var telegramUserId))
+                || !id.TryGetInt64(out var telegramUserId) || telegramUserId <= 0)
             {
                 return null;
             }

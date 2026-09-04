@@ -3,7 +3,7 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Collections;
 
-public sealed record CampImportItemKey(long BggId, CampContributionItemType ItemType);
+public sealed record CampImportItemKey(long BggId, CollectionItemType ItemType);
 
 public sealed record CampBggImportConfirmation(
     int Version,

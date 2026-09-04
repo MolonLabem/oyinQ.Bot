@@ -41,7 +41,7 @@ Upload previews made from safe local/demo data, preferably in this order:
 
 1. Game catalog with search and filters.
 2. Gathering list and a gathering card.
-3. Camp `Мои игры` and participant availability.
+3. Profile `Моя коллекция` and explicit Camp availability.
 4. Club/Camp administration overview.
 
 Use real Mini App screenshots, consistent branding, and both representative light/dark views. Do
@@ -73,7 +73,7 @@ the Bot API, in both webhook and long-polling modes:
 
 ```text
 Private chats: /start, /menu, /help, /privacy, /admin
-Group chats:   /oyinq
+Group chats:   /oiynq
 ```
 
 The application also owns the private-chat Mini App menu button and synchronizes About/Description.
@@ -97,3 +97,7 @@ available), plan a separate migration:
 
 PostgreSQL participant Telegram user IDs and managed group chat IDs remain useful. Old recruitment
 messages were authored by the old bot and generally cannot be edited or deleted by a different bot.
+
+## Совместимость команды
+
+Публичное имя — OyinQ; текущий username — @OiynQ_bot. В групповых командах BotFather и автосинхронизации рекламируется только `/oiynq`. Старый `/oyinq` временно распознаётся, включая `topic`, но не публикуется в подсказках. Проверяйте `/OIYNQ@CurrentBot` с текущим username. Все deep links получают username из runtime/getMe(), а не из документации.

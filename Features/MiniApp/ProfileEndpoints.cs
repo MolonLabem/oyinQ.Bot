@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
-internal sealed record SaveProfileRequest(string CommunityKey, string? DisplayName);
+internal sealed record SaveProfileRequest(string? DisplayName);
 
 internal static class ProfileEndpoints
 {
@@ -19,20 +19,19 @@ internal static class ProfileEndpoints
         return group;
     }
 
-    private static async Task<IResult> GetGatheringsAsync(HttpRequest request, string community,
+    private static async Task<IResult> GetGatheringsAsync(HttpRequest request,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
         TimeProvider timeProvider, CancellationToken cancellationToken)
     {
-        var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator,
-            resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         var participantId = await dbContext.Participants.AsNoTracking()
-            .Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
+            .Where(x => x.TelegramUserId == identity.TelegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
         if (participantId is null) return Results.Ok(Array.Empty<ProfileGatheringPresentation>());
-        var authorized = await resolver.ResolveAuthorizedAsync(access.Identity.TelegramUserId, cancellationToken);
+        var authorized = await resolver.ResolveAuthorizedAsync(identity.TelegramUserId, cancellationToken);
         var keys = authorized.Select(x => x.Key).ToArray();
         var communities = authorized.ToDictionary(x => x.Key);
         var gatherings = await ProfileGatheringQuery.Apply(dbContext.GameGatherings.AsNoTracking(),
@@ -42,27 +41,23 @@ internal static class ProfileEndpoints
             x, communities[x.CommunityKey], participantId.Value)).ToArray());
     }
 
-    private static async Task<IResult> GetAsync(HttpRequest request, string community,
+    private static async Task<IResult> GetAsync(HttpRequest request,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, CancellationToken cancellationToken)
+        PrivateChatCapability privateChat, CancellationToken cancellationToken)
     {
-        var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator,
-            resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
-        var participant = await MiniAppEndpointSupport.GetOrCreateParticipantAsync(dbContext, access.Identity,
-            community, cancellationToken);
-        return Results.Ok(Present(participant));
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
+        var participant = await dbContext.Participants.SingleAsync(x => x.TelegramUserId == identity.TelegramUserId, cancellationToken);
+        return Results.Ok(Present(participant, await privateChat.StartUrlAsync(participant, null, null, cancellationToken)));
     }
 
     private static async Task<IResult> SaveAsync(HttpRequest request, SaveProfileRequest body,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
-        var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
-            authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
-        var participant = await MiniAppEndpointSupport.GetOrCreateParticipantAsync(dbContext, access.Identity,
-            body.CommunityKey, cancellationToken);
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
+        var participant = await dbContext.Participants.SingleAsync(x => x.TelegramUserId == identity.TelegramUserId, cancellationToken);
         var displayName = body.DisplayName?.Trim();
         if (displayName?.Length > 128)
             return MiniAppEndpointSupport.Problem("validation", "Имя не должно быть длиннее 128 символов.");
@@ -72,8 +67,10 @@ internal static class ProfileEndpoints
         return Results.Ok(Present(participant));
     }
 
-    private static object Present(Participant participant) => new
+    private static object Present(Participant participant, string? startUrl = null) => new
     {
+        BotStartRequired = participant.PrivateChatStartedAt is null || participant.TelegramDeliveryBlockedAt is not null,
+        StartUrl = startUrl,
         participant.PreferredDisplayName,
         TelegramDisplayName = participant.DisplayName,
         participant.TelegramUsername

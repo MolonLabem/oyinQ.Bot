@@ -103,22 +103,32 @@ public sealed class GatheringPresentationService
         GameGathering gathering,
         BotCommunity community)
     {
+        var full = BuildTelegramAnnouncement(gathering, community, compact: false);
+        // Telegram counts caption characters after parsing entities, not HTML markup or link URLs.
+        var visible = WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(full.HtmlText, "<[^>]+>", ""));
+        return visible.Length <= 1024 ? full : BuildTelegramAnnouncement(gathering, community, compact: true);
+    }
+
+    private GatheringAnnouncement BuildTelegramAnnouncement(
+        GameGathering gathering, BotCommunity community, bool compact)
+    {
         var game = ResolveSnapshot(gathering);
         var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
         var text = new StringBuilder();
-        text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(game.Name)}</b>");
+        text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(compact ? Truncate(game.Name, 160) : game.Name)}</b>");
         if (metadata.TypeNames.FirstOrDefault() is { } typeName)
-            text.AppendLine($"🏷 {WebUtility.HtmlEncode(typeName)}");
+            text.AppendLine($"🏷 {WebUtility.HtmlEncode(compact ? Truncate(typeName, 80) : typeName)}");
         text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
         text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
-        text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant)}");
+        text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null)}");
         text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
 
         if (gathering.Expansions.Count > 0)
         {
             text.AppendLine();
             text.AppendLine("Дополнения:");
-            foreach (var expansion in gathering.Expansions.OrderBy(value => value.Name))
+            if (compact) text.AppendLine($"Выбрано: {gathering.Expansions.Count}");
+            else foreach (var expansion in gathering.Expansions.OrderBy(value => value.Name))
             {
                 text.AppendLine($"• {WebUtility.HtmlEncode(expansion.Name)}");
             }
@@ -131,10 +141,14 @@ public sealed class GatheringPresentationService
         {
             text.AppendLine();
             text.AppendLine("Участники:");
-            foreach (var participant in confirmed)
-                text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant)}");
-            foreach (var guest in gathering.Guests.OrderBy(value => value.CreatedAt).ThenBy(value => value.Id))
-                text.AppendLine($"• {WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>");
+            if (compact) text.AppendLine($"Игроков без организатора: {confirmed.Length}, гостей: {gathering.Guests.Count}");
+            else
+            {
+                foreach (var participant in confirmed)
+                    text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant)}");
+                foreach (var guest in gathering.Guests.OrderBy(value => value.CreatedAt).ThenBy(value => value.Id))
+                    text.AppendLine($"• {WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>");
+            }
         }
 
         var waitlistedCount = gathering.Participants.Count(value =>
@@ -154,6 +168,7 @@ public sealed class GatheringPresentationService
 
         text.AppendLine();
         text.Append(StatusText(gathering.Status));
+        if (compact) text.Append("\nПолный состав и дополнения — по кнопке «Открыть сбор».");
         return new GatheringAnnouncement(
             text.ToString(),
             game.ImageUrl ?? game.ThumbnailImageUrl,
@@ -203,8 +218,9 @@ public sealed class GatheringPresentationService
             return null;
         }
 
-        return value.Length <= maximumLength
-            ? value
-            : string.Concat(value.AsSpan(0, maximumLength - 1).TrimEnd(), "…");
+        if (value.Length <= maximumLength) return value;
+        var end = maximumLength - 1;
+        if (end > 0 && char.IsHighSurrogate(value[end - 1])) end--;
+        return string.Concat(value.AsSpan(0, end).TrimEnd(), "…");
     }
 }
