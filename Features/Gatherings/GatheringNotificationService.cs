@@ -6,7 +6,7 @@ using oyinQ.Bot.Features.Notifications;
 namespace oyinQ.Bot.Features.Gatherings;
 
 public sealed record UnderfilledGatheringNotification(string GameName, int MinimumPlayers,
-    int OccupiedSeats, IReadOnlyList<long> TelegramUserIds, Guid GatheringPublicId = default);
+    int OccupiedSeats, IReadOnlyList<long> TelegramUserIds, Guid GatheringPublicId = default, string? CommunityKey = null);
 
 // Business-facing semantic intents. Only the central dispatcher delivers them to Telegram.
 public sealed class GatheringNotificationService(AppDbContext dbContext, NotificationService notifications)
@@ -14,11 +14,11 @@ public sealed class GatheringNotificationService(AppDbContext dbContext, Notific
     public static UnderfilledGatheringNotification CaptureUnderfilled(GameGathering g) => new(
         GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson).Name, g.MinimumPlayers, GatheringCapacity.OccupiedSeats(g),
         g.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed).Select(x => x.Participant.TelegramUserId)
-            .Prepend(g.OrganizerParticipant.TelegramUserId).Distinct().ToArray(), g.PublicId);
+            .Prepend(g.OrganizerParticipant.TelegramUserId).Distinct().ToArray(), g.PublicId, g.CommunityKey);
 
     public Task NotifyUnderfilledAsync(UnderfilledGatheringNotification value, CancellationToken ct) => Many(value.TelegramUserIds,
         NotificationKind.GatheringFailed, value.GatheringPublicId.ToString("N"),
-        $"Сбор «{value.GameName}» не состоялся.\n\nНужно минимум {value.MinimumPlayers} игроков, ожидалось {value.OccupiedSeats}.", null, value.GatheringPublicId, ct);
+        $"Сбор «{value.GameName}» отменён: не набралось достаточно участников.\n\nНужно минимум {value.MinimumPlayers} игроков, ожидалось {value.OccupiedSeats}.", value.CommunityKey, value.GatheringPublicId, ct);
 
     public async Task NotifyWishlistAsync(GameGathering g, CancellationToken ct)
     {

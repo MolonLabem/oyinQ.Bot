@@ -1,3 +1,4 @@
+import { groupCollectionItems } from "../../app/collectionGroups";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { ApiError, api, json } from "../../api/client";
 import type { CampImport, ClubGame, Community, Contribution, PersonalCollectionItem, ImportDraftItem } from "../../api/types";
@@ -43,11 +44,10 @@ export function ProfileCollectionPage({ community, bggAvailable }: { community?:
   const storageKey = legacyImport ? legacyKey : "oyinq-profile-import";
   const importBase = legacyImport ? "/camp" : "/profile/collection";
   const [importId, setImportId] = useState<string | undefined>(() => new URLSearchParams(location.search).get("profileImport") ?? (community ? new URLSearchParams(location.search).get("import") : null) ?? localStorage.getItem(storageKey) ?? undefined); const [chosen, setChosen] = useState<ClubGame>(); const [selectedExpansions, setSelectedExpansions] = useState<number[]>([]); const [listQuery, setListQuery] = useState(""); const [adding, setAdding] = useState(false); const [error, setError] = useState<string>();
-  const visibleContributions = useMemo(() => {
+  const collectionGroups = useMemo(() => {
     const values = state.data ?? [];
-    if (!listQuery.trim()) return values;
-    const ids = new Set(searchGames(values.map(item => ({ bggId: item.bggId, ...item.snapshot, expansions: [] })), listQuery).map(game => game.bggId));
-    return values.filter(item => ids.has(item.bggId));
+    const matches = new Set(searchGames(values.map(item => ({ bggId: item.bggId, ...item.snapshot, expansions: [] })), listQuery).map(game => game.bggId));
+    return groupCollectionItems(values, item => !listQuery.trim() || matches.has(item.bggId));
   }, [state.data, listQuery]);
   useEffect(() => telegram.back(Boolean(importId), () => { setImportId(undefined); state.reload(); }), [importId]);
   async function startImport(input: string) { setError(undefined); try { const result = await api<{ publicId: string }>("/profile/collection/imports", json("POST", { communityKey: community?.key, bggInput: input })); setLegacyImport(false); localStorage.setItem("oyinq-profile-import", result.publicId); setImportId(result.publicId); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
@@ -61,6 +61,7 @@ export function ProfileCollectionPage({ community, bggAvailable }: { community?:
       telegram.success("Доступность обновлена"); campState.reload();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }
+  const renderItem = (item: PersonalCollectionItem) => <div className="row contribution-row"><div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h2>{item.snapshot.name}</h2>{item.itemType === "Expansion" && <span className="muted"> Дополнение</span>}<GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} /></div></div><div className="row">{community?.mode === "Camp" && <label>Для «{community?.name}»<select disabled={campState.loading || Boolean(campState.error)} aria-label={`Доступность ${item.snapshot.name}`} value={campState.data?.find(x => x.bggId === item.bggId && x.itemType === item.itemType)?.commitment ?? ""} onChange={e => void commitment(item, (e.target.value || null) as "Available" | "Bringing" | null)}><option value="">Не предлагаю для кэмпа</option><option value="Available">Могу привезти</option><option value="Bringing">Точно привезу</option></select></label>}<button className="danger ghost" onClick={() => remove(item)}>Убрать</button></div></div>;
   if (importId) return <ImportProgress base={importBase} community={community} id={importId} close={(preserve = false) => { if (!preserve) localStorage.removeItem(storageKey); setImportId(undefined); setLegacyImport(false); state.reload(); }} />;
   return <Page as="section" title="Моя коллекция" subtitle="Ваши игры во всех сообществах. Доступность для кэмпа отмечается отдельно.">
     {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Сохранённые игры можно просматривать, отмечать и удалять.</Notice>}
@@ -71,7 +72,13 @@ export function ProfileCollectionPage({ community, bggAvailable }: { community?:
       onClear={() => { setChosen(undefined); setSelectedExpansions([]); }} />
       {chosen && <div className="selected-game"><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h3>{chosen.name}</h3><GameMeta game={chosen} /></div></div>{chosen.expansions.length > 0 && <fieldset><legend>Дополнения в вашей коллекции</legend>{chosen.expansions.map(expansion => <label className="check" key={expansion.bggId}><input type="checkbox" checked={selectedExpansions.includes(expansion.bggId)} onChange={() => setSelectedExpansions(current => current.includes(expansion.bggId) ? current.filter(id => id !== expansion.bggId) : [...current, expansion.bggId])} />{expansion.name}</label>)}</fieldset>}<button className="primary" disabled={adding} onClick={addManual}>{adding ? "Добавляем…" : "Добавить в мои игры"}</button></div>}
     </Card></section>
-    <section className="page-section"><h2>Ваши игры</h2>{error && <Notice kind="danger">{error}</Notice>}{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.length ? <Empty>Вы пока не добавили игры. Импортируйте коллекцию BGG или добавьте одну игру.</Empty> : <><Field label="Поиск среди добавленных игр"><input type="search" value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Название игры" /></Field>{!visibleContributions.length ? <Empty>Ничего не найдено. Попробуйте сократить запрос.</Empty> : <div className="stack">{visibleContributions.map(item => <Card key={`${item.itemType}-${item.bggId}`}><div className="row contribution-row"><div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h2>{item.snapshot.name}</h2>{item.itemType === "Expansion" && <span className="muted"> Дополнение</span>}<GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} /></div></div><div className="row">{community?.mode === "Camp" && <label>Для «{community?.name}»<select disabled={campState.loading || Boolean(campState.error)} aria-label={`Доступность ${item.snapshot.name}`} value={campState.data?.find(x => x.bggId === item.bggId && x.itemType === item.itemType)?.commitment ?? ""} onChange={e => void commitment(item, (e.target.value || null) as "Available" | "Bringing" | null)}><option value="">Не предлагаю для кэмпа</option><option value="Available">Могу привезти</option><option value="Bringing">Точно привезу</option></select></label>}<button className="danger ghost" onClick={() => remove(item)}>Убрать</button></div></div></Card>)}</div>}</>}</section>
+    <section className="page-section"><h2>Ваши игры</h2>{error && <Notice kind="danger">{error}</Notice>}{state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.length ? <Empty>Вы пока не добавили игры. Импортируйте коллекцию BGG или добавьте одну игру.</Empty> : <><Field label="Поиск среди добавленных игр"><input type="search" value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Название игры" /></Field>{!collectionGroups.length ? <Empty>Ничего не найдено. Попробуйте сократить запрос.</Empty> : <div className="stack">{collectionGroups.map(group => <Card key={`${group.item.itemType}-${group.item.bggId}`}>
+          {renderItem(group.item)}
+          {group.expansions.length > 0 && <details className="collection-expansions" open={listQuery.trim() ? true : undefined}>
+            <summary>Дополнения ({group.expansions.length})</summary>
+            {group.expansions.map(item => <div className="collection-expansion" key={item.bggId}>{renderItem(item)}</div>)}
+          </details>}
+        </Card>)}</div>}</>}</section>
   </Page>;
 }
 

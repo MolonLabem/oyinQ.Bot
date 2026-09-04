@@ -87,6 +87,21 @@ public sealed class ProviderAndDiscoveryTests
     }
 
     [Fact]
+    public async Task CatalogKeepsStoredExpansionsUnderBaseAndFindsThemByName()
+    {
+        await using var f = new PlanningFixture(); f.Gathering("club", f.Clock.Now.AddHours(2));
+        f.Db.Clubs.Local.Single().CollectionJson = ClubCollectionSerializer.Serialize(new(2,
+            [new(42, "Базовая игра", null, null, 1, 8, null, [new(43, "Таверны и соборы")])]));
+        await f.Db.SaveChangesAsync();
+        var (catalog, _, _) = Services(f);
+        var result = await catalog.ListAsync("club", BotMode.Club, f.Me.TelegramUserId, new("Таверны", null, [], [], "name"), default);
+        var parent = Assert.Single(result.Items);
+        Assert.Equal(42, parent.BggId);
+        Assert.Equal(43, Assert.Single(parent.Expansions!).BggId);
+        Assert.Empty(await f.Db.ParticipantCollectionItems.ToArrayAsync());
+    }
+
+    [Fact]
     public async Task Dashboards_ReuseSchedule_AndLimitOrganizerToAuthorizedScope()
     {
         await using var f = new PlanningFixture(); var mine = f.Gathering("club", f.Clock.Now.AddHours(1));

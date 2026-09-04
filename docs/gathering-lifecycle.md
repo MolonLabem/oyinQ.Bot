@@ -7,9 +7,11 @@
 | Scheduled enrollment | `Recruiting`, `Ready`, `Full`, `Closed` | The gathering has not reached its start. The first three are derived from occupied seats; `Closed` is an organizer override. |
 | Terminal lifecycle | `Completed`, `Cancelled` | The gathering is historical and no longer mutable. |
 
-`GatheringLifecycle` owns the family and time-boundary semantics. Scheduled rows with `StartsAtUtc > now` are Upcoming. Scheduled rows at or before the boundary are temporarily History until the lifecycle worker either completes or hard-deletes them. `Completed` and `Cancelled` are always History regardless of scheduled time.
+`GatheringLifecycle` owns the family and time-boundary semantics. Scheduled rows with `StartsAtUtc > now` are Upcoming. Scheduled rows at or before the boundary are temporarily History until the lifecycle worker either completes or cancels them. `Completed` and `Cancelled` are always History regardless of scheduled time.
 
 `GatheringCapacity` owns occupied seats and the derived open-enrollment status. Synchronization preserves manual `Closed` and terminal states. Increasing capacity promotes the existing waitlist in join order before the status is recalculated.
+
+At the start boundary, fewer occupied seats than the minimum means `Cancelled` with reason «Не набралось достаточно участников». The gathering, guests, signups, expansions and immutable snapshot remain in History → Cancelled. No attendance is inferred. The lifecycle transaction queues one essential `GatheringFailed` intent for the organizer and each confirmed participant. Delivery and editing the original group announcement happen after commit; a publication failure does not remove history or its notification intents. Reprocessing a cancelled row is a no-op. Previously deleted gatherings cannot be reconstructed by this change.
 
 `GatheringAccessPolicy` owns every action exposed by adapters. The Mini App renders `canClose`, `canReopen`, `canCancel`, `canEdit`, `canJoin`, and `canLeave`; it does not reconstruct actions from the raw status.
 

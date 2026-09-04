@@ -30,7 +30,7 @@ Run against an approved staging PostgreSQL database and real Telegram groups.
 23. Fill a gathering, create an ordered waitlist, leave a confirmed place, and verify exactly one promotion and a persisted notification intent; verify worker delivery separately.
 24. Close/reopen/edit a gathering; reject a maximum below confirmed count and unsafe expansion selection. Increase capacity with a waitlist and verify ordered promotions happen before a newcomer or guest can take the seats.
 25. Manually cancel a gathering and simulate Telegram publication failure; verify the row remains in History → Отменены with retryable publication state.
-26. Let an underfilled gathering pass its start; verify the distinct hard-delete cleanup path, not cancellation history.
+26. Let an underfilled gathering pass its start; verify it remains in cancelled history with reason «Не набралось достаточно участников», preserves its roster, updates its Telegram announcement, and notifies the organizer and confirmed participants once.
 27. Switch rapidly between Upcoming, History, Completed, and Cancelled; verify each request returns only its canonical scope, including while an older cached Mini App or backend instance is still serving the compatible legacy parameters.
 28. Inspect the group announcement: organizer/participants are escaped direct mentions and the same message is edited in place.
 29. Test light/dark themes, narrow safe-area layout, responsive desktop layout, and fullscreen enter/exit labels on supported Telegram clients.
@@ -73,3 +73,11 @@ Run against an approved staging PostgreSQL database and real Telegram groups.
 # Длинные объявления сборов
 
 Создать сбор с фото, затем добавить восемь участников, гостя, длинное описание и несколько дополнений. Изменить время/описание: Telegram должен обновить прежнее сообщение, сохранив его ID. Подпись длиннее 1024 видимых символов заменяется краткой сводкой с числом игроков, гостей и дополнений; полный состав доступен по кнопке «Открыть сбор». Повторить для объявления, ранее опубликованного текстом, и для сообщения старше двух суток. Имена с `<`, `&` и emoji не должны повреждать HTML. При реальном отказе Telegram Mini App показывает, что сбор сохранён, а объявление может содержать прежние данные; повтор обновления не создаёт другое сообщение.
+
+
+# Коллекции и компактный профиль
+
+1. В профиле нет блока «Что дальше»; календарь и его переходы в сборы работают.
+2. Базовая игра с принадлежащими участнику дополнениями занимает одну карточку. «Дополнения» раскрывает отдельные кнопки удаления и Camp-доступность каждого дополнения. Удаление базы не удаляет владение дополнениями: они остаются самостоятельными строками.
+3. Поиск дополнения раскрывает его под базой. Проверить несколько официальных родителей, старый ParentBggId и дополнение без имеющейся базы. Каталог и админская коллекция показывают только реально сохранённые дополнения; BGG при раскрытии не запрашивается.
+4. В клубе наличие коробки — вторичная строка в каталоге и деталях сбора. В кэмпе сохраняются явные обещания «Я привезу».

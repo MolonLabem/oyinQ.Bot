@@ -16,9 +16,11 @@ namespace oyinQ.Bot.Tests;
 public sealed class GatheringTelegramPublisherTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task OldLargeGatheringWithGuestsEditsSameMessageWithinCaptionLimit(bool textMessage)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task OldLargeGatheringWithGuestsEditsSameMessageWithinCaptionLimit(bool textMessage, bool cancelled)
     {
         var handler = new RecordingHandler((method, _) => textMessage && method == "editMessageCaption"
             ? Error("Bad Request: there is no caption in the message to edit") : null);
@@ -27,7 +29,8 @@ public sealed class GatheringTelegramPublisherTests
         gathering.Description = "Новое описание " + new string('я', 200);
         gathering.MaximumPlayers = 12;
         gathering.DesiredPlayers = 10;
-        gathering.Status = GatheringStatus.Ready;
+        gathering.Status = cancelled ? GatheringStatus.Cancelled : GatheringStatus.Ready;
+        gathering.CancellationReason = cancelled ? "Не набралось достаточно участников " + new string('я', 460) : null;
         gathering.OrganizerParticipant.DisplayName = new string('О', 160);
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
         gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
@@ -55,7 +58,8 @@ public sealed class GatheringTelegramPublisherTests
         Assert.Contains("10 / 10–12", visible);
         Assert.Contains("гостей: 1", visible);
         Assert.Contains("Выбрано: 10", visible);
-        Assert.Contains("Есть места", visible);
+        Assert.Contains(cancelled ? "Сбор отменён" : "Есть места", visible);
+        if (cancelled) Assert.Contains("Не набралось достаточно участников", visible);
         Assert.Contains("Полный состав", visible);
         Assert.Equal(777, body.RootElement.GetProperty("message_id").GetInt32());
         Assert.DoesNotContain(handler.Methods, x => x.StartsWith("send", StringComparison.OrdinalIgnoreCase));

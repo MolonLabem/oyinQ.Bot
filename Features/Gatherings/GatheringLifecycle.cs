@@ -6,11 +6,12 @@ public enum GatheringLifecycleOutcome
 {
     None,
     Completed,
-    Delete
+    Cancelled
 }
 
 public static class GatheringLifecycle
 {
+    public const string InsufficientParticipantsReason = "Не набралось достаточно участников";
     internal static readonly GatheringStatus[] ScheduledStatuses =
         [GatheringStatus.Recruiting, GatheringStatus.Ready, GatheringStatus.Full, GatheringStatus.Closed];
 
@@ -36,7 +37,15 @@ public static class GatheringLifecycle
             return GatheringLifecycleOutcome.None;
 
         var occupiedSeats = GatheringCapacity.OccupiedSeats(gathering);
-        if (occupiedSeats < gathering.MinimumPlayers) return GatheringLifecycleOutcome.Delete;
+        if (occupiedSeats < gathering.MinimumPlayers)
+        {
+            gathering.Status = GatheringStatus.Cancelled;
+            gathering.CancellationReason = InsufficientParticipantsReason;
+            gathering.CancelledAt = now;
+            gathering.UpdatedAt = now;
+            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            return GatheringLifecycleOutcome.Cancelled;
+        }
 
         gathering.Status = GatheringStatus.Completed;
         gathering.CompletedAt = now;
@@ -45,13 +54,4 @@ public static class GatheringLifecycle
         return GatheringLifecycleOutcome.Completed;
     }
 
-    public static TelegramMessageCleanup? CreateCleanup(GameGathering gathering, DateTimeOffset now) =>
-        gathering.TelegramChatId is { } chatId && gathering.TelegramMessageId is { } messageId
-            ? new TelegramMessageCleanup
-            {
-                TelegramChatId = chatId,
-                TelegramMessageId = messageId,
-                CreatedAt = now.ToUniversalTime()
-            }
-            : null;
 }

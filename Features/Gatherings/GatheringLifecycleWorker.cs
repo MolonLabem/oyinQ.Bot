@@ -45,7 +45,7 @@ public sealed class GatheringLifecycleWorker(
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = timeProvider.GetUtcNow();
         var scheduledStatusValues = GatheringLifecycle.ScheduledStatuses.Select(x => (int)x).ToArray();
-        Guid? completedPublicId = null;
+        Guid? changedPublicId = null;
         UnderfilledGatheringNotification? underfilled = null;
 
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken))
@@ -72,14 +72,12 @@ public sealed class GatheringLifecycleWorker(
             var outcome = GatheringLifecycle.ApplyDue(gathering, now);
             if (outcome == GatheringLifecycleOutcome.Completed)
             {
-                completedPublicId = gathering.PublicId;
+                changedPublicId = gathering.PublicId;
             }
-            else if (outcome == GatheringLifecycleOutcome.Delete)
+            else if (outcome == GatheringLifecycleOutcome.Cancelled)
             {
                 underfilled = GatheringNotificationService.CaptureUnderfilled(gathering);
-                var cleanup = GatheringLifecycle.CreateCleanup(gathering, now);
-                if (cleanup is not null) dbContext.TelegramMessageCleanups.Add(cleanup);
-                dbContext.GameGatherings.Remove(gathering);
+                changedPublicId = gathering.PublicId;
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -87,7 +85,7 @@ public sealed class GatheringLifecycleWorker(
             await transaction.CommitAsync(cancellationToken);
         }
 
-        if (completedPublicId is { } publicId)
+        if (changedPublicId is { } publicId)
         {
             var publication = scope.ServiceProvider.GetRequiredService<GatheringPublicationService>();
             await publication.PublishAsync(publicId, cancellationToken);

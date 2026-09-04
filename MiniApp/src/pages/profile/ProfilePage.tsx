@@ -1,5 +1,4 @@
 import { WishlistPanel } from "../../components/Wishlist";
-import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { PlayedHistory } from "./PlayedHistory";
 import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
@@ -40,9 +39,8 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   if (!profile.data) return null;
   return <Page title="Профиль">
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
-    {community && <GatheringDashboard communityKey={community.key} open={openGathering} />}
     <ProfileTabs active={tab} select={setTab} />
-    {tab === "collection" && <>{community && <WishlistPanel key={community.key} community={community} bggAvailable={bggAvailable} />}<ProfileCollectionPage key={community?.key} community={community} bggAvailable={bggAvailable} /></>}
+    {tab === "collection" && <>{community && <WishlistPanel key={`wishes-${community.key}`} community={community} bggAvailable={bggAvailable} />}<ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} /></>}
     {tab === "settings" && <>
     {!profile.data.botStartRequired && <Notice kind="success">Уведомления Telegram: доступны</Notice>}
     <NotificationSettings />

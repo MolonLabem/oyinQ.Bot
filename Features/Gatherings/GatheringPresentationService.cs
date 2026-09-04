@@ -22,7 +22,7 @@ public sealed record GatheringCardPresentation(
     string StatusText,
     string? TypeName,
     long? BggId,
-    string? BggUrl, RecruitmentState? Recruitment = null);
+    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -41,7 +41,7 @@ public sealed record GatheringDetailPresentation(
     IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames,
     long? BggId,
-    string? BggUrl, RecruitmentState? Recruitment = null);
+    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null);
 
 public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
 public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
@@ -72,7 +72,8 @@ public sealed class GatheringPresentationService
             StatusText(gathering.Status),
             metadata.TypeNames.FirstOrDefault(),
             game.BggId,
-            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering));
+            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering),
+            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null);
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
@@ -96,7 +97,8 @@ public sealed class GatheringPresentationService
             metadata.CategoryNames,
             metadata.MechanicNames,
             game.BggId,
-            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering));
+            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering),
+            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null);
     }
 
     public GatheringAnnouncement BuildTelegramAnnouncement(
@@ -168,6 +170,8 @@ public sealed class GatheringPresentationService
 
         text.AppendLine();
         text.Append(StatusText(gathering.Status));
+        if (gathering.Status == GatheringStatus.Cancelled && !string.IsNullOrWhiteSpace(gathering.CancellationReason))
+            text.Append($"\nПричина: {WebUtility.HtmlEncode(Truncate(gathering.CancellationReason, compact ? 120 : 500))}");
         if (compact) text.Append("\nПолный состав и дополнения — по кнопке «Открыть сбор».");
         return new GatheringAnnouncement(
             text.ToString(),

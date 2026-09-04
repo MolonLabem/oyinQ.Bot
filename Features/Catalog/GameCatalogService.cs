@@ -14,7 +14,7 @@ public sealed record GameListItemResponse(long BggId, string Name, string? Origi
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     string AvailabilitySummary, bool IsDefinitelyAvailable,
-    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true);
+    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider, bool IsOwned = false);
 public sealed record GameDetailsResponse(long BggId, string Name, string? OriginalName, string? ImageUrl, string? Description,
@@ -74,7 +74,9 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         {
             var search = query.Search.Trim();
             filtered = filtered.Where(value => value.Game.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
-                || value.Game.OriginalName?.Contains(search, StringComparison.OrdinalIgnoreCase) == true);
+                || value.Game.OriginalName?.Contains(search, StringComparison.OrdinalIgnoreCase) == true
+                || value.Game.Expansions.Any(expansion => expansion.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                    || expansion.OriginalName?.Contains(search, StringComparison.OrdinalIgnoreCase) == true));
         }
         filtered = filtered.Where(value => Matches(value.Game, query));
 
@@ -180,7 +182,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             value.Game.ThumbnailImageUrl,
             value.Game.Type, presentation.TypeName, presentation.TypeNames, value.Game.MinPlayers,
             value.Game.MaxPlayers, value.Game.BestPlayers, summary,
-            value.IsInBaseCollection || committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame);
+            value.IsInBaseCollection || committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions);
     }
 
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)

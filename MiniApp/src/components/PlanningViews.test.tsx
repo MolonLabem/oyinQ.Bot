@@ -12,7 +12,14 @@ describe("экраны планирования", () => {
   it("показывает очередь и явное действие владельца без обещания автоматически привезти", () => {
     mock.data = { items: [{ publicId: "g", communityKey: "camp", community: "Кэмп", gameName: "Игра", localDateTime: "4 сентября, 18:00", waitlistPosition: 1, isToday: true, provider: { summary: "Никто пока не подтвердил коробку", canBring: true, isConfirmed: false } }] };
     const markup = renderToStaticMarkup(<GatheringDashboard communityKey="camp" open={() => {}} />);
-    expect(markup).toContain("Что дальше"); expect(markup).toContain("Лист ожидания: 1"); expect(markup).toContain("Я привезу"); expect(markup).toContain("Никто пока не подтвердил коробку");
+    expect(markup).toContain("Обзор организатора"); expect(markup).toContain("Лист ожидания: 1"); expect(markup).toContain("Я привезу"); expect(markup).toContain("Никто пока не подтвердил коробку");
+  });
+  it("показывает коробку клуба без цветного предупреждения", () => {
+    mock.data = { isConfirmed: false, summary: "Нет в коллекции клуба", isOwned: false };
+    const markup = renderToStaticMarkup(<GameProviderNotice mode="Club" communityKey="club" bggId={42} />);
+    expect(markup).toContain("Коробка · Нет в коллекции клуба");
+    expect(markup).toContain("gathering-box-status");
+    expect(markup).not.toContain("notice");
   });
   it("не представляет Completed как подтверждённую партию", () => {
     mock.data = { revision: 0, canEdit: true, canShare: false, references: [], players: [], expansions: [] };

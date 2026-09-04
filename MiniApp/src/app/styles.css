@@ -100,7 +100,7 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .catalog-card:hover { border-color: color-mix(in srgb, var(--button) 42%, var(--separator)); background: color-mix(in srgb, var(--button) 4%, var(--surface)); }
 .catalog-card > .cover { width: 64px; height: 76px; aspect-ratio: auto; object-fit: cover; border-radius: 9px; }
 .catalog-card-body { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 0; }
-.catalog-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.2; }
+.catalog-title { display: block; flex-shrink: 0; overflow-wrap: anywhere; line-height: 1.2; }
 .availability { font-weight: 600; }.availability.success { color: #248552; }.availability.warning { color: #9a6812; }
 .game-detail-hero { display: grid; grid-template-columns: minmax(180px, 300px) minmax(0, 1fr); gap: 28px; align-items: start; margin-bottom: 22px; }
 .game-detail-hero > .cover { width: 100%; height: auto; max-height: 440px; object-fit: contain; border-radius: 16px; }
@@ -163,3 +163,13 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .changelog-content h3 { margin-top: 1.25rem; }
 .changelog-content ul { padding-left: 1.25rem; }
 .changelog-content li + li { margin-top: .5rem; }
+/* Keep collection relationships and box availability secondary to the game. */
+.collection-expansions { margin: .6rem 0 0; padding: .65rem .8rem; border-inline-start: 2px solid var(--separator); }
+.collection-expansions summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+.collection-expansion { margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--separator); }
+.collection-expansion h2 { font-size: 1rem; }
+.gathering-box-status { font-size: .85rem; margin-top: .8rem; }
+
+.contribution-row .media > .cover { flex: none; }
+.collection-expansion .cover { width: 48px; height: 64px; }
+.catalog-grid > div > .catalog-card { width: 100%; }

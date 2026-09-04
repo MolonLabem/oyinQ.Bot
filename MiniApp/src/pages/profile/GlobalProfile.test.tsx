@@ -29,4 +29,19 @@ describe("глобальный профиль", () => {
     expect(markup).not.toContain("Могу привезти"); expect(markup).not.toContain("Точно привезу"); expect(markup).not.toContain("Регистрация на кэмп");
     vi.unstubAllGlobals();
   });
+  it("прячет дополнения под базой и сохраняет отдельное управление доступностью", () => {
+    vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("localStorage", { getItem: () => null });
+    hooks.data = [
+      { bggId: 1, itemType: "BaseGame", snapshot: { name: "Базовая игра" } },
+      { bggId: 2, itemType: "Expansion", snapshot: { name: "Дополнение базы", parentBggIds: [1] } },
+      { bggId: 3, itemType: "Expansion", snapshot: { name: "Отдельное дополнение", parentBggIds: [99] } }
+    ];
+    const markup = renderToStaticMarkup(<ProfileCollectionPage bggAvailable community={{ key: "camp", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" }} />);
+    expect(markup).toContain('<details class="collection-expansions"><summary>Дополнения (1)</summary>');
+    expect(markup.slice(markup.indexOf('<details'), markup.indexOf('</details>'))).toContain('Доступность Дополнение базы');
+    expect(markup.indexOf('Отдельное дополнение')).toBeGreaterThan(markup.indexOf('</details>'));
+    vi.unstubAllGlobals();
+  });
+
 });

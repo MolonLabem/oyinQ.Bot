@@ -43,14 +43,21 @@ public sealed class GatheringLifecycleTests
     [Theory]
     [InlineData(GatheringStatus.Recruiting)]
     [InlineData(GatheringStatus.Closed)]
-    public void DueGatheringBelowMinimum_IsMarkedForHardDeletion(GatheringStatus status)
+    public void DueGatheringBelowMinimum_IsRetainedAsCancelled(GatheringStatus status)
     {
         var gathering = Due(status, minimumPlayers: 2);
 
         var outcome = GatheringLifecycle.ApplyDue(gathering, Now);
 
-        Assert.Equal(GatheringLifecycleOutcome.Delete, outcome);
-        Assert.NotEqual(GatheringStatus.Cancelled, gathering.Status);
+        Assert.Equal(GatheringLifecycleOutcome.Cancelled, outcome);
+        Assert.Equal(GatheringStatus.Cancelled, gathering.Status);
+        Assert.Equal(GatheringLifecycle.InsufficientParticipantsReason, gathering.CancellationReason);
+        Assert.Equal(Now, gathering.CancelledAt);
+        Assert.Null(gathering.CompletedAt);
+        Assert.Equal(GatheringPublicationStatus.Pending, gathering.PublicationStatus);
+        Assert.Single(GatheringListQuery.Apply(new[] { gathering }.AsQueryable(), GatheringListScope.Cancelled, Now));
+        Assert.Equal(GatheringLifecycleOutcome.None, GatheringLifecycle.ApplyDue(gathering, Now.AddMinutes(1)));
+        Assert.Equal(Now, gathering.CancelledAt);
     }
 
     [Theory]
@@ -72,24 +79,6 @@ public sealed class GatheringLifecycleTests
         Assert.Equal(GatheringStatus.Completed, gathering.Status);
         Assert.Equal(Now, gathering.CompletedAt);
     }
-
-    [Fact]
-    public void FailedGatheringWithTelegramMessage_CreatesCleanupWork()
-    {
-        var gathering = Due(GatheringStatus.Recruiting, 2);
-        gathering.TelegramChatId = -10042;
-        gathering.TelegramMessageId = 17;
-
-        var cleanup = GatheringLifecycle.CreateCleanup(gathering, Now);
-
-        Assert.NotNull(cleanup);
-        Assert.Equal(-10042, cleanup.TelegramChatId);
-        Assert.Equal(17, cleanup.TelegramMessageId);
-    }
-
-    [Fact]
-    public void FailedGatheringWithoutTelegramMessage_DoesNotCreateCleanupWork() =>
-        Assert.Null(GatheringLifecycle.CreateCleanup(Due(GatheringStatus.Recruiting, 2), Now));
 
     [Fact]
     public void ManualGuest_CountsTowardMinimumAtLifecycleBoundary()
