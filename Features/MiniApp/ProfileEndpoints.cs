@@ -14,6 +14,14 @@ internal static class ProfileEndpoints
     public static RouteGroupBuilder MapProfileEndpoints(this RouteGroupBuilder group)
     {
         group.MapGet("/profile", GetAsync);
+        group.MapGet("/profile/changelog", (HttpRequest request, TelegramMiniAppAuthenticator authenticator) =>
+        {
+            if (MiniAppEndpointSupport.Authenticate(request, authenticator) is null) return Results.Unauthorized();
+            using var stream = typeof(ProfileEndpoints).Assembly.GetManifestResourceStream("OyinQ.Changelog")
+                ?? throw new InvalidOperationException("История обновлений отсутствует.");
+            using var reader = new StreamReader(stream);
+            return Results.Ok(new { markdown = reader.ReadToEnd() });
+        });
         group.MapGet("/profile/gatherings", GetGatheringsAsync);
         group.MapPut("/profile", SaveAsync);
         return group;

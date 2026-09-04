@@ -58,7 +58,11 @@ public sealed class GlobalProfileApiTests
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
             using var client = new HttpClient { BaseAddress = new Uri(address) };
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp/profile")).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp/profile/changelog")).StatusCode);
             client.DefaultRequestHeaders.Add("X-Telegram-Init-Data", SignedData());
+            var changelog = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/changelog");
+            Assert.Contains("# Изменения OyinQ", changelog.GetProperty("markdown").GetString());
+            Assert.Contains("## 2026-09-04", changelog.GetProperty("markdown").GetString());
             var profile = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile");
             Assert.True(profile.GetProperty("botStartRequired").GetBoolean());
             Assert.Contains("ActualBot?start=menu", profile.GetProperty("startUrl").GetString());

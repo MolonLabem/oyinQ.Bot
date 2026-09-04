@@ -10,6 +10,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="oyinQ.Bot.Tests" />
     <EmbeddedResource Include="docs/releases/2026-09-04.md" LogicalName="OyinQ.Release.2026-09-04" />
+    <EmbeddedResource Include="CHANGELOG.md" LogicalName="OyinQ.Changelog" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="oyinQ.Bot.Tests/**/*.cs" />

@@ -158,3 +158,8 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .play-record-form input, .play-record-form fieldset { min-width: 0; max-width: 100%; }
 
 .release-preview { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.changelog-content { overflow-wrap: anywhere; line-height: 1.6; }
+.changelog-content h2 { margin-top: 1.5rem; }
+.changelog-content h3 { margin-top: 1.25rem; }
+.changelog-content ul { padding-left: 1.25rem; }
+.changelog-content li + li { margin-top: .5rem; }

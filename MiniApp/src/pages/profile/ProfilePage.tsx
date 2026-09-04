@@ -1,5 +1,6 @@
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { PlayedHistory } from "./PlayedHistory";
+import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
@@ -15,6 +16,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   const profile = useAsync(() => api<Profile>("/profile"), [community?.key]);
   const schedule = useAsync(() => profile.data ? api<ProfileGathering[]>("/profile/gatherings", { cache: "no-store" }) : Promise.resolve([]), [community?.key, Boolean(profile.data)]);
   const [tab, setTab] = useState("collection");
+  const [showChangelog, setShowChangelog] = useState(false);
   useEffect(() => { if (editRequest > 0) { setTab("settings"); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
@@ -31,6 +33,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
     finally { setBusy(false); }
   }
 
+  if (showChangelog) return <ChangelogPage back={() => setShowChangelog(false)} />;
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
   if (profile.error) return <Page title="Профиль"><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
@@ -55,6 +58,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
       {schedule.loading ? <Loading /> : schedule.error ? <ErrorState message={schedule.error} retry={schedule.reload} /> : !schedule.data?.length ? <Empty>{profileScheduleEmptyText}</Empty> : <ProfileScheduleList items={schedule.data} communities={communities} open={openGathering} />}
       <PlayedHistory key={community?.key} communityKey={community?.key} open={openGathering} />
     </section>}
+    <button onClick={() => setShowChangelog(true)}>История обновлений</button>
     <ProductFooter />
   </Page>;
 }
