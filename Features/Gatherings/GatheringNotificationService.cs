@@ -20,6 +20,18 @@ public sealed class GatheringNotificationService(AppDbContext dbContext, Notific
         NotificationKind.GatheringFailed, value.GatheringPublicId.ToString("N"),
         $"Сбор «{value.GameName}» не состоялся.\n\nНужно минимум {value.MinimumPlayers} игроков, ожидалось {value.OccupiedSeats}.", null, value.GatheringPublicId, ct);
 
+    public async Task NotifyWishlistAsync(GameGathering g, CancellationToken ct)
+    {
+        var bggId = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson).BggId;
+        var recipients = await dbContext.GameWishes.Where(x => x.CommunityKey == g.CommunityKey
+            && x.BggId == bggId && x.ParticipantId != g.OrganizerParticipantId
+            && !g.Participants.Select(p => p.ParticipantId).Contains(x.ParticipantId))
+            .Select(x => x.Participant.TelegramUserId).ToArrayAsync(ct);
+        await Many(recipients, NotificationKind.WishlistGathering, g.PublicId.ToString("N"),
+            $"🎲 Собирают {Name(g)}\nВы отмечали эту игру как «Хочу сыграть».",
+            g.CommunityKey, g.PublicId, ct);
+    }
+
     public async Task NotifyTimeChangedAsync(Guid id, CancellationToken ct)
     {
         var g = await Load(id, ct); if (g is null) return;

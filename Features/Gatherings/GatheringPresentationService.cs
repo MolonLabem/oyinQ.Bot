@@ -22,7 +22,7 @@ public sealed record GatheringCardPresentation(
     string StatusText,
     string? TypeName,
     long? BggId,
-    string? BggUrl);
+    string? BggUrl, RecruitmentState? Recruitment = null);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -41,7 +41,7 @@ public sealed record GatheringDetailPresentation(
     IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames,
     long? BggId,
-    string? BggUrl);
+    string? BggUrl, RecruitmentState? Recruitment = null);
 
 public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
 public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
@@ -72,7 +72,7 @@ public sealed class GatheringPresentationService
             StatusText(gathering.Status),
             metadata.TypeNames.FirstOrDefault(),
             game.BggId,
-            BggGameUrl.FromId(game.BggId));
+            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering));
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
@@ -96,7 +96,7 @@ public sealed class GatheringPresentationService
             metadata.CategoryNames,
             metadata.MechanicNames,
             game.BggId,
-            BggGameUrl.FromId(game.BggId));
+            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering));
     }
 
     public GatheringAnnouncement BuildTelegramAnnouncement(

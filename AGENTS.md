@@ -14,6 +14,18 @@
 
 ## Architecture
 
+### Wishlist and recruitment
+
+- `GameWish` is interest in one canonical base-game BGG ID, unique by community binding / participant / BGG ID. Camp wishes stay with that Camp's binding. `GameWishService` alone mutates wishes; it accepts server-owned catalog metadata or typed BGG base-game details and stores a versioned snapshot through `ClubCollectionSerializer`. Wishes never imply personal ownership, available expansions, or `Bringing`, and joining never removes a wish.
+- `GameCatalogService` merges only the requesting participant's wishes into the effective catalog without availability/ownership flags. Creation uses that same projection, including saved Camp wishes during provider outages. Personal expansion selections retain their classification and cannot become wishes. Profile's three existing tabs remain; scoped wishes appear inside «Моя коллекция» when a community is selected, while global ownership remains accessible without one.
+- Creation queues `WishlistGathering` intents inside its transaction, once per gathering/recipient. Edits, digests and scheduled work never plan these intents. The existing notification policy owns the enabled-by-default preference; dispatch rechecks the current wish, community, upcoming gathering and signup before delivery. Suppressed/delivered/unknown wishlist notices are never automatically revived.
+- A gathering without a box remains the same `GameGathering`. `GameProviderService` is its dynamic availability authority; no wishful status, conversion, replacement gathering or parallel provider model exists. A later day-eligible `Bringing` contribution changes the next projection without altering the gathering or publication identity.
+- `GatheringRecruitment` owns occupancy-based recruitment text, priority and trigger eligibility, reusing `GatheringCapacity` including guests and excluding waitlists. Only an organizer of an open, below-desired gathering in the next 36 hours can request a digest. Closed-to-signups gatherings are not recruitment candidates. Digests rank all relevant gatherings in the same community, show seven and link to the rest.
+- `RecruitmentDigestService` reserves a persistent community cooldown under `CommunityMutationLock`. The setting defaults to four hours and administrators may change it to 1–24 hours through canonical scoped authorization. An active-request unique index and a leased outbox protect multiple instances. The interval is reserved on acceptance and starts anew at the send boundary; definitive failure releases it for an explicit retry, while ambiguous delivery preserves it.
+- `RecruitmentDigestWorker` only delivers explicitly requested work; it never schedules daily digests. Preparation uses a replaceable attempt token; the original token must be claimed again before sending. Refresh changed contents before the boundary, use runtime Mini App links and `ITelegramGroupMessageSender` for destinations, and never automatically resend an ambiguous send. Organizer details expose the community's latest delivery state.
+
+Implementation choices, verification and manual scenarios: `docs/wishlist-recruitment.md`.
+
 OyinQ is one ASP.NET Core .NET 10 application, one React Telegram Mini App, and one Telegram bot serving multiple PostgreSQL-backed communities. `BotMode` has exactly `Club` and `Camp`. Never branch on hard-coded chat IDs or duplicate identity, integrations, collections, or gathering stacks per mode.
 
 Canonical rule ownership:

@@ -49,10 +49,10 @@ public sealed class GatheringGameSelectionService(
         string communityKey,
         long bggId,
         IReadOnlyCollection<long> selectedExpansionIds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, long telegramUserId = 0)
     {
-        var effective = (await (campCatalog ?? throw new InvalidOperationException("Каталог кэмпа недоступен."))
-                .LoadAsync(communityKey, null, cancellationToken))
+        var effective = (await new GameCatalogService(dbContext, campCatalog!)
+                .LoadAsync(communityKey, Common.Options.BotMode.Camp, telegramUserId, cancellationToken))
             .SingleOrDefault(x => x.Game.BggId == bggId)
             ?? throw new KeyNotFoundException("Игра не найдена в каталоге этого кэмпа.");
         return await FromSavedGameAsync(effective.Game, selectedExpansionIds, cancellationToken);

@@ -47,6 +47,7 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             var prefs = await db.NotificationPreferences.AsNoTracking().SingleOrDefaultAsync(x => x.ParticipantId == row.ParticipantId, ct)
                 ?? new NotificationPreferences();
             if (!NotificationPolicy.Allows(row.Kind, prefs)) row.State = NotificationState.SuppressedByPreference;
+            else if (row.Kind == NotificationKind.WishlistGathering && !await PrepareWishlistAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.WaitlistPromotion && !await PromotionStillValidAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.Reminder && !await PrepareReminderAsync(row, prefs, now, ct)) { }
             else if (row.Kind == NotificationKind.OrganizerMissingProvider && !await ProviderStillNeeded(row, now, ct)) row.State = NotificationState.Expired;
@@ -71,6 +72,24 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             ? time.GetUtcNow().AddMinutes(Math.Pow(2, row.AttemptCount)) : DateTimeOffset.MaxValue; }
         // Keep the observed response durable even if the HTTP request that initiated work was cancelled.
         await db.SaveChangesAsync(CancellationToken.None);
+        return true;
+    }
+
+    private async Task<bool> PrepareWishlistAsync(Notification row, DateTimeOffset now, CancellationToken ct)
+    {
+        var g = await db.GameGatherings.AsNoTracking().Include(x => x.Participants).Include(x => x.Guests)
+            .Include(x => x.Community).SingleOrDefaultAsync(x => x.PublicId == row.GatheringPublicId
+                && x.CommunityKey == row.CommunityKey, ct);
+        if (g is null || !g.Community.IsActive || g.Community.DeletedAt is not null
+            || !GatheringLifecycle.IsUpcoming(g, now) || g.OrganizerParticipantId == row.ParticipantId
+            || g.Participants.Any(x => x.ParticipantId == row.ParticipantId
+                && x.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted)) return false;
+        var game = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson);
+        if (!await db.GameWishes.AnyAsync(x => x.CommunityKey == g.CommunityKey && x.ParticipantId == row.ParticipantId
+            && x.BggId == game.BggId, ct)) return false;
+        row.Text = $"🎲 Собирают {game.Name}\n\nВы отмечали эту игру как «Хочу сыграть».\n"
+            + GatheringPresentationService.FormatLocalDateTime(g.StartsAtUtc, g.Community.TimeZoneId)
+            + $" · сейчас {GatheringCapacity.OccupiedSeats(g)}/{g.MaximumPlayers} игроков";
         return true;
     }
 

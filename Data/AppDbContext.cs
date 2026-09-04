@@ -6,6 +6,8 @@ namespace oyinQ.Bot.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<GameWish> GameWishes => Set<GameWish>();
+    public DbSet<RecruitmentDigest> RecruitmentDigests => Set<RecruitmentDigest>();
     public DbSet<ReleaseAnnouncement> ReleaseAnnouncements => Set<ReleaseAnnouncement>();
     public DbSet<ReleaseAnnouncementDelivery> ReleaseAnnouncementDeliveries => Set<ReleaseAnnouncementDelivery>();
     public DbSet<GatheringExternalPlayReference> GatheringExternalPlayReferences => Set<GatheringExternalPlayReference>();
@@ -36,6 +38,24 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<GameWish>(b =>
+        {
+            b.HasKey(x => new { x.CommunityKey, x.ParticipantId, x.BggId });
+            b.HasIndex(x => new { x.CommunityKey, x.BggId });
+            b.Property(x => x.SnapshotJson).HasColumnType("jsonb");
+            b.HasOne(x => x.Community).WithMany().HasForeignKey(x => x.CommunityKey).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+            b.ToTable(t => t.HasCheckConstraint("CK_GameWish_BggId", "\"BggId\" > 0"));
+        });
+        modelBuilder.Entity<RecruitmentDigest>(b =>
+        {
+            b.HasKey(x => x.Id);
+            b.HasIndex(x => new { x.State, x.RequestedAt });
+            b.HasIndex(x => x.CommunityKey).IsUnique().HasFilter("\"State\" IN (0, 1, 2)");
+            b.HasOne(x => x.Community).WithMany().HasForeignKey(x => x.CommunityKey).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<OyinQCommunity>().Property(x => x.RecruitmentCooldownHours).HasDefaultValue(4);
+        modelBuilder.Entity<OyinQCommunity>().ToTable(t => t.HasCheckConstraint("CK_Community_RecruitmentCooldown", "\"RecruitmentCooldownHours\" BETWEEN 1 AND 24"));
         modelBuilder.Entity<ReleaseAnnouncement>(b =>
         {
             b.HasKey(x => x.Id); b.Property(x => x.Id).HasMaxLength(64); b.Property(x => x.Text).HasMaxLength(3500);

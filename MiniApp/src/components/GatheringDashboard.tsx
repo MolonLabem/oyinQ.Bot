@@ -2,9 +2,9 @@ import { useState } from "react";
 import { api, json } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { Card, Empty, ErrorState, Loading, Notice } from "./Ui";
-import type { GameProvider } from "../api/types";
+import type { GameProvider, RecruitmentState } from "../api/types";
 
-type DashboardItem = { publicId: string; communityKey: string; community: string; gameName: string; localDateTime: string; isOrganizer: boolean; isToday: boolean; waitlistPosition?: number; belowMinimum: boolean; fullWithWaitlist: boolean; startingSoon: boolean; recentlyCancelled: boolean; publicationFailed: boolean; deliveryProblems: number; notificationUnavailableParticipants: number; provider: GameProvider };
+type DashboardItem = { recruitment?: RecruitmentState; publicId: string; communityKey: string; community: string; gameName: string; localDateTime: string; isOrganizer: boolean; isToday: boolean; waitlistPosition?: number; belowMinimum: boolean; fullWithWaitlist: boolean; startingSoon: boolean; recentlyCancelled: boolean; publicationFailed: boolean; deliveryProblems: number; notificationUnavailableParticipants: number; provider: GameProvider };
 type Dashboard = { items: DashboardItem[]; hasMore: boolean; camp?: { registeredToday: number; gatheringsToday: number; bringingGames: number; availableGames: number } };
 
 export function GatheringDashboard({ communityKey, organizer = false, open }: { communityKey: string; organizer?: boolean; open: (key: string, id: string) => void }) {
@@ -24,7 +24,7 @@ export function GatheringDashboard({ communityKey, organizer = false, open }: { 
       <button className="ghost" onClick={() => open(item.communityKey, item.publicId)}><strong>{item.gameName}</strong><br />{item.localDateTime} · {item.community}</button>
       <p>{item.isToday ? "Сегодня · " : ""}{item.isOrganizer ? "Вы организатор" : item.waitlistPosition ? `Лист ожидания: ${item.waitlistPosition}` : ""}{item.startingSoon ? " · В ближайшие два часа" : ""}</p>
       {item.recentlyCancelled ? <Notice>Недавно отменён</Notice> : <>
-        {organizer && item.belowMinimum && <Notice kind="warning">Игроков меньше минимума</Notice>}
+        {organizer && item.recruitment && <Notice kind={item.belowMinimum ? "warning" : "info"}>{item.recruitment.text}</Notice>}
         {organizer && item.fullWithWaitlist && <Notice>Места заняты, есть лист ожидания</Notice>}
         {!item.provider.isConfirmed && <Notice kind="warning">{item.provider.summary}</Notice>}
         {item.provider.canBring && <button disabled={busy} onClick={() => bring(item)}>Я привезу</button>}

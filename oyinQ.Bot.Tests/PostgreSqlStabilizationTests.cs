@@ -28,7 +28,7 @@ public sealed class PostgreSqlFactAttribute : FactAttribute
     }
 }
 
-public sealed class PostgreSqlStabilizationTests
+public sealed partial class PostgreSqlStabilizationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 4, 10, 0, 0, TimeSpan.Zero);
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }

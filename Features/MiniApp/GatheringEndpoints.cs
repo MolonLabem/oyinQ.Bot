@@ -85,7 +85,7 @@ internal static class GatheringEndpoints
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
-        TimeProvider timeProvider, PrivateChatCapability privateChat, GameProviderService providers,
+        TimeProvider timeProvider, PrivateChatCapability privateChat, GameProviderService providers, RecruitmentDigestService recruitment,
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
@@ -120,6 +120,8 @@ internal static class GatheringEndpoints
             StartUrl = startUrl,
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanEdit = canManage,
+            CanRequestRecruitment = GatheringRecruitment.CanRequest(gathering, participant.Id, now),
+            RecruitmentDelivery = manages ? await recruitment.LatestStatusAsync(community, cancellationToken) : null,
             CanClose = GatheringAccessPolicy.CanClose(gathering, manages, now),
             CanReopen = GatheringAccessPolicy.CanReopen(gathering, manages, now),
             CanCancel = GatheringAccessPolicy.CanCancel(gathering, manages, now),

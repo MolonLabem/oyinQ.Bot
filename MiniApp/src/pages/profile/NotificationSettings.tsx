@@ -4,9 +4,10 @@ import { Card, Field, Loading, Notice, ErrorState } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 
-type Settings = { gatheringFull: boolean; gatheringDetailsChanged: boolean; organizerParticipantLeft: boolean;
+type Settings = { wishlistGathering: boolean; gatheringFull: boolean; gatheringDetailsChanged: boolean; organizerParticipantLeft: boolean;
   organizerReplacement: boolean; organizerBelowMinimum: boolean; organizerMissingProvider: boolean; importCompleted: boolean; reminderLeadMinutes: number };
 const labels: [Exclude<keyof Settings, "reminderLeadMinutes">, string][] = [
+  ["wishlistGathering", "Уведомлять, когда собирают игры из моих хотелок"],
   ["gatheringFull", "Сбор полностью набран"], ["gatheringDetailsChanged", "Изменились описание или условия сбора"],
   ["organizerParticipantLeft", "Участник вышел из моего сбора"], ["organizerReplacement", "Освободившееся место занял человек из листа ожидания"],
   ["organizerBelowMinimum", "В моём сборе стало меньше игроков, чем нужно"], ["organizerMissingProvider", "Для моего сбора не подтверждена коробка"],

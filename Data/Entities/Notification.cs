@@ -4,7 +4,7 @@ public enum NotificationKind
 {
     WaitlistPromotion, GatheringTimeChanged, GatheringCancelled, GatheringFailed,
     GatheringDetailsChanged, GatheringFull, OrganizerParticipantLeft, OrganizerReplacement,
-    OrganizerBelowMinimum, OrganizerMissingProvider, ImportCompleted, Reminder, PostingTopicUnavailable
+    OrganizerBelowMinimum, OrganizerMissingProvider, ImportCompleted, Reminder, PostingTopicUnavailable, WishlistGathering
 }
 public enum NotificationState { Pending, Delivered, Failed, SuppressedByPreference, CannotMessageUser, Delivering, DeliveryUnknown, Expired }
 
@@ -34,6 +34,7 @@ public sealed class NotificationPreferences
 {
     public long ParticipantId { get; set; }
     public Participant Participant { get; set; } = null!;
+    public bool WishlistGathering { get; set; } = true;
     public bool GatheringFull { get; set; }
     public bool GatheringDetailsChanged { get; set; } = true;
     public bool OrganizerParticipantLeft { get; set; } = true;

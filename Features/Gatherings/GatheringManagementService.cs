@@ -43,7 +43,7 @@ public sealed class GatheringManagementService(
                 ? await gameSelection.FromClubCollectionAsync(community.Key, command.BggId,
                     command.SelectedExpansionIds, cancellationToken, identity.TelegramUserId)
                 : await gameSelection.FromCampCatalogAsync(community.Key, command.BggId,
-                    command.SelectedExpansionIds, cancellationToken);
+                    command.SelectedExpansionIds, cancellationToken, identity.TelegramUserId);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var authoritative = await CommunityMutationLock.AcquireAsync(dbContext, community.Key, cancellationToken);
         if (!authoritative.IsActive || authoritative.DeletedAt is not null || authoritative.Mode != community.Mode)
@@ -74,6 +74,7 @@ public sealed class GatheringManagementService(
         }
         dbContext.GameGatherings.Add(gathering);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notifications.NotifyWishlistAsync(gathering, cancellationToken);
         await notifications.NotifyFullAsync(gathering.PublicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return gathering;

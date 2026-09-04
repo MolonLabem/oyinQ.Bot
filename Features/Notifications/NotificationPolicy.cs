@@ -12,6 +12,7 @@ public static class NotificationPolicy
         or NotificationKind.GatheringTimeChanged or NotificationKind.GatheringCancelled or NotificationKind.GatheringFailed or NotificationKind.PostingTopicUnavailable;
     public static bool Allows(NotificationKind kind, NotificationPreferences preferences) => IsEssential(kind) || kind switch
     {
+        NotificationKind.WishlistGathering => preferences.WishlistGathering,
         NotificationKind.GatheringFull => preferences.GatheringFull,
         NotificationKind.GatheringDetailsChanged => preferences.GatheringDetailsChanged,
         NotificationKind.OrganizerParticipantLeft => preferences.OrganizerParticipantLeft,

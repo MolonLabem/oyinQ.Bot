@@ -1,6 +1,7 @@
 import { ReleaseAnnouncementPage } from "./ReleaseAnnouncementPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
+import { RecruitmentSettings } from "./RecruitmentSettings";
 import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
 import { Badge, BggAttribution, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
@@ -418,6 +419,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
         </button>
       </Card>
       <PostingTopicSetting communityKey={club.communityKey} />
+      <RecruitmentSettings communityKey={club.communityKey} />
       <Card className="form-grid">
         <h2>Скопировать коллекцию</h2>
         <Notice>Коллекция выбранного клуба полностью заменит текущую. Сборы, уже созданные из старой коллекции, сохранят свои снимки игр.</Notice>
@@ -510,6 +512,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
         </button>
       </Card>
       <PostingTopicSetting communityKey={camp.communityKey} />
+      <RecruitmentSettings communityKey={camp.communityKey} />
       <Card className="form-grid">
         <h2>Базовая коллекция</h2>
         {camp.status !== "Draft" ? (

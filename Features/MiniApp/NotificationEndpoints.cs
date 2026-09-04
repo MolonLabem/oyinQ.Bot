@@ -7,7 +7,7 @@ namespace oyinQ.Bot.Features.MiniApp;
 
 internal sealed record NotificationSettings(bool GatheringFull = false, bool GatheringDetailsChanged = true,
     bool OrganizerParticipantLeft = true, bool OrganizerReplacement = true, bool OrganizerBelowMinimum = true,
-    bool OrganizerMissingProvider = false, bool ImportCompleted = true, int ReminderLeadMinutes = 0);
+    bool OrganizerMissingProvider = false, bool ImportCompleted = true, int ReminderLeadMinutes = 0, bool WishlistGathering = true);
 
 internal static class NotificationEndpoints
 {
@@ -26,7 +26,7 @@ internal static class NotificationEndpoints
         var id = await Owner(request, auth, db, ct);
         var p = await db.NotificationPreferences.AsNoTracking().SingleOrDefaultAsync(x => x.ParticipantId == id, ct) ?? new();
         return Results.Ok(new NotificationSettings(p.GatheringFull, p.GatheringDetailsChanged, p.OrganizerParticipantLeft,
-            p.OrganizerReplacement, p.OrganizerBelowMinimum, p.OrganizerMissingProvider, p.ImportCompleted, p.ReminderLeadMinutes));
+            p.OrganizerReplacement, p.OrganizerBelowMinimum, p.OrganizerMissingProvider, p.ImportCompleted, p.ReminderLeadMinutes, p.WishlistGathering));
     }
     private static async Task<IResult> SaveAsync(HttpRequest request, NotificationSettings body, TelegramMiniAppAuthenticator auth, AppDbContext db, CancellationToken ct)
     {
@@ -37,6 +37,7 @@ internal static class NotificationEndpoints
             $"""SELECT * FROM "Participants" WHERE "Id" = {id} FOR UPDATE""").SingleAsync(ct);
         var p = await db.NotificationPreferences.SingleOrDefaultAsync(x => x.ParticipantId == id, ct);
         if (p is null) { p = new() { ParticipantId = id }; db.NotificationPreferences.Add(p); }
+        p.WishlistGathering = body.WishlistGathering;
         p.GatheringFull = body.GatheringFull; p.GatheringDetailsChanged = body.GatheringDetailsChanged;
         p.OrganizerParticipantLeft = body.OrganizerParticipantLeft; p.OrganizerReplacement = body.OrganizerReplacement;
         p.OrganizerBelowMinimum = body.OrganizerBelowMinimum; p.OrganizerMissingProvider = body.OrganizerMissingProvider;
