@@ -6,8 +6,10 @@ using oyinQ.Bot.Integrations.Telegram;
 namespace oyinQ.Bot.Features.Gatherings;
 
 public sealed record PlayPlayerChoice(Guid Id, string Name, long? ParticipantId);
+public sealed record PlayPlayerResult(Guid PlayerId, decimal? Score, bool IsWinner);
 public sealed record RecordPlayCommand(bool WasPlayed, DateTimeOffset? EndedAtUtc, int? DurationMinutes,
-    IReadOnlyCollection<Guid> PlayerIds, IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision);
+    IReadOnlyCollection<PlayPlayerResult> Players, IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision,
+    bool HigherScoreWins = true, string? Location = null);
 
 public sealed class GatheringPlayConflictException(string message) : InvalidOperationException(message);
 
@@ -46,7 +48,7 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         if (g.OrganizerParticipantId != participantId)
             throw new UnauthorizedAccessException("Исход и состав партии подтверждает организатор сбора.");
         if (g.StartsAtUtc > clock.GetUtcNow()) throw new InvalidOperationException("Сбор ещё не начался.");
-        if (command.PlayerIds is null || command.ExpansionIds is null) throw new ArgumentException("Укажите игроков и дополнения партии.");
+        if (command.Players is null || command.ExpansionIds is null) throw new ArgumentException("Укажите игроков и дополнения партии.");
         var now = clock.GetUtcNow();
         var record = await db.GatheringPlayRecords.Include(x => x.Players).SingleOrDefaultAsync(x => x.GatheringId == g.Id, ct);
         if (g.OutcomeRevision != command.ExpectedRevision) throw new GatheringPlayConflictException("Запись уже изменена. Обновите страницу перед сохранением.");
@@ -65,8 +67,16 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         if (command.WasPlayed && (command.EndedAtUtc is null || command.EndedAtUtc < g.StartsAtUtc || command.EndedAtUtc > now))
             throw new ArgumentException("Укажите фактическое время окончания: после начала сбора и не в будущем.");
         if (command.DurationMinutes is <= 0 or > 10080) throw new ArgumentException("Продолжительность должна быть от 1 до 10080 минут.");
-        var players = PlayerChoices(g).Where(x => command.PlayerIds.Contains(x.Id)).ToArray();
-        if (command.WasPlayed && (players.Length == 0 || command.PlayerIds.Distinct().Count() != players.Length))
+        var location = command.Location?.Trim() ?? g.Community.Name.Trim();
+        if (command.WasPlayed && (location.Length == 0 || location.Length > GatheringPlayRecord.MaxLocationLength))
+            throw new ArgumentException($"Укажите место партии длиной до {GatheringPlayRecord.MaxLocationLength} символов.");
+        if (command.Players.Select(x => x.PlayerId).Distinct().Count() != command.Players.Count)
+            throw new ArgumentException("Каждый фактический игрок должен быть указан один раз.");
+        var results = command.Players.ToDictionary(x => x.PlayerId);
+        if (results.Values.Any(x => x.Score is < -99999999999999.9999m or > 99999999999999.9999m))
+            throw new ArgumentException("Счёт игрока выходит за допустимый диапазон.");
+        var players = PlayerChoices(g).Where(x => results.ContainsKey(x.Id)).ToArray();
+        if (command.WasPlayed && (players.Length == 0 || results.Count != players.Length))
             throw new ArgumentException("Выберите фактических игроков из состава сбора.");
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson);
         var selectedExpansions = GatheringExpansionSelection.Select(snapshot.SelectedExpansions, command.ExpansionIds);
@@ -80,6 +90,8 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         record.WasPlayed = command.WasPlayed;
         record.EndedAtUtc = command.WasPlayed ? command.EndedAtUtc?.ToUniversalTime() : null;
         record.DurationMinutes = command.WasPlayed ? command.DurationMinutes : null;
+        record.Location = command.WasPlayed ? location : string.Empty;
+        record.HigherScoreWins = command.HigherScoreWins;
 
         record.UpdatedAt = now;
         g.ConfirmedWasPlayed = true;
@@ -89,7 +101,13 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         record.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
         { SelectedExpansions = selectedExpansions });
         if (command.WasPlayed) foreach (var p in players)
-            record.Players.Add(new() { SourcePlayerId = p.Id, ParticipantId = p.ParticipantId, DisplayName = p.Name });
+        {
+            var result = results[p.Id];
+            record.Players.Add(new() { SourcePlayerId = p.Id, ParticipantId = p.ParticipantId,
+                DisplayName = p.Name,
+                Score = result.Score is { } score ? decimal.Round(score, 4, MidpointRounding.AwayFromZero) : null,
+                IsWinner = result.IsWinner });
+        }
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return record;

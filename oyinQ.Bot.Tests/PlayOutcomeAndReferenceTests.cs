@@ -30,8 +30,13 @@ public sealed class PlayOutcomeAndReferenceTests
         g.Participants.Add(new() { Participant = excluded, Status = GatheringParticipationStatus.Confirmed });
         await f.Db.SaveChangesAsync();
         var play = await new GatheringPlayService(f.Db, f.Clock).SaveAsync(g.PublicId, "club", f.Me.Id,
-            new(true, f.Clock.Now, null, [f.Me.PublicId, f.Other.PublicId], [], 0), default);
+            new(true, f.Clock.Now, null, [new(f.Me.PublicId, 52, true), new(f.Other.PublicId, 41, false)], [], 0,
+                HigherScoreWins: true, Location: "  Игровая комната  "), default);
         Assert.True(play!.WasPlayed);
+        Assert.Equal("Игровая комната", play.Location);
+        Assert.True(play.HigherScoreWins);
+        Assert.Equal(52, play.Players.Single(x => x.SourcePlayerId == f.Me.PublicId).Score);
+        Assert.True(play.Players.Single(x => x.SourcePlayerId == f.Me.PublicId).IsWinner);
         var service = new ExternalPlayReferenceService(f.Db, f.Clock);
         await service.AddAsync(g.PublicId, "club", f.Other.Id, " https://APP.BGSTATSAPP.COM/play/1 ", default);
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddAsync(g.PublicId, "club", f.Me.Id, "https://app.bgstatsapp.com/play/1", default));

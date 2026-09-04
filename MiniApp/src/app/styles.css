@@ -154,6 +154,41 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .planning-dashboard { display: grid; gap: 12px; margin-block: 14px 22px; min-width: 0; }
 .planning-dashboard .card, .planning-dashboard button, .play-record-form, .play-record-form > * { min-width: 0; overflow-wrap: anywhere; }
 .play-record-form input, .play-record-form fieldset { min-width: 0; max-width: 100%; }
+.play-results { display: grid; gap: 8px; }
+.play-results > small { margin: -2px 0 4px; color: var(--muted); }
+.play-player-result { padding: 4px 10px; border: 1px solid transparent; border-radius: 12px; }
+.play-player-result.selected { border-color: var(--separator); background: color-mix(in srgb, var(--bg) 48%, var(--surface)); }
+.play-player-name { font-weight: 650; }
+.play-result-fields { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, .65fr); align-items: end; gap: 10px; padding: 2px 0 8px 31px; }
+.winner-check { color: var(--text); }
+.play-score { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
+.play-score input { min-height: 40px; }
+.bgstats-export, .bgstats-references { display: grid; gap: 10px; padding-top: 16px; margin-top: 12px; border-top: 1px solid var(--separator); }
+.bgstats-export h3, .bgstats-references h3, .bgstats-export p, .bgstats-reference p { margin: 0; }
+.bgstats-open-link { width: 100%; margin-top: 0; }
+.bgstats-export > input { width: 100%; color: var(--muted); font-size: .8rem; }
+.bgstats-reference { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--separator); }
+.bgstats-reference button { min-height: 38px; padding-block: 6px; }
+@media (max-width: 390px) {
+  .play-result-fields { grid-template-columns: 1fr; }
+  .bgstats-reference { grid-template-columns: minmax(0, 1fr) auto; }
+  .bgstats-reference p { grid-column: 1 / -1; }
+}
+.play-results { display: grid; gap: 8px; }
+.play-results > small { margin: -2px 0 4px; color: var(--muted); }
+.play-player-result { padding: 4px 10px; border: 1px solid transparent; border-radius: 12px; }
+.play-player-result.selected { border-color: var(--separator); background: color-mix(in srgb, var(--bg) 48%, var(--surface)); }
+.play-player-name { font-weight: 650; }
+.play-result-fields { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, .65fr); align-items: end; gap: 10px; padding: 2px 0 8px 31px; }
+.winner-check { color: var(--text); }
+.play-score { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
+.play-score input { min-height: 40px; }
+.bgstats-export, .bgstats-references { display: grid; gap: 10px; padding-top: 16px; margin-top: 12px; border-top: 1px solid var(--separator); }
+.bgstats-export h3, .bgstats-references h3, .bgstats-export p, .bgstats-reference p { margin: 0; }
+.bgstats-open-link { width: 100%; margin-top: 0; }
+.bgstats-export > input { width: 100%; color: var(--muted); font-size: .8rem; }
+.bgstats-reference { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--separator); }
+.bgstats-reference button { min-height: 38px; padding-block: 6px; }
 
 .release-preview { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .changelog-content { overflow-wrap: anywhere; line-height: 1.6; }

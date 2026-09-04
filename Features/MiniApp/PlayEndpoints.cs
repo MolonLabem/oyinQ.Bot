@@ -6,9 +6,10 @@ using oyinQ.Bot.Features.Gatherings;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
+internal sealed record SavePlayPlayerRequest(Guid PlayerId, decimal? Score, bool IsWinner);
 internal sealed record SavePlayRequest(string CommunityKey, bool WasPlayed, string? EndedAtLocal,
-    int? DurationMinutes, IReadOnlyCollection<Guid> PlayerIds, IReadOnlyCollection<long> ExpansionIds,
-    int ExpectedRevision);
+    int? DurationMinutes, IReadOnlyCollection<Guid>? PlayerIds, IReadOnlyCollection<SavePlayPlayerRequest>? PlayerResults,
+    IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision, bool? HigherScoreWins, string? Location);
 
 internal static class PlayEndpoints
 {
@@ -40,6 +41,7 @@ internal static class PlayEndpoints
             return Results.Ok(new
             {
                 Revision = g.OutcomeRevision, WasPlayed = g.ConfirmedWasPlayed, record?.EndedAtUtc, record?.DurationMinutes,
+                Location = string.IsNullOrWhiteSpace(record?.Location) ? g.Community.Name : record.Location,
                 CanEdit = g.OrganizerParticipantId == p.Id,
                 CanShare = canShare,
                 References = record is null ? [] :
@@ -49,7 +51,12 @@ internal static class PlayEndpoints
                     .OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.Url,
                         Author = x.AddedByParticipant.PreferredDisplayName ?? x.AddedByParticipant.DisplayName,
                         CanRemove = ExternalPlayReferenceService.CanRemove(x, g.OrganizerParticipantId, p.Id) }).ToArray(),
-                Players = GatheringPlayService.PlayerChoices(g).Select(x => new { x.Id, x.Name }),
+                HigherScoreWins = record?.HigherScoreWins ?? true,
+                Players = GatheringPlayService.PlayerChoices(g).Select(x =>
+                {
+                    var saved = record?.Players.SingleOrDefault(p => p.SourcePlayerId == x.Id);
+                    return new { x.Id, x.Name, saved?.Score, IsWinner = saved?.IsWinner ?? false };
+                }),
                 SelectedPlayerIds = record?.Players.Select(x => x.SourcePlayerId).ToArray() ?? GatheringPlayService.SuggestedPlayerIds(g),
                 Expansions = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson).SelectedExpansions,
                 SelectedExpansionIds = record is null ? null : GatheringGameSnapshotSerializer.Deserialize(record.GameSnapshotJson).SelectedExpansions.Select(x => x.BggId).ToArray()
@@ -67,8 +74,12 @@ internal static class PlayEndpoints
         {
             var p = await db.Participants.SingleAsync(x => x.TelegramUserId == access.Identity.TelegramUserId, ct);
             var end = body.WasPlayed ? CommunityTime.ParseLocal(body.EndedAtLocal ?? "", access.Community.TimeZoneId) : (DateTimeOffset?)null;
+            var playerResults = body.PlayerResults?.Select(x => new PlayPlayerResult(x.PlayerId, x.Score, x.IsWinner)).ToArray()
+                ?? body.PlayerIds?.Select(x => new PlayPlayerResult(x, null, false)).ToArray()
+                ?? [];
             var result = await service.SaveAsync(id, body.CommunityKey, p.Id, new(body.WasPlayed, end,
-                body.DurationMinutes, body.PlayerIds, body.ExpansionIds, body.ExpectedRevision), ct);
+                body.DurationMinutes, playerResults, body.ExpansionIds, body.ExpectedRevision,
+                body.HigherScoreWins ?? true, body.Location), ct);
             return Results.Ok(new { result?.PublicId });
         }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }

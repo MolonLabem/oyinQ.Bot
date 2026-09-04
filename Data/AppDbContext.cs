@@ -80,6 +80,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             b.HasIndex(x => x.PublicId).IsUnique();
             b.HasIndex(x => x.GatheringId).IsUnique();
             b.Property(x => x.GameSnapshotJson).HasColumnType("jsonb");
+            b.Property(x => x.Location).HasMaxLength(GatheringPlayRecord.MaxLocationLength);
+            b.Property(x => x.HigherScoreWins).HasDefaultValue(true);
             // Retained only as a legacy audit column; new links have authors and their own rows.
             b.Property<string>("ExternalUrl").HasMaxLength(2048);
             b.HasOne(x => x.Gathering).WithOne().HasForeignKey<GatheringPlayRecord>(x => x.GatheringId).OnDelete(DeleteBehavior.Restrict);
@@ -100,6 +102,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             b.HasKey(x => x.Id);
             b.HasIndex(x => new { x.PlayRecordId, x.SourcePlayerId }).IsUnique();
             b.Property(x => x.DisplayName).HasMaxLength(128);
+            b.Property(x => x.Score).HasPrecision(18, 4);
             b.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
         });
 

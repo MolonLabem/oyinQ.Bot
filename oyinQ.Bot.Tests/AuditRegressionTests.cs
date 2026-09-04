@@ -30,11 +30,13 @@ public sealed class AuditRegressionTests
         g.Participants.Add(new() { Participant = f.Other, Status = GatheringParticipationStatus.Confirmed });
         await f.Db.SaveChangesAsync();
         var plays = new GatheringPlayService(f.Db, f.Clock);
-        await plays.SaveAsync(g.PublicId, "club", f.Me.Id, new(true, f.Clock.Now, null, [f.Me.PublicId, f.Other.PublicId], [], 0), default);
+        await plays.SaveAsync(g.PublicId, "club", f.Me.Id, new(true, f.Clock.Now, null,
+            [new(f.Me.PublicId, null, true), new(f.Other.PublicId, null, false)], [], 0), default);
         var references = new ExternalPlayReferenceService(f.Db, f.Clock);
         await references.AddAsync(g.PublicId, "club", f.Other.Id, "https://app.bgstatsapp.com/play/1", default);
         var reference = await f.Db.GatheringExternalPlayReferences.SingleAsync();
-        await plays.SaveAsync(g.PublicId, "club", f.Me.Id, new(true, f.Clock.Now, null, [f.Me.PublicId], [], 1), default);
+        await plays.SaveAsync(g.PublicId, "club", f.Me.Id, new(true, f.Clock.Now, null,
+            [new(f.Me.PublicId, null, true)], [], 1), default);
         await references.RemoveAsync(g.PublicId, "club", f.Other.Id, reference.Id, default);
         Assert.Empty(f.Db.GatheringExternalPlayReferences);
     }

@@ -108,7 +108,8 @@ public sealed class PlanningFeatureTests
         await f.Db.SaveChangesAsync();
         Assert.Empty(f.Db.GatheringPlayRecords);
         var service = new GatheringPlayService(f.Db, f.Clock);
-        var command = new RecordPlayCommand(true, f.Clock.Now.AddMinutes(-10), 120, [f.Me.PublicId], [], 0);
+        var command = new RecordPlayCommand(true, f.Clock.Now.AddMinutes(-10), 120,
+            [new(f.Me.PublicId, 10, true)], [], 0);
         var record = await service.SaveAsync(g.PublicId, "club", f.Me.Id, command, default);
         var originalSnapshot = g.GameSnapshotJson;
         Assert.Equal(f.Me.Id, Assert.Single(record!.Players).ParticipantId);
@@ -127,7 +128,8 @@ public sealed class PlanningFeatureTests
         await using var f = new PlanningFixture(); var g = f.Gathering("club", f.Clock.Now.AddHours(-2));
         await f.Db.SaveChangesAsync();
         var service = new GatheringPlayService(f.Db, f.Clock);
-        var command = new RecordPlayCommand(true, f.Clock.Now, null, [f.Me.PublicId], [], 0);
+        var command = new RecordPlayCommand(true, f.Clock.Now, null,
+            [new(f.Me.PublicId, null, true)], [], 0);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SaveAsync(g.PublicId, "club", f.Me.Id, command, default));
         g.Status = GatheringStatus.Completed; await f.Db.SaveChangesAsync();
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SaveAsync(g.PublicId, "club", f.Other.Id, command, default));
@@ -148,14 +150,19 @@ public sealed class PlanningFeatureTests
     {
         var id = Guid.NewGuid(); var player = Guid.NewGuid();
         var play = new PortablePlay(id, "Игра & Друзья", 42, new DateTimeOffset(2026, 9, 4, 22, 0, 0, TimeSpan.FromHours(5)), "Клуб", 90,
-            [new(player, "Имя & Другое")], [new(77, "Дополнение")]);
+            [new(player, "Имя & Другое", 47.3m, true)], [new(77, "Дополнение")]);
         var link = BgStatsPlayExportAdapter.Build(play);
         Assert.Equal(link, BgStatsPlayExportAdapter.Build(play));
         var data = JsonDocument.Parse(Uri.UnescapeDataString(link.Split("?data=")[1])).RootElement;
         Assert.Equal("2026-09-04 17:00:00", data.GetProperty("playDate").GetString());
         Assert.Equal(id.ToString("N"), data.GetProperty("sourcePlayId").GetString());
         Assert.Equal(player.ToString("N"), data.GetProperty("players")[0].GetProperty("sourcePlayerId").GetString());
+        Assert.True(data.GetProperty("players")[0].GetProperty("winner").GetBoolean());
+        Assert.Equal(47.3m, data.GetProperty("players")[0].GetProperty("score").GetDecimal());
         Assert.Equal("Игра & Друзья", data.GetProperty("game").GetProperty("name").GetString());
+        Assert.True(data.GetProperty("game").GetProperty("highestWins").GetBoolean());
+        Assert.False(data.GetProperty("game").GetProperty("noPoints").GetBoolean());
+        Assert.Equal("Клуб", data.GetProperty("location").GetString());
         Assert.Contains("Дополнение", data.GetProperty("comments").GetString());
         Assert.DoesNotContain("Telegram", data.GetRawText());
     }

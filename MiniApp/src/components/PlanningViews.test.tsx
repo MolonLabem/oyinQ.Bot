@@ -40,6 +40,7 @@ describe("экраны планирования", () => {
   it("не даёт обычному игроку редактировать исход или скачивать файлы", () => {
     mock.data = { revision: 1, canEdit: false, canShare: true, wasPlayed: true, references: [{ id: 1, url: "https://app.bgstatsapp.com/play", author: "Виктор", canRemove: false }], players: [], expansions: [] };
     const markup = renderToStaticMarkup(<PlayPanel community={{ key: "club", name: "Клуб", mode: "Club", timeZoneId: "UTC" }} id="g" />);
-    expect(markup).toContain("Виктор"); expect(markup).toContain("Добавить ссылку BG Stats"); expect(markup).not.toContain("Удалить ссылку"); expect(markup).not.toContain("Сохранить запись"); expect(markup).not.toContain("Скачать");
+    expect(markup).toContain("Виктор"); expect(markup).toContain("Поделиться ссылкой из BG Stats"); expect(markup).not.toContain("Удалить ссылку"); expect(markup).not.toContain("Сохранить запись"); expect(markup).not.toContain("Скачать");
+    expect(markup.indexOf("Создать ссылку для BG Stats")).toBeLessThan(markup.indexOf("Поделиться ссылкой из BG Stats"));
   });
 });
