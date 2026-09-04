@@ -25,7 +25,7 @@ export function GatheringsPage({ community, bggAvailable, initialGatheringId, on
   useEffect(() => telegram.back(screen !== "list", () => { if (screen === "detail" && initialBack) initialBack(); else { setScreen("list"); setSelected(undefined); } }), [screen, initialBack]);
   useEffect(() => { if (initialGatheringId) onInitialConsumed(); }, []);
   if (screen === "create") return <CreateGathering community={community} bggAvailable={bggAvailable} onDone={() => setScreen("list")} editRegistration={editRegistration} />;
-  if (screen === "detail" && selected) return <GatheringDetails community={community} id={selected} onBack={() => { if (initialBack) initialBack(); else setScreen("list"); }} onCancelled={() => { setListState({ scope: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} openCollection={bggId => openCollection(bggId, selected)} />;
+  if (screen === "detail" && selected) return <GatheringDetails key={`${community.key}-${selected}`} community={community} id={selected} onBack={() => { if (initialBack) initialBack(); else setScreen("list"); }} onCancelled={() => { setListState({ scope: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} openCollection={bggId => openCollection(bggId, selected)} />;
   return <GatheringList community={community} listState={listState} setListState={setListState} open={id => { setSelected(id); setScreen("detail"); }} create={() => setScreen("create")} />;
 }
 
@@ -101,7 +101,7 @@ function CreateGathering({ community, bggAvailable, onDone, editRegistration }: 
   </Page>;
 }
 
-function GatheringDetails({ community, id, onBack, onCancelled, editRegistration, openCollection }: { community: Community; id: string; onBack: () => void; onCancelled: () => void; editRegistration: () => void; openCollection: (bggId: number) => void }) {
+export function GatheringDetails({ community, id, onBack, onCancelled, editRegistration, openCollection }: { community: Community; id: string; onBack: () => void; onCancelled: () => void; editRegistration: () => void; openCollection: (bggId: number) => void }) {
   const state = useAsync(() => api<GatheringDetail>(`/gatherings/${id}?community=${encodeURIComponent(community.key)}`), [community.key, id]);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [attendanceRequired, setAttendanceRequired] = useState(false); const [editing, setEditing] = useState(false); const [cancelling, setCancelling] = useState(false); const [cancellationReason, setCancellationReason] = useState("");
   const [recruitmentMessage, setRecruitmentMessage] = useState<string>();
@@ -109,8 +109,9 @@ function GatheringDetails({ community, id, onBack, onCancelled, editRegistration
   const [guestName, setGuestName] = useState(""); const [editingGuestId, setEditingGuestId] = useState<number>(); const [editingGuestName, setEditingGuestName] = useState("");
   async function action(path: string, reason?: string) { setBusy(true); setError(undefined); setAttendanceRequired(false); try { await gatheringMutation(`/gatherings/${id}/${path}`, json("POST", { communityKey: community.key, reason })); telegram.success(({ join: "Вы записались на сбор", leave: "Вы вышли из сбора", close: "Запись закрыта", reopen: "Запись открыта", cancel: "Сбор отменён", "publication/retry": "Объявление опубликовано" } as Record<string, string>)[path] ?? "Изменения сохранены"); setCancelling(false); if (path === "cancel") onCancelled(); else state.reload(); } catch (e) { setAttendanceRequired(e instanceof ApiError && e.code === "camp_attendance_date_required"); setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
   async function guestAction(method: "POST" | "PUT" | "DELETE", guestId?: number, displayName?: string) { setBusy(true); setError(undefined); try { await api(`/gatherings/${id}/guests${guestId ? `/${guestId}` : ""}`, json(method, { communityKey: community.key, displayName })); telegram.success(method === "DELETE" ? "Гость удалён" : guestId ? "Имя гостя изменено" : "Гость добавлен"); setGuestName(""); setEditingGuestId(undefined); setEditingGuestName(""); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
-  if (state.loading) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<button onClick={onBack}>Назад</button>}><ErrorState message={state.error ?? "Сбор не найден"} /></Page>;
+  if (state.loading && !state.data) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<button onClick={onBack}>Назад</button>}><ErrorState message={state.error ?? "Сбор не найден"} /></Page>;
   const value = state.data;
+  const working = busy || state.loading;
   if (editing && value.canEdit) return <EditGathering community={community} id={id} value={value} done={() => { setEditing(false); state.reload(); }} cancel={() => setEditing(false)} />;
   const organizer = value.confirmedParticipants.find(participant => participant.isOrganizer);
   const freeSeats = Math.max(0, value.maximumPlayers - value.gathering.occupiedSeats);
@@ -118,15 +119,9 @@ function GatheringDetails({ community, id, onBack, onCancelled, editRegistration
   const typeNames = value.gathering.typeNames?.length
     ? value.gathering.typeNames
     : value.gathering.typeName ? [value.gathering.typeName] : [];
-  return <Page actions={<button onClick={onBack}>Назад</button>}>
-    <BotStartNotice required={value.botStartRequired} startUrl={value.startUrl} refresh={state.reload} />
-    {community.mode === "Camp" && value.provider && <Card><h2>Коробка</h2><Notice kind={value.provider.isConfirmed ? "success" : "warning"}>{value.provider.summary}</Notice>{value.provider.providers.map(p => <p key={p.participantId}>{p.displayName} — {p.commitment === "Bringing" ? "привезёт" : "может привезти"}</p>)}{value.provider.canBring && !value.hasStarted && <button disabled={busy} onClick={() => action("bring")}>Я привезу</button>}</Card>}
-    {value.gathering.bggId && <WishButton key={value.gathering.bggId} communityKey={community.key} bggId={value.gathering.bggId} />}
-    {value.canRequestRecruitment && <button disabled={busy} onClick={() => void requestRecruitment()}>🔔 Напомнить о сборе</button>}
-    {value.canRequestRecruitment && <p className="muted">В группу придёт одно напоминание обо всех ближайших сборах, которым нужны игроки.</p>}
-    {recruitmentMessage && <Notice>{recruitmentMessage}</Notice>}
-    {value.recruitmentDelivery && <Notice>{value.recruitmentDelivery} <button className="ghost" onClick={state.reload}>Обновить статус</button></Notice>}
-    {value.canRecordPlay && <PlayPanel community={community} id={id} />}
+  const canManage = value.canEdit || value.canClose || value.canReopen || value.canCancel || value.canRequestRecruitment || value.canRetryPublication;
+  return <Page>
+    <div className="gathering-detail-nav"><button className="ghost" onClick={onBack}><span aria-hidden>← </span>Назад</button></div>
     <Card className="gathering-overview">
       <header className="gathering-overview-header">
         <h1>{value.gathering.bggUrl ? <a className="page-title-link" href={value.gathering.bggUrl} target="_blank" rel="noreferrer">{value.gathering.gameName}</a> : value.gathering.gameName}</h1>
@@ -147,28 +142,64 @@ function GatheringDetails({ community, id, onBack, onCancelled, editRegistration
           <p className="gathering-rules">{value.canTeachRules ? "📖 " : "🎯 "}{value.gathering.rulesText}</p>
         </div>
       </div>
+      {(value.canJoin || value.canLeave) && <div className="gathering-participation" aria-label="Участие в сборе">
+        {value.canJoin && <button className="primary" disabled={working} onClick={() => action("join")}>{busy ? "Сохраняем…" : freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}
+        {value.canLeave && <><p>{value.currentUserStatus === "Waitlisted" ? `Ваша позиция в очереди: ${value.waitlistPosition ?? "—"}` : "Вы записаны на сбор"}</p><button className="ghost" disabled={working} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button></>}
+      </div>}
       {value.gathering.cancellationReason && <Notice>Причина отмены: {value.gathering.cancellationReason}</Notice>}
       {community.mode === "Club" && value.provider && <p className="muted gathering-box-status">Коробка · {value.provider.summary}</p>}
       {value.gathering.expansions.length > 0 && <div className="gathering-expansions"><strong>Дополнения</strong><div className="tag-list">{value.gathering.expansions.map(name => <span className="tag" key={name}>{name}</span>)}</div></div>}
       {value.gathering.description && <section className="gathering-description"><h2>От организатора</h2><div className="gathering-description-scroll">{value.gathering.description}</div></section>}
-      {value.waitlistPosition && <Notice kind="warning">Вы в листе ожидания, позиция {value.waitlistPosition}.</Notice>}
     </Card>
-    {value.publicationStatus === "Failed" && <Notice kind="danger"><p>Сбор сохранён, но объявление в Telegram не удалось опубликовать или обновить. Сообщение может показывать прежние данные.</p>{value.canRetryPublication && <button disabled={busy} onClick={() => action("publication/retry")}>Повторить обновление объявления</button>}</Notice>}
-    {value.hasStarted && <Notice>Время сбора наступило. Запись закрыта автоматически; изменить время или открыть запись снова нельзя.</Notice>}
+    <div className="gathering-feedback">
+    <BotStartNotice required={value.botStartRequired} startUrl={value.startUrl} refresh={state.reload} />
     {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Редактировать регистрацию</button>}</Notice>}
-    <div className="action-bar gathering-detail-actions">{value.canJoin && <button className="primary" disabled={busy} onClick={() => action("join")}>{freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}{value.canLeave && <button className="danger" disabled={busy} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button>}{value.canEdit && <button onClick={() => setEditing(true)}>Изменить сбор</button>}{value.canClose && <button disabled={busy} onClick={() => action("close")}>Закрыть запись</button>}{value.canReopen && <button disabled={busy} onClick={() => action("reopen")}>Открыть запись</button>}{value.canCancel && <button className="danger ghost" onClick={() => setCancelling(true)}>Отменить сбор</button>}</div>
-    {cancelling && <Card className="form-grid"><h2>Отмена сбора</h2><Field label="Причина" hint="Необязательно; участники увидят её в уведомлении"><textarea maxLength={500} value={cancellationReason} onChange={event => setCancellationReason(event.target.value)} /></Field><div className="row"><button onClick={() => setCancelling(false)}>Оставить сбор</button><button className="danger" disabled={busy} onClick={async () => { if (await telegram.confirm("Отменить сбор? Возобновить его будет нельзя.")) await action("cancel", cancellationReason.trim() || undefined); }}>{busy ? "Отменяем…" : "Подтвердить отмену"}</button></div></Card>}
+    </div>
+    {value.hasStarted && <div className="gathering-context-note"><Notice>Время сбора наступило. Запись закрыта автоматически; изменить время или открыть запись снова нельзя.</Notice></div>}
+    {canManage && <Card className="gathering-management">
+      <details open={value.publicationStatus === "Failed" ? true : undefined}>
+        <summary><span><strong>Управление сбором</strong><small>{value.publicationStatus === "Failed" ? "Объявление требует внимания" : "Настройки, запись и приглашение игроков"}</small></span></summary>
+        <div className="gathering-management-content">
+          {(value.canEdit || value.canClose || value.canReopen) && <div className="gathering-management-buttons">
+            {value.canEdit && <button disabled={working} onClick={() => setEditing(true)}>Изменить сбор</button>}
+            {value.canClose && <button disabled={working} onClick={() => action("close")}>Закрыть запись</button>}
+            {value.canReopen && <button disabled={working} onClick={() => action("reopen")}>Открыть запись</button>}
+          </div>}
+          {value.publicationStatus === "Failed" && <Notice kind="danger"><p>Объявление в Telegram не удалось обновить. Оно может показывать прежние данные.</p>{value.canRetryPublication && <button disabled={working} onClick={() => action("publication/retry")}>Повторить обновление</button>}</Notice>}
+          {(value.canRequestRecruitment || recruitmentMessage || value.recruitmentDelivery) && <section className="gathering-recruitment-action">
+            <h3>Пригласить игроков</h3>
+            {value.canRequestRecruitment && <><p className="muted">В группу придёт одно напоминание обо всех ближайших сборах, которым нужны игроки.</p><button disabled={working} onClick={() => void requestRecruitment()}>Напомнить о сборе</button></>}
+            {recruitmentMessage && <Notice>{recruitmentMessage}</Notice>}
+            {value.recruitmentDelivery && <div className="gathering-delivery-status"><p className="muted" role="status">{value.recruitmentDelivery}</p><button className="ghost" disabled={working} onClick={state.reload}>Обновить статус</button></div>}
+          </section>}
+          {value.canCancel && <div className="gathering-cancel-action">
+            {!cancelling && <button className="danger ghost" disabled={working} onClick={() => setCancelling(true)}>Отменить сбор</button>}
+    {cancelling && <div className="form-grid gathering-cancel-form"><h3>Отмена сбора</h3><Field label="Причина" hint="Необязательно; участники увидят её в уведомлении"><textarea maxLength={500} value={cancellationReason} onChange={event => setCancellationReason(event.target.value)} /></Field><div className="row"><button onClick={() => setCancelling(false)}>Оставить сбор</button><button className="danger" disabled={working} onClick={async () => { if (await telegram.confirm("Отменить сбор? Возобновить его будет нельзя.")) await action("cancel", cancellationReason.trim() || undefined); }}>{busy ? "Отменяем…" : "Подтвердить отмену"}</button></div></div>}
+          </div>}
+        </div>
+      </details>
+    </Card>}
     <Card className="gathering-players">
       <div className="row gathering-section-heading"><h2>Кто играет</h2><Badge tone="neutral">{value.gathering.occupiedSeats} / {value.maximumPlayers}</Badge></div>
       <ul className="participant-roster gathering-roster">
         {value.confirmedParticipants.map((participant, index) => <li key={`${participant.name}-${index}`}><span className="participant-marker" aria-hidden>{participant.isOrganizer ? "★" : index + 1}</span><span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink>{participant.isOrganizer && <small>Организатор</small>}</span></li>)}
-        {value.guestParticipants.map(guest => <li key={guest.id}>{editingGuestId === guest.id ? <div className="inline-form"><input value={editingGuestName} maxLength={80} onChange={event => setEditingGuestName(event.target.value)} /><button disabled={busy || !editingGuestName.trim()} onClick={() => guestAction("PUT", guest.id, editingGuestName)}>Сохранить</button><button onClick={() => setEditingGuestId(undefined)}>Отмена</button></div> : <div className="row guest-row"><span className="participant-marker" aria-hidden>●</span><span className="guest-name">{guest.displayName} <Badge tone="neutral">Гость</Badge></span>{value.canManageGuests && <span className="guest-actions"><button onClick={() => { setEditingGuestId(guest.id); setEditingGuestName(guest.displayName); }}>Изменить</button><button className="danger ghost" disabled={busy} onClick={async () => { if (await telegram.confirm(`Удалить гостя «${guest.displayName}»?`)) await guestAction("DELETE", guest.id); }}>Удалить</button></span>}</div>}</li>)}
+        {value.guestParticipants.map(guest => <li key={guest.id}>{editingGuestId === guest.id ? <div className="inline-form"><input value={editingGuestName} maxLength={80} onChange={event => setEditingGuestName(event.target.value)} /><button disabled={working || !editingGuestName.trim()} onClick={() => guestAction("PUT", guest.id, editingGuestName)}>Сохранить</button><button onClick={() => setEditingGuestId(undefined)}>Отмена</button></div> : <div className="row guest-row"><span className="participant-marker" aria-hidden>●</span><span className="guest-name">{guest.displayName} <Badge tone="neutral">Гость</Badge></span>{value.canManageGuests && <span className="guest-actions"><button onClick={() => { setEditingGuestId(guest.id); setEditingGuestName(guest.displayName); }}>Изменить</button><button className="danger ghost" disabled={working} onClick={async () => { if (await telegram.confirm(`Удалить гостя «${guest.displayName}»?`)) await guestAction("DELETE", guest.id); }}>Удалить</button></span>}</div>}</li>)}
       </ul>
-      {value.canManageGuests && <div className="inline-form guest-form"><input value={guestName} maxLength={80} placeholder="Имя или описание гостя" onChange={event => setGuestName(event.target.value)} /><button disabled={busy || !guestName.trim()} onClick={() => guestAction("POST", undefined, guestName)}>Добавить гостя</button></div>}
+      {value.canManageGuests && <div className="inline-form guest-form"><input value={guestName} maxLength={80} placeholder="Имя или описание гостя" onChange={event => setGuestName(event.target.value)} /><button disabled={working || !guestName.trim()} onClick={() => guestAction("POST", undefined, guestName)}>Добавить гостя</button></div>}
       {value.waitlistedParticipants.length > 0 && <section className="gathering-waitlist"><h3>Лист ожидания <span>{value.waitlistedParticipants.length}</span></h3><ol>{value.waitlistedParticipants.map(participant => <li key={`${participant.position}-${participant.name}`}><span>{participant.position}</span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink></li>)}</ol></section>}
     </Card>
-    <GameTaxonomy className="gathering-taxonomy" typeNames={typeNames} categoryNames={value.gathering.categoryNames} mechanicNames={value.gathering.mechanicNames} />
-    {value.gathering.bggId && <div className="gathering-secondary-actions"><GatheringCollectionAction bggId={value.gathering.bggId} open={openCollection} /></div>}
+    {community.mode === "Camp" && value.provider && <Card className="gathering-provider"><h2>Коробка</h2><Notice kind={value.provider.isConfirmed ? "success" : "warning"}>{value.provider.summary}</Notice>{value.provider.providers.map(p => <p key={p.participantId}>{p.displayName} — {p.commitment === "Bringing" ? "привезёт" : "может привезти"}</p>)}{value.provider.canBring && !value.hasStarted && <button className="primary" disabled={working} onClick={() => action("bring")}>Я привезу</button>}</Card>}
+    {value.canRecordPlay && <div className="gathering-play-section"><PlayPanel community={community} id={id} /></div>}
+    <Card className="gathering-game-info">
+      <details>
+        <summary>Об игре</summary>
+        <GameTaxonomy className="gathering-taxonomy" typeNames={typeNames} categoryNames={value.gathering.categoryNames} mechanicNames={value.gathering.mechanicNames} />
+      </details>
+      {value.gathering.bggId && <div className="gathering-game-actions">
+        <WishButton key={value.gathering.bggId} communityKey={community.key} bggId={value.gathering.bggId} />
+        <GatheringCollectionAction bggId={value.gathering.bggId} open={openCollection} />
+      </div>}
+    </Card>
   </Page>;
 }
 
