@@ -1,46 +1,46 @@
-# OyinQ manual verification
+# Ручная проверка OyinQ
 
-Run against an approved staging PostgreSQL database and real Telegram groups.
+Проводите проверку на разрешённой staging-базе PostgreSQL и в тестовых Telegram-группах.
 
-1. Open an existing Club as a member; confirm there is no registration gate.
-2. Create Club and Camp communities with Telegram native chat selection; reject a reused chat.
-3. As Super Admin, open one chat's `Администраторы`, add a current Telegram administrator with native user selection, and confirm there is no raw-ID or Super Admin grant field.
-   - Before approval, verify that the Telegram administrator sees only the chat name and `🔒 Доступ не выдан`; after approval verify only that chat's data/actions are visible.
-   - Remove the Telegram role and confirm old Mini App controls immediately return 403.
-   - Forge a request for another community key/Club/Camp ID and verify it returns 403. Revoke the permission and repeat from an already-open Mini App.
-4. Browse/search the Club collection and verify Russian type/category labels on cards, details, and pickers.
-5. Add a BGG game with expansions, then import a BGG username collection and verify existing games/expansions remain while missing owned items are added. Close/reopen the Mini App during the import and confirm the persisted job continues.
-6. Export JSON, re-import it, and verify stale revision conflict handling.
-7. Search BGG by exact name, prefix, whole word, and substring; verify ranked lightweight results, years, and “Показать ещё”.
-8. Create a Club gathering from the collection and another from a BGG link; confirm neither mutates the legacy global catalog.
-9. Create a Camp from a Club; change the Club and confirm the Camp base snapshot stays unchanged.
-10. Activate the Camp and register with city, accommodation choice, and several exact dates.
-11. Reopen registration through “Редактировать регистрацию”; confirm saved exact dates are restored.
-12. Try to create or join a Camp gathering on an unselected date; verify rejection, then select the date and retry.
-13. As an organizer, try to remove a date containing an active future gathering; verify the edit is blocked.
-14. As a participant, remove such a date; verify the affected-gathering summary, explicit confirmation, withdrawal, and one ordered promotion.
-15. Cancel Camp registration; verify only that Camp’s contributions/legacy import work/future participation are removed. Persistent ownership, profile imports, history and other communities remain.
-16. Start a large BGG import, close/reopen the Mini App, and verify the persisted job continues.
-17. In Profile import selection, test expansion-without-base warning and additive ownership; for a pending legacy Camp import also test explicit base-library duplicate resolution.
-18. Add a personal game already present in the Camp base library; ownership is saved without an implicit Camp contribution. Select Camp availability explicitly.
-19. Verify a base-library-only game has no personal “Точно привезу” prompt; an explicit personal duplicate does.
-20. Have two participants contribute one game; verify one catalog item, both providers, and clickable username profiles where public.
-21. Verify users without a public username remain readable non-links in provider and gathering participant lists.
-22. Create a gathering with an empty description; confirm taxonomy is shown separately and not copied into description.
-23. Fill a gathering, create an ordered waitlist, leave a confirmed place, and verify exactly one promotion and a persisted notification intent; verify worker delivery separately.
-24. Close/reopen/edit a gathering; reject a maximum below confirmed count and unsafe expansion selection. Increase capacity with a waitlist and verify ordered promotions happen before a newcomer or guest can take the seats.
-25. Manually cancel a gathering and simulate Telegram publication failure; verify the row remains in History → Отменены with retryable publication state.
-26. Let an underfilled gathering pass its start; verify it remains in cancelled history with reason «Не набралось достаточно участников», preserves its roster, updates its Telegram announcement, and notifies the organizer and confirmed participants once.
-27. Switch rapidly between Upcoming, History, Completed, and Cancelled; verify each request returns only its canonical scope, including while an older cached Mini App or backend instance is still serving the compatible legacy parameters.
-28. Inspect the group announcement: organizer/participants are escaped direct mentions and the same message is edited in place.
-29. Test light/dark themes, narrow safe-area layout, responsive desktop layout, and fullscreen enter/exit labels on supported Telegram clients.
-30. Restart once in webhook mode and once in Development long-polling mode; confirm structured startup logs report five private commands, one group command, and the private Mini App menu URL without exposing the token.
-31. In a managed group type `/`; verify only `/oiynq — Открыть OyinQ` is suggested. Run it and verify the response names the correct Club/Camp and opens the contextual flow through the bot DM.
-32. In an unmanaged group run `/oiynq` as a normal user and as a global administrator. Verify only the administrator sees an admin entry action and no community is created.
-33. In a private chat verify `/start`, `/menu`, `/help`, `/privacy`, and authorization-checked `/admin`; verify `/privacy` opens the production `/privacy` URL in a normal browser without Telegram `initData`.
-34. Create one new Club and one new Camp through peer selection. Verify each group gets exactly one onboarding notice. Simulate send failure and verify creation remains committed and the administrator sees the warning. Restart and verify no notice repeats.
-35. Confirm managed groups have no persistent reply keyboard or permanent Open button. Verify native peer-selector fallback keyboards remain private and are removed after use.
-36. Complete the manual Main Mini App, previews, privacy URL, description picture, and splash checklist in `docs/botfather-setup.md`; test the bot profile Open App action in current Telegram mobile and desktop clients. From a group gathering announcement, press **Открыть сбор** and verify the Mini App opens that gathering directly without opening the bot private chat or sending `/start`.
+1. Откройте существующий клуб обычным участником и убедитесь, что регистрации в клубе нет.
+2. Создайте Club и Camp через нативный выбор чата Telegram; повторное использование уже привязанного чата должно отклоняться.
+3. От имени Super Admin откройте «Администраторы», добавьте действующего администратора Telegram через нативный выбор пользователя и убедитесь, что формы для ручного Telegram ID или выдачи Super Admin нет.
+   - До выдачи права администратор Telegram видит только название чата и `🔒 Доступ не выдан`; после — данные и действия только этого сообщества.
+   - Снимите роль администратора в Telegram: уже открытые административные действия Mini App должны сразу возвращать 403.
+   - Подмените ключ сообщества или Club/Camp ID: запрос должен вернуть 403. Отзовите право OyinQ и повторите запрос из уже открытого Mini App.
+4. Просмотрите и найдите игры в каталоге клуба; проверьте русские названия типов и категорий в карточках, деталях и формах выбора.
+5. Добавьте игру BGG с дополнениями, затем импортируйте коллекцию по BGG username. Существующие игры и дополнения должны сохраниться, отсутствующие owned-позиции — добавиться. Закройте и снова откройте Mini App во время импорта: сохранённое задание должно продолжиться.
+6. Экспортируйте JSON, импортируйте его обратно и проверьте конфликт устаревшей ревизии.
+7. Выполните BGG-поиск по точному названию, префиксу, целому слову и подстроке; проверьте порядок результатов, годы и «Показать ещё».
+8. Создайте клубный сбор из каталога и ещё один по BGG-ссылке; ни один путь не должен изменять устаревший глобальный каталог.
+9. Создайте Camp из Club, затем измените клуб: базовый снимок кэмпа должен остаться прежним.
+10. Активируйте Camp и зарегистрируйтесь, указав город, проживание и несколько точных дат.
+11. Откройте «Редактировать регистрацию» и проверьте восстановление сохранённых дат.
+12. Попробуйте создать сбор или записаться на дату вне регистрации: получите отказ, добавьте дату и повторите успешно.
+13. Организатор не может удалить дату, на которой у него есть активный будущий сбор.
+14. При удалении такой даты участником покажите затронутые сборы и явное подтверждение; участник выходит, а ровно один человек продвигается из очереди по порядку.
+15. Отмените регистрацию в Camp: удаляются только вклады, старые задания импорта и будущие участия этого кэмпа. Глобальное владение, профильные импорты, история и другие сообщества сохраняются.
+16. Запустите большой BGG-импорт, закройте и снова откройте Mini App; задание должно продолжиться.
+17. В профильном импорте проверьте предупреждение о дополнении без базы и добавочное владение; для старого Camp-импорта — явное разрешение дублей базового каталога.
+18. Добавьте личную игру, уже существующую в базе Camp: владение сохраняется без неявного вклада. Доступность для кэмпа выбирается отдельно.
+19. У игры только из базового каталога нет личного действия «Точно привезу»; у явного личного дубля оно есть.
+20. Два участника добавляют одну игру: в каталоге остаётся одна карточка с обоими поставщиками и кликабельными публичными username.
+21. Участники без публичного username остаются читаемым текстом без ссылки в списках поставщиков и состава.
+22. Создайте сбор без описания: таксономия показывается отдельно и не копируется в описание.
+23. Заполните сбор, создайте очередь и освободите подтверждённое место: продвигается ровно один участник и сохраняется намерение уведомления; доставку worker проверьте отдельно.
+24. Закройте, откройте и отредактируйте сбор. Максимум ниже занятого числа и небезопасный выбор дополнений отклоняются. При увеличении вместимости очередь продвигается раньше нового участника или гостя.
+25. Отмените сбор и смоделируйте ошибку публикации Telegram: запись остаётся в «История → Отменены», публикацию можно повторить.
+26. Дождитесь начала недоукомплектованного сбора: он остаётся в отменённой истории с причиной «Не набралось достаточно участников», сохраняет состав, обновляет объявление и один раз уведомляет организатора и подтверждённых участников.
+27. Быстро переключайтесь между будущими, историей, завершёнными и отменёнными: каждый ответ соответствует выбранной области даже при совместимых legacy-параметрах старого клиента или backend.
+28. Проверьте групповое объявление: организатор и участники — экранированные прямые упоминания, редактируется то же сообщение.
+29. Проверьте светлую и тёмную темы, safe area на узком экране, адаптивный desktop и подписи входа/выхода из fullscreen в поддерживаемых клиентах Telegram.
+30. Перезапустите приложение в webhook и Development long-polling режимах: структурированные логи сообщают о пяти личных и одной групповой команде и URL меню без токена.
+31. В управляемой группе введите `/`: предлагается только `/oiynq — Открыть OyinQ`. Команда называет правильный Club/Camp и открывает контекст через личный чат бота.
+32. В неуправляемой группе выполните `/oiynq` обычным пользователем и глобальным администратором: административный вход видит только администратор, сообщество не создаётся.
+33. В личном чате проверьте `/start`, `/menu`, `/help`, `/privacy` и защищённый `/admin`; `/privacy` открывает production-страницу без Telegram `initData`.
+34. Создайте новый Club и Camp через peer selection: каждая группа получает ровно одно onboarding-сообщение. При ошибке отправки создание остаётся сохранённым, администратор видит предупреждение, после перезапуска сообщение не повторяется.
+35. В управляемых группах нет постоянной reply keyboard или постоянной кнопки открытия. Временная fallback-клавиатура peer selector остаётся личной и удаляется после использования.
+36. Выполните чек-лист Main Mini App, previews, privacy URL, description picture и splash из [настройки BotFather](botfather-setup.md). Проверьте Open App на актуальных мобильных и desktop-клиентах. Кнопка **Открыть сбор** в группе должна сразу открыть нужный сбор без перехода в личный чат и `/start`.
 
 ## Первый вход, профиль и постоянная коллекция
 
@@ -59,23 +59,27 @@ Run against an approved staging PostgreSQL database and real Telegram groups.
 
 Выполните отдельный сценарий: [проверки новых функций](planning-notifications-plays.md#ручная-проверка). Старое название фильтра «Сыграны» заменено на «Завершены»; факт партии проверяется отдельно.
 
-## Финальная проверка выпуска 2026-09-04
+## Проверка партий и объявления выпуска
 
-Проверить пункты 9–14 в [планировании и партиях](planning-notifications-plays.md): отрицательный исход без партии, фактический состав и несколько ссылок BG Stats, внешнюю игру с дополнениями и явным владением, атомарность локальных изменений, предпросмотр рассылки и повтор только ошибочных получателей. Общий результат и ограничения: [отчёт выпуска](releases/2026-09-04-review.md). Текст для Telegram: [объявление](releases/2026-09-04.md).
-# Стабилизация после аудита
+Проверить пункты 9–14 в [планировании и партиях](planning-notifications-plays.md): отрицательный исход без партии, фактический состав и несколько ссылок BG Stats, внешнюю игру с дополнениями и явным владением, атомарность локальных изменений, предпросмотр рассылки и повтор только ошибочных получателей. Текст выпуска для Telegram хранится отдельным встроенным ресурсом в [объявлении](releases/2026-09-04.md).
+
+## Стабилизационные сценарии
 
 1. Откройте приложение пользователем без доступных сообществ: перейдите в «Профиль», проверьте коллекцию, настройки имени/уведомлений и пустой календарь. Действий кэмпа быть не должно.
 2. Выключите ещё не доставленное напоминание и включите обратно до начала сбора: оно должно снова стать допустимым, но уже доставленное не повторяется.
 3. Отмените сбор до первого личного запуска бота получателем повышения: после `/start` сообщение об освободившемся месте не приходит.
 4. Исправьте фактический состав партии после добавления ссылки игроком: автор видит и может удалить собственную ссылку, не получает доступа к чужим ссылкам.
 5. В рассылке отличайте «Подготовка», «Отправляется», «Ошибка» и «Проверьте чат вручную». Повтор подготовки доступен, неизвестный результат отправки защищён от повтора. Не публикуйте реальную рассылку ради проверки без отдельного разрешения.
-6. Перед выпуском выполните [интеграционные и clean-checkout проверки](stabilization-verification.md).
-# Длинные объявления сборов
+6. До выпуска прогоните PostgreSQL-тесты с `OYINQ_TEST_POSTGRES` на отдельной тестовой базе. Затем подготовьте индекс, выполните `scripts/verify-release-input.ps1` и соберите экспорт подготовленного индекса. Это подтверждает, что встроенные release resources отслеживаются и попадают в чистую сборку.
+
+Не используйте production-базу: PostgreSQL-тесты создают и удаляют временные базы `oyinq_test_<guid>`. Статические и InMemory-проверки не доказывают корректность блокировок, конкурентных workers или миграции существующих данных.
+
+## Длинные объявления сборов
 
 Создать сбор с фото, затем добавить восемь участников, гостя, длинное описание и несколько дополнений. Изменить время/описание: Telegram должен обновить прежнее сообщение, сохранив его ID. Подпись длиннее 1024 видимых символов заменяется краткой сводкой с числом игроков, гостей и дополнений; полный состав доступен по кнопке «Открыть сбор». Повторить для объявления, ранее опубликованного текстом, и для сообщения старше двух суток. Имена с `<`, `&` и emoji не должны повреждать HTML. При реальном отказе Telegram Mini App показывает, что сбор сохранён, а объявление может содержать прежние данные; повтор обновления не создаёт другое сообщение.
 
 
-# Коллекции и компактный профиль
+## Коллекции и компактный профиль
 
 1. В профиле нет блока «Что дальше»; календарь и его переходы в сборы работают.
 2. Базовая игра с принадлежащими участнику дополнениями занимает одну карточку. «Дополнения» раскрывает отдельные кнопки удаления и Camp-доступность каждого дополнения. Удаление базы не удаляет владение дополнениями: они остаются самостоятельными строками.

@@ -8,7 +8,7 @@
 
 - `Features/Catalog/GameWishService.cs`, `GameCatalogService.cs`, `Data/Entities/GameWish.cs`: добавление/удаление с блокировкой и идемпотентностью, проверка базовой игры, объединение с каталогом без владения.
 - `GatheringGameSelectionService`, `GatheringManagementService`, `GatheringNotificationService`: создание из сохранённого вишлиста и транзакционные уведомления заинтересованным участникам. Внешняя игра без коробки уже поддерживалась; этот путь сохранён.
-- `NotificationKind`, `NotificationPreferences`, `NotificationPolicy`, `NotificationDispatcher`, `NotificationEndpoints`: настройка «Уведомлять, когда собирают игры из моих хотелок», включённая по умолчанию; проверка текущей допустимости перед доставкой. Транспорт и дедупликация общие с остальными DM.
+- `NotificationKind`, `NotificationPreferences`, `NotificationPolicy`, `NotificationDispatcher`, `NotificationEndpoints`: настройка «Уведомлять, когда собирают игры из моего вишлиста», включённая по умолчанию; проверка текущей допустимости перед доставкой. Транспорт и дедупликация общие с остальными DM.
 - `GatheringRecruitment`, `RecruitmentDigestFormatter`, `RecruitmentDigestService`, `RecruitmentDigestWorker`, `RecruitmentEndpoints`: общая проекция набора, ранжирование, очередь доставки и административный интервал.
 - Mini App: общий `WishButton` / `WishlistPanel`, интеграция в каталог, создание и детали сбора, профиль; действие «🔔 Напомнить о сборе», статус доставки и настройка интервала в Club/Camp administration.
 - `AGENTS.md`: новые инварианты; тесты в `WishlistRecruitmentTests.cs` и `PostgreSqlRecruitmentTests.cs`.
