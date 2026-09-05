@@ -186,7 +186,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
       {value.waitlistedParticipants.length > 0 && <section className="gathering-waitlist"><h3>Лист ожидания <span>{value.waitlistedParticipants.length}</span></h3><ol>{value.waitlistedParticipants.map(participant => <li key={`${participant.position}-${participant.name}`}><span>{participant.position}</span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink></li>)}</ol></section>}
     </Card>
     {community.mode === "Camp" && value.provider && <Card className="gathering-provider"><h2>Коробка</h2><Notice kind={value.provider.isConfirmed ? "success" : "warning"}>{value.provider.summary}</Notice>{value.provider.providers.map(p => <p key={p.participantId}>{p.displayName} — {p.commitment === "Bringing" ? "привезёт" : "может привезти"}</p>)}{!readOnly && value.provider.canBring && !value.hasStarted && <button className="primary" disabled={working} onClick={() => action("bring")}>Я привезу</button>}</Card>}
-    {!readOnly && value.canRecordPlay && <div className="gathering-play-section"><PlayPanel community={community} id={id} /></div>}
+    {value.canRecordPlay && <div className="gathering-play-section"><PlayPanel community={community} id={id} /></div>}
     <Card className="gathering-game-info">
       <details>
         <summary>Об игре</summary>

@@ -80,4 +80,13 @@ describe("gathering detail action hierarchy", () => {
     expect(markup).not.toContain("Занять место");
     expect(markup).not.toContain("Управление сбором");
   });
+
+  it("shows play confirmation in the otherwise read-only admin view", () => {
+    Object.assign(state.data, { canJoin: false, hasStarted: true, canRecordPlay: true, status: "Completed" });
+    const markup = renderToStaticMarkup(<GatheringDetails readOnly community={{ key: "club", name: "Клуб", mode: "Club", timeZoneId: "UTC" }}
+      id="g" onBack={() => {}} onCancelled={() => {}} editRegistration={() => {}} openCollection={() => {}} />);
+    expect(markup).toContain("Запись партии");
+    expect(markup).not.toContain("Занять место");
+    expect(markup).not.toContain("Управление сбором");
+  });
 });

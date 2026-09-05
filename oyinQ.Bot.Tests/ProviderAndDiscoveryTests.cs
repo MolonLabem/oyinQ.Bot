@@ -133,6 +133,8 @@ public sealed class ProviderAndDiscoveryTests
         await using var f = new PlanningFixture(); var mine = f.Gathering("club", f.Clock.Now.AddHours(1));
         var other = f.Gathering("club", f.Clock.Now.AddHours(2)); other.OrganizerParticipant = f.Other; other.OrganizerParticipantId = f.Other.Id;
         var elsewhere = f.Gathering("private", f.Clock.Now.AddHours(1));
+        var unconfirmed = f.Gathering("club", f.Clock.Now.AddHours(-2));
+        unconfirmed.Status = GatheringStatus.Completed;
         await f.Db.SaveChangesAsync(); var (_, providers, _) = Services(f);
         var dashboards = new GatheringDashboardService(f.Db, providers, f.Clock);
         var personal = await dashboards.PersonalAsync(f.Me.Id, ["club"], default);
@@ -141,7 +143,13 @@ public sealed class ProviderAndDiscoveryTests
         var organizer = await dashboards.OrganizerAsync(f.Me.Id, "club", false, default);
         Assert.Equal(mine.PublicId, Assert.Single(organizer.Items).PublicId);
         Assert.True(organizer.Items[0].BelowMinimum); Assert.True(organizer.Items[0].StartingSoon);
-        Assert.Equal(2, (await dashboards.OrganizerAsync(f.Me.Id, "club", true, default)).Items.Count);
+        var admin = await dashboards.OrganizerAsync(f.Me.Id, "club", true, default);
+        Assert.Equal(3, admin.Items.Count);
+        Assert.True(admin.Items.Single(x => x.PublicId == unconfirmed.PublicId).NeedsPlayConfirmation);
+        unconfirmed.ConfirmedWasPlayed = false;
+        await f.Db.SaveChangesAsync();
+        Assert.DoesNotContain((await dashboards.OrganizerAsync(f.Me.Id, "club", true, default)).Items,
+            x => x.PublicId == unconfirmed.PublicId);
     }
 
     private static (GameCatalogService, GameProviderService, CampContributionSelectionService) Services(PlanningFixture f)

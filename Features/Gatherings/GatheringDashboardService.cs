@@ -10,7 +10,8 @@ namespace oyinQ.Bot.Features.Gatherings;
 public sealed record DashboardGathering(Guid PublicId, string CommunityKey, string Community, string GameName,
     DateTimeOffset StartsAtUtc, string LocalDateTime, bool IsOrganizer, bool IsToday, int? WaitlistPosition,
     bool BelowMinimum, bool FullWithWaitlist, bool StartingSoon, bool RecentlyCancelled,
-    bool PublicationFailed, int DeliveryProblems, GameProviderResponse Provider, int NotificationUnavailableParticipants, RecruitmentState? Recruitment = null);
+    bool PublicationFailed, int DeliveryProblems, GameProviderResponse Provider, int NotificationUnavailableParticipants,
+    bool NeedsPlayConfirmation = false, RecruitmentState? Recruitment = null);
 public sealed record CampDashboardContext(int RegisteredToday, int GatheringsToday, int BringingGames, int AvailableGames);
 public sealed record GatheringDashboard(IReadOnlyList<DashboardGathering> Items, bool HasMore, CampDashboardContext? Camp = null);
 
@@ -45,16 +46,24 @@ public sealed class GatheringDashboardService(AppDbContext db, GameProviderServi
     {
         var now = time.GetUtcNow();
         var upcoming = GatheringListQuery.Apply(Query, GatheringListScope.Upcoming, now).Select(x => x.Id);
-        var rows = await Query.Where(x => x.CommunityKey == key && (canAdminister || x.OrganizerParticipantId == participantId)
+        var operationalRows = await Query.Where(x => x.CommunityKey == key && (canAdminister || x.OrganizerParticipantId == participantId)
             && (upcoming.Contains(x.Id) || x.Status == GatheringStatus.Cancelled && x.CancelledAt >= now.AddDays(-2)))
             .OrderBy(x => x.StartsAtUtc).ThenBy(x => x.Id).Take(201).ToArrayAsync(ct);
+        var unconfirmedRows = canAdminister
+            ? await Query.Where(x => x.CommunityKey == key && x.Status == GatheringStatus.Completed
+                    && x.ConfirmedWasPlayed == null)
+                .OrderByDescending(x => x.StartsAtUtc).ThenByDescending(x => x.Id).Take(201).ToArrayAsync(ct)
+            : [];
+        // Keep both queues visible: a historical backlog must not hide urgent upcoming gatherings.
+        var rows = operationalRows.Take(200).Concat(unconfirmedRows.Take(200))
+            .DistinctBy(x => x.Id).ToArray();
         var ids = rows.Select(x => x.PublicId).ToArray();
         var errors = await db.Notifications.AsNoTracking().Where(x => x.GatheringPublicId != null && ids.Contains(x.GatheringPublicId.Value)
             && (x.State == NotificationState.CannotMessageUser || x.State == NotificationState.Failed || x.State == NotificationState.DeliveryUnknown))
             .Select(x => new { x.GatheringPublicId, x.Kind }).ToArrayAsync(ct);
         var result = new List<DashboardGathering>();
-        var providerStates = await providers.ForGatheringsAsync(rows.Take(200), participantId, ct);
-        foreach (var g in rows.Take(200)) result.Add(Present(g, participantId,
+        var providerStates = await providers.ForGatheringsAsync(rows, participantId, ct);
+        foreach (var g in rows) result.Add(Present(g, participantId,
             errors.Count(x => x.GatheringPublicId == g.PublicId && NotificationPolicy.IsEssential(x.Kind)), providerStates[g.PublicId]));
         CampDashboardContext? context = null;
         if (canAdminister)
@@ -75,7 +84,7 @@ public sealed class GatheringDashboardService(AppDbContext db, GameProviderServi
                     contributions.Where(x => !bringing.Contains(x.BggId)).Select(x => x.BggId).Distinct().Count());
             }
         }
-        return new(result, rows.Length > 200, context);
+        return new(result, unconfirmedRows.Length > 200 || operationalRows.Length > 200, context);
     }
 
     private DashboardGathering Present(GameGathering g, long participantId, int deliveryProblems, GameProviderResponse provider)
@@ -92,6 +101,7 @@ public sealed class GatheringDashboardService(AppDbContext db, GameProviderServi
             g.PublicationStatus == GatheringPublicationStatus.Failed, deliveryProblems, provider,
             g.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed).Select(x => x.Participant)
                 .Prepend(g.OrganizerParticipant).DistinctBy(x => x.Id).Count(x => x.PrivateChatStartedAt is null || x.TelegramDeliveryBlockedAt is not null),
+            g.Status == GatheringStatus.Completed && g.ConfirmedWasPlayed == null,
             GatheringLifecycle.IsUpcoming(g, now) ? GatheringRecruitment.Describe(g) : null);
     }
 }

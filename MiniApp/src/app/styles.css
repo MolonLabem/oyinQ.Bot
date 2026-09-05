@@ -130,7 +130,7 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .admin-sidebar nav button { display: flex; align-items: center; gap: 8px; white-space: nowrap; scroll-snap-align: start; }
 .admin-sidebar nav button.active { color: var(--button); border-color: var(--button); background: color-mix(in srgb, var(--button) 10%, var(--surface)); }
 .admin-main .page { padding-inline: 0; }
-.admin-entity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; }
+.admin-entity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(310px, 100%), 1fr)); gap: 14px; }
 .admin-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .danger-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--danger) 30%, var(--separator)); }
 .danger-actions summary { min-height: 44px; padding: 11px 0; color: var(--danger); cursor: pointer; font-weight: 700; }

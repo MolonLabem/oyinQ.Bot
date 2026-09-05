@@ -5,8 +5,9 @@ namespace oyinQ.Bot.Features.Gatherings;
 
 public static class GatheringAccessPolicy
 {
-    public static bool CanRecordPlay(GameGathering gathering, long participantId) =>
-        gathering.Status == GatheringStatus.Completed && (gathering.OrganizerParticipantId == participantId
+    public static bool CanRecordPlay(GameGathering gathering, long participantId, bool canAdminister = false) =>
+        gathering.Status == GatheringStatus.Completed && (canAdminister
+            || gathering.OrganizerParticipantId == participantId
             || gathering.Participants.Any(x => x.ParticipantId == participantId && x.Status == GatheringParticipationStatus.Confirmed));
 
     public static bool RequiresRegistration(BotMode mode) => mode == BotMode.Camp;

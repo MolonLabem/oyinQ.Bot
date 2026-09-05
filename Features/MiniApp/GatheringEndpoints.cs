@@ -126,7 +126,7 @@ internal static class GatheringEndpoints
         {
             Gathering = presentation.BuildDetails(gathering, resolvedCommunity),
             Provider = await providers.ForGatheringAsync(gathering, participant.Id, cancellationToken),
-            CanRecordPlay = hasMemberAccess && GatheringAccessPolicy.CanRecordPlay(gathering, participant.Id),
+            CanRecordPlay = GatheringAccessPolicy.CanRecordPlay(gathering, participant.Id, canAdminister),
             Status = gathering.Status.ToString(),
             BotStartRequired = hasMemberAccess
                 && (participant.PrivateChatStartedAt is null || participant.TelegramDeliveryBlockedAt is not null),

@@ -15,6 +15,12 @@ describe("экраны планирования", () => {
     const markup = renderToStaticMarkup(<GatheringDashboard communityKey="camp" open={() => {}} />);
     expect(markup).toContain("Требуют внимания"); expect(markup).toContain("Лист ожидания: 1"); expect(markup).toContain("Я привезу"); expect(markup).toContain("Никто пока не подтвердил коробку");
   });
+  it("выделяет завершённый сбор без подтверждения партии", () => {
+    mock.data = { items: [{ publicId: "g", communityKey: "club", community: "Клуб", gameName: "Игра", localDateTime: "4 сентября, 18:00", needsPlayConfirmation: true, provider: { summary: "Коробка", canBring: false, isConfirmed: true } }] };
+    const markup = renderToStaticMarkup(<GatheringDashboard communityKey="club" open={() => {}} />);
+    expect(markup).toContain("Подтвердите, состоялась ли игра");
+    expect(markup).toContain("Игра");
+  });
   it("показывает коробку клуба без цветного предупреждения", () => {
     mock.data = { isConfirmed: false, summary: "Нет в коллекции клуба", isOwned: false };
     const markup = renderToStaticMarkup(<GameProviderNotice mode="Club" communityKey="club" bggId={42} />);
@@ -44,12 +50,12 @@ describe("экраны планирования", () => {
     expect(markup).toContain("Виктор"); expect(markup).toContain("Поделиться ссылкой из BG Stats"); expect(markup).not.toContain("Удалить ссылку"); expect(markup).not.toContain("Сохранить запись"); expect(markup).not.toContain("Скачать");
     expect(markup.indexOf("Создать ссылку для BG Stats")).toBeLessThan(markup.indexOf("Поделиться ссылкой из BG Stats"));
   });
-  it("оставляет административный просмотр сбора только для чтения, кроме повтора публикации", () => {
+  it("оставляет административный просмотр без действий организатора", () => {
     mock.data = {
       gathering: { publicId: "g", gameName: "Игра", localDateTime: "5 сентября, 18:00", occupiedSeats: 1, statusText: "Идёт набор", rulesText: "Правила объяснят", expansions: [], bggId: 42 },
       status: "Recruiting", currentUserStatus: "None", canEdit: true, canClose: true, canReopen: false,
       canCancel: true, canManageGuests: true, canRequestRecruitment: true, canRetryPublication: true,
-      canJoin: true, canLeave: false, canRecordPlay: true, hasStarted: false,
+      canJoin: true, canLeave: false, canRecordPlay: false, hasStarted: false,
       confirmedParticipants: [{ name: "Организатор", isOrganizer: true }], guestParticipants: [], waitlistedParticipants: [],
       publicationStatus: "Failed", startsAtLocal: "2026-09-05T18:00", minimumPlayers: 1, desiredPlayers: 3,
       maximumPlayers: 4, canTeachRules: true, knownExpansions: [], selectedExpansionIds: [],

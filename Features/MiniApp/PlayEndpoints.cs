@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
 
@@ -25,16 +26,21 @@ internal static class PlayEndpoints
     }
 
     private static async Task<IResult> GetAsync(HttpRequest request, Guid id, string community,
-        TelegramMiniAppAuthenticator auth, CommunityContextResolver resolver, AppDbContext db, GatheringPlayService service, CancellationToken ct)
+        TelegramMiniAppAuthenticator auth, CommunityContextResolver resolver,
+        IAdminAuthorizationService authorization, AppDbContext db, GatheringPlayService service,
+        CancellationToken ct)
     {
+        var identity = MiniAppEndpointSupport.Authenticate(request, auth);
+        if (identity is null) return Results.Unauthorized();
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, auth, resolver, ct);
-        if (access is null) return Results.Forbid();
-        var p = await db.Participants.SingleAsync(x => x.TelegramUserId == access.Identity.TelegramUserId, ct);
+        var canAdminister = await authorization.CanAdministerCommunityAsync(identity.TelegramUserId, community, ct);
+        if (access is null && !canAdminister) return Results.Forbid();
+        var p = await db.Participants.SingleAsync(x => x.TelegramUserId == identity.TelegramUserId, ct);
         var g = await service.Gatherings.SingleOrDefaultAsync(x => x.PublicId == id && x.CommunityKey == community, ct);
         if (g is null) return Results.NotFound();
         try
         {
-            GatheringPlayService.RequireAccess(g, p.Id);
+            GatheringPlayService.RequireAccess(g, p.Id, canAdminister);
             var record = await db.GatheringPlayRecords.AsNoTracking().Include(x => x.Players).SingleOrDefaultAsync(x => x.GatheringId == g.Id, ct);
             if (record is not null) record.Gathering = g;
             var canShare = record is not null && ExternalPlayReferenceService.CanShare(record, p.Id);
@@ -42,7 +48,7 @@ internal static class PlayEndpoints
             {
                 Revision = g.OutcomeRevision, WasPlayed = g.ConfirmedWasPlayed, record?.EndedAtUtc, record?.DurationMinutes,
                 Location = string.IsNullOrWhiteSpace(record?.Location) ? g.Community.Name : record.Location,
-                CanEdit = g.OrganizerParticipantId == p.Id,
+                CanEdit = g.OrganizerParticipantId == p.Id || canAdminister,
                 CanShare = canShare,
                 References = record is null ? [] :
                     (await db.GatheringExternalPlayReferences.AsNoTracking().Include(x => x.AddedByParticipant)
@@ -66,20 +72,28 @@ internal static class PlayEndpoints
     }
 
     private static async Task<IResult> SaveAsync(HttpRequest request, Guid id, SavePlayRequest body,
-        TelegramMiniAppAuthenticator auth, CommunityContextResolver resolver, AppDbContext db, GatheringPlayService service, CancellationToken ct)
+        TelegramMiniAppAuthenticator auth, CommunityContextResolver resolver, ICommunityStore communityStore,
+        IAdminAuthorizationService authorization, AppDbContext db, GatheringPlayService service,
+        CancellationToken ct)
     {
+        var identity = MiniAppEndpointSupport.Authenticate(request, auth);
+        if (identity is null) return Results.Unauthorized();
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey, auth, resolver, ct);
-        if (access is null) return Results.Forbid();
+        var canAdminister = await authorization.CanAdministerCommunityAsync(identity.TelegramUserId, body.CommunityKey, ct);
+        if (access is null && !canAdminister) return Results.Forbid();
         try
         {
-            var p = await db.Participants.SingleAsync(x => x.TelegramUserId == access.Identity.TelegramUserId, ct);
-            var end = body.WasPlayed ? CommunityTime.ParseLocal(body.EndedAtLocal ?? "", access.Community.TimeZoneId) : (DateTimeOffset?)null;
+            var resolvedCommunity = access?.Community
+                ?? await communityStore.FindByKeyAsync(body.CommunityKey, ct)
+                ?? throw new KeyNotFoundException("Сообщество не найдено.");
+            var p = await db.Participants.SingleAsync(x => x.TelegramUserId == identity.TelegramUserId, ct);
+            var end = body.WasPlayed ? CommunityTime.ParseLocal(body.EndedAtLocal ?? "", resolvedCommunity.TimeZoneId) : (DateTimeOffset?)null;
             var playerResults = body.PlayerResults?.Select(x => new PlayPlayerResult(x.PlayerId, x.Score, x.IsWinner)).ToArray()
                 ?? body.PlayerIds?.Select(x => new PlayPlayerResult(x, null, false)).ToArray()
                 ?? [];
             var result = await service.SaveAsync(id, body.CommunityKey, p.Id, new(body.WasPlayed, end,
                 body.DurationMinutes, playerResults, body.ExpansionIds, body.ExpectedRevision,
-                body.HigherScoreWins ?? true, body.Location), ct);
+                body.HigherScoreWins ?? true, body.Location), ct, canAdminister);
             return Results.Ok(new { result?.PublicId });
         }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }

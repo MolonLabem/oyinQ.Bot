@@ -28,25 +28,26 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         return PlayerChoices(gathering).Where(x => x.ParticipantId is null || !excluded.Contains(x.ParticipantId.Value)).Select(x => x.Id).ToArray();
     }
 
-    public static void RequireAccess(GameGathering g, long participantId)
+    public static void RequireAccess(GameGathering g, long participantId, bool canAdminister = false)
     {
-        if (!GatheringAccessPolicy.CanRecordPlay(g, participantId))
-            throw new UnauthorizedAccessException("Запись партии доступна организатору и подтверждённым участникам завершённого сбора.");
+        if (!GatheringAccessPolicy.CanRecordPlay(g, participantId, canAdminister))
+            throw new UnauthorizedAccessException("Запись партии доступна организатору, администраторам и подтверждённым участникам завершённого сбора.");
     }
 
     public IQueryable<GameGathering> Gatherings => db.GameGatherings.Include(x => x.Community)
         .Include(x => x.OrganizerParticipant).Include(x => x.Participants).ThenInclude(x => x.Participant).Include(x => x.Guests);
 
-    public async Task<GatheringPlayRecord?> SaveAsync(Guid publicId, string key, long participantId, RecordPlayCommand command, CancellationToken ct)
+    public async Task<GatheringPlayRecord?> SaveAsync(Guid publicId, string key, long participantId,
+        RecordPlayCommand command, CancellationToken ct, bool canAdminister = false)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (db.Database.IsRelational()) await db.GameGatherings.FromSqlInterpolated(
             $"SELECT * FROM \"GameGatherings\" WHERE \"PublicId\" = {publicId} AND \"CommunityKey\" = {key} FOR UPDATE").SingleOrDefaultAsync(ct);
         var g = await Gatherings.SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == key, ct)
             ?? throw new KeyNotFoundException("Сбор не найден.");
-        RequireAccess(g, participantId);
-        if (g.OrganizerParticipantId != participantId)
-            throw new UnauthorizedAccessException("Исход и состав партии подтверждает организатор сбора.");
+        RequireAccess(g, participantId, canAdminister);
+        if (g.OrganizerParticipantId != participantId && !canAdminister)
+            throw new UnauthorizedAccessException("Исход и состав партии подтверждает организатор или администратор сообщества.");
         if (g.StartsAtUtc > clock.GetUtcNow()) throw new InvalidOperationException("Сбор ещё не начался.");
         if (command.Players is null || command.ExpansionIds is null) throw new ArgumentException("Укажите игроков и дополнения партии.");
         var now = clock.GetUtcNow();

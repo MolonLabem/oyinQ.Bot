@@ -16,6 +16,7 @@ using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
@@ -42,6 +43,7 @@ public sealed class GlobalProfileApiTests
         builder.Services.AddScoped<TelegramMiniAppAuthenticator>(); builder.Services.AddScoped<ParticipantIdentityService>();
         builder.Services.AddScoped<PrivateChatCapability>(); builder.Services.AddScoped<ParticipantCollectionService>();
         builder.Services.AddScoped<ICommunityStore, CommunityStore>(); builder.Services.AddScoped<CommunityContextResolver>();
+        builder.Services.AddSingleton<IAdminAuthorizationService, NoAdministration>();
         builder.Services.AddSingleton<ICommunityMembershipVerifier, NoMembership>();
         builder.Services.AddScoped<GatheringPresentationService>(); builder.Services.AddScoped<CampBggImportCoordinator>();
         builder.Services.AddScoped<CampContributionSelectionService>(); builder.Services.AddScoped<CampParticipationPolicy>();
@@ -101,6 +103,21 @@ public sealed class GlobalProfileApiTests
     }
     private sealed class NoMembership : ICommunityMembershipVerifier
     { public Task<bool> IsMemberAsync(long chat, long user, CancellationToken ct) => Task.FromResult(false); }
+    private sealed class NoAdministration : IAdminAuthorizationService
+    {
+        public bool IsSuperAdmin(long telegramUserId) => false;
+        public Task<bool> CanOpenAdminPanelAsync(long telegramUserId, CancellationToken ct) => Task.FromResult(false);
+        public Task<bool> CanAdministerCommunityAsync(long telegramUserId, string communityKey, CancellationToken ct) => Task.FromResult(false);
+        public Task<bool> CanAdministerClubAsync(long telegramUserId, long clubId, CancellationToken ct) => Task.FromResult(false);
+        public Task<bool> CanAdministerCampAsync(long telegramUserId, long campId, CancellationToken ct) => Task.FromResult(false);
+        public Task<bool> CanManageAdminsAsync(long telegramUserId, string communityKey, CancellationToken ct) => Task.FromResult(false);
+        public Task<IReadOnlyList<AdminChatAccess>> GetAdminPanelChatsAsync(long telegramUserId, CancellationToken ct) => Task.FromResult<IReadOnlyList<AdminChatAccess>>([]);
+        public Task<IReadOnlyList<GroupAdministratorRecord>> ListGroupAdminsAsync(long actorTelegramUserId, string communityKey, CancellationToken ct) => Task.FromResult<IReadOnlyList<GroupAdministratorRecord>>([]);
+        public Task<IReadOnlyList<EligibleGroupAdministrator>> ListEligibleGroupAdminsAsync(long actorTelegramUserId, string communityKey, CancellationToken ct) => Task.FromResult<IReadOnlyList<EligibleGroupAdministrator>>([]);
+        public Task GrantEligibleGroupAdminAsync(long actorTelegramUserId, string communityKey, long targetTelegramUserId, CancellationToken ct) => throw new NotSupportedException();
+        public Task GrantGroupAdminAsync(long actorTelegramUserId, string communityKey, long targetTelegramUserId, string? displayName, string? telegramUsername, CancellationToken ct) => throw new NotSupportedException();
+        public Task RevokeGroupAdminAsync(long actorTelegramUserId, string communityKey, long targetTelegramUserId, CancellationToken ct) => throw new NotSupportedException();
+    }
     private sealed class BotHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

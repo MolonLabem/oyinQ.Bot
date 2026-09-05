@@ -123,6 +123,26 @@ public sealed class PlanningFeatureTests
     }
 
     [Fact]
+    public async Task Play_CommunityAdministratorCanConfirmOutcomeWithoutRosterMembership()
+    {
+        await using var f = new PlanningFixture();
+        var g = f.Gathering("club", f.Clock.Now.AddHours(-2));
+        g.Status = GatheringStatus.Completed;
+        await f.Db.SaveChangesAsync();
+        var service = new GatheringPlayService(f.Db, f.Clock);
+        var command = new RecordPlayCommand(true, f.Clock.Now.AddMinutes(-15), 90,
+            [new(f.Me.PublicId, null, false)], [], 0);
+
+        var record = await service.SaveAsync(g.PublicId, "club", f.Other.Id, command, default,
+            canAdminister: true);
+
+        Assert.NotNull(record);
+        Assert.Equal(f.Other.Id, record.RecordedByParticipantId);
+        Assert.Equal(f.Other.Id, g.OutcomeRecordedByParticipantId);
+        Assert.True(g.ConfirmedWasPlayed);
+    }
+
+    [Fact]
     public async Task Play_RejectsOutsidersAndUncompletedGatherings_AndFutureEnd()
     {
         await using var f = new PlanningFixture(); var g = f.Gathering("club", f.Clock.Now.AddHours(-2));
