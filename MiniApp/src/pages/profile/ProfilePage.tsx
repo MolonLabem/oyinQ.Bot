@@ -1,11 +1,10 @@
-import { WishlistPanel } from "../../components/Wishlist";
 import { PlayedHistory } from "./PlayedHistory";
 import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
-import { Card, Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter } from "../../components/Ui";
+import { Card, Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { BotStartNotice } from "../../components/BotStartNotice";
@@ -24,6 +23,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   useEffect(() => { if (profile.data) setName(profile.data.preferredDisplayName ?? ""); }, [profile.data]);
 
   async function save() {
+    if (busy) return;
     setBusy(true); setError(undefined);
     try {
       await api<Profile>("/profile", json("PUT", { displayName: name }));
@@ -40,7 +40,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   return <Page title="Профиль">
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
     <ProfileTabs active={tab} select={setTab} />
-    {tab === "collection" && <>{community && <WishlistPanel key={`wishes-${community.key}`} community={community} bggAvailable={bggAvailable} />}<ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} /></>}
+    {tab === "collection" && <ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} />}
     {tab === "settings" && <>
     {!profile.data.botStartRequired && <Notice kind="success">Уведомления Telegram: доступны</Notice>}
     <NotificationSettings />
@@ -50,22 +50,21 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
       </Field>
       <div><span className="muted">В Telegram</span><p>{profile.data.telegramDisplayName}{profile.data.telegramUsername ? ` · @${profile.data.telegramUsername}` : ""}</p></div>
       {error && <Notice kind="danger">{error}</Notice>}
-      <button className="primary" disabled={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить профиль"}</button>
+      <SaveButton busy={busy} label="Сохранить профиль" onClick={save} />
     </Card>
     {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}</>}
     {tab === "calendar" && <section className="profile-schedule"><h2>Моё расписание</h2>
       {schedule.loading ? <Loading /> : schedule.error ? <ErrorState message={schedule.error} retry={schedule.reload} /> : !schedule.data?.length ? <Empty>{profileScheduleEmptyText}</Empty> : <ProfileScheduleList items={schedule.data} communities={communities} open={openGathering} />}
       <PlayedHistory key={community?.key} communityKey={community?.key} open={openGathering} />
     </section>}
-    <button onClick={() => setShowChangelog(true)}>История обновлений</button>
+    <button onClick={() => setShowChangelog(true)}>Что нового?</button>
     <ProductFooter />
   </Page>;
 }
 
 export function ProfileTabs({ active, select }: { active: string; select: (tab: string) => void }) {
-  return <div className="segmented profile-tabs" role="tablist" aria-label="Разделы профиля">{[
+  return <Tabs className="profile-tabs" label="Разделы профиля" active={active} onChange={select} items={[
     { id: "collection", label: "Моя коллекция" }, { id: "calendar", label: "Календарь" },
     { id: "settings", label: "Настройки" }
-  ].map(value => <button key={value.id} role="tab" aria-selected={active === value.id}
-    className={active === value.id ? "active" : ""} onClick={() => select(value.id)}>{value.label}</button>)}</div>;
+  ]} />;
 }

@@ -2,7 +2,7 @@ import { WishButton, WishlistPanel } from "../../components/Wishlist";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { CatalogResponse, Community, GameDetails, GameListItem, GameType } from "../../api/types";
-import { Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import { Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page, Tabs } from "../../components/Ui";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { buildCatalogQuery, toggleValue } from "../../app/catalogQuery";
@@ -10,7 +10,7 @@ import { collectionMissingMessage } from "../../app/collectionNavigation";
 import { GameTaxonomy } from "../../components/GameTaxonomy";
 
 export function GamesPage({ community, bggAvailable, initialGameId, onInitialConsumed, backToGathering }: { community: Community; bggAvailable: boolean; initialGameId?: number; onInitialConsumed?: () => void; backToGathering?: () => void }) {
-  const [wishesOpen, setWishesOpen] = useState(false);
+  const [section, setSection] = useState("catalog");
   const [query, setQuery] = useState(""); const [players, setPlayers] = useState<number>();
   const [types, setTypes] = useState<GameType[]>([]); const [categories, setCategories] = useState<number[]>([]);
   const [ownership, setOwnership] = useState(""); const [availability, setAvailability] = useState(""); const [planning, setPlanning] = useState("");
@@ -24,12 +24,14 @@ export function GamesPage({ community, bggAvailable, initialGameId, onInitialCon
   const activeFilters = (players ? 1 : 0) + types.length + categories.length;
   if (selected) return <GameDetail community={community} bggId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} />;
   return <Page title="Игры" subtitle={state.data ? `${community.name} · ${state.data.items.length}` : community.name}>
-    <button onClick={() => setWishesOpen(!wishesOpen)}>{wishesOpen ? "Скрыть хотелки" : "♡ Мои хотелки / найти новую игру"}</button>
-    {wishesOpen && <WishlistPanel community={community} bggAvailable={bggAvailable} />}
-    <div className="form-grid"><Field label="Чья игра"><select value={ownership} onChange={e => setOwnership(e.target.value)}><option value="">Все источники</option><option value="club">Есть в клубе</option><option value="mine">Есть у меня</option><option value="wishes">Мои хотелки</option>{community.mode === "Camp" && <option value="participants">Могут привезти участники</option>}</select></Field><Field label="Доступность"><select value={availability} onChange={e => setAvailability(e.target.value)}><option value="">Любая</option><option value="confirmed">Точно будут</option><option value="possible">Нужно договориться</option></select></Field><Field label="Сборы"><select value={planning} onChange={e => setPlanning(e.target.value)}><option value="">Все игры</option><option value="planned">Уже запланированы</option><option value="unplanned">Ещё не запланированы</option></select></Field></div>
+    <Tabs label="Разделы игр" active={section} onChange={setSection} items={[
+      { id: "catalog", label: "Каталог" }, { id: "wishlist", label: "Вишлист" }
+    ]} />
+    {section === "wishlist" ? <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <>
+    <div className="form-grid"><Field label="Чья игра"><select value={ownership} onChange={e => setOwnership(e.target.value)}><option value="">Все источники</option><option value="club">Есть в клубе</option><option value="mine">Есть у меня</option><option value="wishes">Мой вишлист</option>{community.mode === "Camp" && <option value="participants">Могут привезти участники</option>}</select></Field><Field label="Доступность"><select value={availability} onChange={e => setAvailability(e.target.value)}><option value="">Любая</option><option value="confirmed">Точно будут</option><option value="possible">Нужно договориться</option></select></Field><Field label="Сборы"><select value={planning} onChange={e => setPlanning(e.target.value)}><option value="">Все игры</option><option value="planned">Уже запланированы</option><option value="unplanned">Ещё не запланированы</option></select></Field></div>
     <div className="catalog-toolbar"><Field label="Поиск"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Название игры" /></Field><button className={activeFilters ? "filter-button active" : "filter-button"} onClick={() => setFiltersOpen(value => !value)}>Фильтры{activeFilters ? ` · ${activeFilters}` : ""}</button></div>
     {filtersOpen && <Card className="filter-panel"><div className="filter-group"><strong>На сколько игроков</strong><div className="choice-row">{[1,2,3,4,5,6].map(value => <button className={players === value ? "active" : ""} key={value} onClick={() => setPlayers(players === value ? undefined : value)}>{value}</button>)}</div><Field label="Другое количество"><input type="number" min="1" inputMode="numeric" value={players ?? ""} onChange={event => setPlayers(event.target.value ? Math.max(1, Number(event.target.value)) : undefined)} /></Field></div><FilterChecks title="Тип" values={state.data?.filters.types ?? []} selected={types} toggle={value => setTypes(toggleValue(types, value))} /><FilterChecks title="Категории" values={(state.data?.filters.categories ?? []).map(value => ({ key: value.bggId, value: value.name }))} selected={categories} toggle={value => setCategories(toggleValue(categories, value))} /><Field label="Сортировка"><select value={sort} onChange={event => setSort(event.target.value)}><option value="name">Название</option><option value="players">Количество игроков</option><option value="popular">Популярные — по подтверждённым партиям</option></select></Field>{activeFilters > 0 && <button className="ghost" onClick={() => { setPlayers(undefined); setTypes([]); setCategories([]); }}>Сбросить фильтры</button>}</Card>}
-    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? <Empty>{query.trim() || activeFilters ? "Ничего не найдено. Попробуйте изменить запрос или фильтры." : community.mode === "Club" ? "В коллекции пока нет игр. Администратор может добавить их в разделе управления коллекцией." : "На кэмпе пока нет доступных игр. Добавьте свою игру в разделе «Профиль → Моя коллекция»."}</Empty> : <CatalogGameList items={state.data.items} club={community.mode === "Club"} searching={Boolean(debouncedQuery.trim())} open={setSelected} />}
+    {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? <Empty>{query.trim() || activeFilters ? "Ничего не найдено. Попробуйте изменить запрос или фильтры." : community.mode === "Club" ? "В коллекции пока нет игр. Администратор может добавить их в разделе управления коллекцией." : "На кэмпе пока нет доступных игр. Добавьте свою игру в разделе «Профиль → Моя коллекция»."}</Empty> : <CatalogGameList items={state.data.items} club={community.mode === "Club"} searching={Boolean(debouncedQuery.trim())} open={setSelected} />}</>}
   </Page>;
 }
 

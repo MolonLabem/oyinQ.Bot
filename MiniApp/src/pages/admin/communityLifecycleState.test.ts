@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCancelCamp, canDeleteCommunity, deletionConfirmation } from "./communityLifecycleState";
+import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation } from "./communityLifecycleState";
 
 describe("community lifecycle admin controls", () => {
   it("keeps cancellation only for a draft or active camp", () => {
@@ -15,7 +15,14 @@ describe("community lifecycle admin controls", () => {
   });
 
   it("names the target and irreversible consequence in confirmation", () => {
-    expect(deletionConfirmation("clubs", "RollMove")).toContain("Удалить клуб «RollMove»?");
-    expect(deletionConfirmation("camps", "Лето")).toContain("Действие нельзя отменить");
+    expect(deletionConfirmation("clubs", "RollMove")).toContain("Удалить клуб «RollMove» из OyinQ?");
+    expect(deletionConfirmation("camps", "Лето")).toContain("Отменить это действие нельзя");
+    expect(cancellationConfirmation("Лето")).toContain("Возобновить кэмп после отмены нельзя");
+  });
+
+  it("points invalid camp dates to the relevant field", () => {
+    expect(campDateValidation("", "")).toEqual({ start: "Укажите дату и время начала.", end: "Укажите дату и время окончания." });
+    expect(campDateValidation("2026-09-10T12:00", "2026-09-10T11:00").end).toContain("позже начала");
+    expect(campDateValidation("2026-09-10T12:00", "2026-09-10T13:00")).toEqual({ start: undefined, end: undefined });
   });
 });

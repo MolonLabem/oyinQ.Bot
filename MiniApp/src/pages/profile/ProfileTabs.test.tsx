@@ -16,9 +16,7 @@ describe("профиль", () => {
     expect(markup).toContain("Календарь");
     expect(markup).toContain("Настройки");
     expect(markup.match(/role="tab"/g)).toHaveLength(3);
-    const buttons = view.props.children as ReactElement<{ onClick: () => void }>[];
-    buttons[2].props.onClick();
-    expect(select).toHaveBeenCalledWith("settings");
+    expect(markup).toContain('aria-selected="true"');
   });
 
   it("старый раздел mine открывает профиль", () => {

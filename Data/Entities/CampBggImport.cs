@@ -8,6 +8,9 @@ public sealed class CampBggImport
     public long ParticipantId { get; set; }
     public string BggUsername { get; set; } = string.Empty;
     public CampBggImportStatus Status { get; set; }
+    public BggImportStage Stage { get; set; }
+    public int FoundGames { get; set; }
+    public int FoundExpansions { get; set; }
     public int ProgressCurrent { get; set; }
     public int? ProgressTotal { get; set; }
     public string? DraftJson { get; set; }

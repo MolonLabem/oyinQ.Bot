@@ -4,6 +4,7 @@ import type { Community, Expansion } from "../../api/types";
 import { currentLocalMinute } from "../../app/format";
 import { Card, ErrorState, Field, Loading, Notice } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
+import { telegram } from "../../telegram/webApp";
 
 type PlayPlayer = { id: string; name: string; score?: number; isWinner: boolean };
 type PlayState = { revision: number; wasPlayed?: boolean; endedAtUtc?: string; durationMinutes?: number;
@@ -19,6 +20,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
   const [scores, setScores] = useState<Record<string, string>>({}); const [winners, setWinners] = useState<string[]>([]); const [higherScoreWins, setHigherScoreWins] = useState(true);
   const [end, setEnd] = useState(""); const [duration, setDuration] = useState(""); const [location, setLocation] = useState(""); const [external, setExternal] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [exported, setExported] = useState<PlayExport>(); const [copied, setCopied] = useState(false);
+  const [endError, setEndError] = useState<string>();
   useEffect(() => {
     const p = state.data; if (!p) return;
     const selected = p.selectedPlayerIds ?? p.players.map(x => x.id);
@@ -37,26 +39,28 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
     } else setScores(old => ({ ...old, [playerId]: "0" }));
   }
   async function save() {
-    if (!state.data || played === undefined) return; setBusy(true); setError(undefined);
+    if (busy || !state.data || played === undefined) return;
+    if (played && !end) { setEndError("Укажите дату и время окончания партии."); return; }
+    setEndError(undefined); setBusy(true); setError(undefined);
     try {
       await api(base, json("PUT", { communityKey: community.key, wasPlayed: played, endedAtLocal: end,
         durationMinutes: duration ? Number(duration) : null, location: location.trim(),
         playerResults: players.map(playerId => ({ playerId, score: Number(scores[playerId] || 0), isWinner: winners.includes(playerId) })),
         expansionIds: expansions, expectedRevision: state.data.revision, higherScoreWins }));
-      state.reload();
+      telegram.success("Запись о партии сохранена"); state.reload();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   }
-  async function prepareExport() { setBusy(true); setError(undefined); try { setExported(await api<PlayExport>(base + "/export" + query)); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  async function prepareExport() { if (busy) return; setBusy(true); setError(undefined); try { setExported(await api<PlayExport>(base + "/export" + query)); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
   async function share() { if (!exported) return; try { if (navigator.share) await navigator.share({ title: "Партия OyinQ", url: exported.bgStatsUrl }); else { await navigator.clipboard.writeText(exported.bgStatsUrl); setCopied(true); } } catch (e) { if (!(e instanceof DOMException && e.name === "AbortError")) setError("Не удалось поделиться. Скопируйте ссылку из поля ниже."); } }
-  async function addReference() { setBusy(true); setError(undefined); try { await api(base + "/references", json("POST", { communityKey: community.key, url: external })); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
-  async function removeReference(referenceId: number) { setBusy(true); setError(undefined); try { await api(base + `/references/${referenceId}` + query, { method: "DELETE" }); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  async function addReference() { if (busy) return; setBusy(true); setError(undefined); try { await api(base + "/references", json("POST", { communityKey: community.key, url: external })); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  async function removeReference(referenceId: number) { if (busy) return; setBusy(true); setError(undefined); try { await api(base + `/references/${referenceId}` + query, { method: "DELETE" }); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
   if (state.loading) return <Loading />;
   if (state.error || !state.data) return <ErrorState message={state.error ?? "Запись недоступна"} retry={state.reload} />;
   const hasScores = players.length > 0;
   return <Card className="form-grid play-record-form"><h2>Игра состоялась?</h2>
     <p>Подтвердите факт партии и фактический состав. Это не меняет отметки посещаемости сбора.</p>
     {state.data.canEdit ? <><div className="choice-row"><button aria-pressed={played === true} className={played === true ? "active" : ""} onClick={() => setPlayed(true)}>Да, сыграли</button><button aria-pressed={played === false} className={played === false ? "active" : ""} onClick={() => setPlayed(false)}>Нет, не состоялась</button></div>
-    {played && <><Field label={`Окончание партии (${community.timeZoneId})`}><input type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} /></Field><Field label="Продолжительность, минут (необязательно)"><input type="number" min="1" max="10080" value={duration} onChange={e => setDuration(e.target.value)} /></Field>
+    {played && <><Field label={`Окончание партии (${community.timeZoneId})`} error={endError}><input type="datetime-local" value={end} onChange={e => { setEnd(e.target.value); setEndError(undefined); }} /></Field><Field label="Продолжительность, минут (необязательно)"><input type="number" min="1" max="10080" value={duration} onChange={e => setDuration(e.target.value)} /></Field>
       <Field label="Где играли"><input type="text" maxLength={160} value={location} onChange={e => setLocation(e.target.value)} placeholder={community.name} /></Field>
       <fieldset className="play-results"><legend>Кто играл и кто победил</legend><small>Можно выбрать несколько победителей. Для совместного поражения не отмечайте никого.</small>
         {state.data.players.map(p => <div className={`play-player-result${players.includes(p.id) ? " selected" : ""}`} key={p.id}>
@@ -72,7 +76,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
     </>}
     </> : <Notice>{state.data.wasPlayed === true ? "Партия подтверждена организатором." : state.data.wasPlayed === false ? "Сбор не состоялся." : "Ожидаем подтверждения организатора."}</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}
-    {state.data.canEdit && <button className="primary" disabled={busy || played === undefined || (played && (players.length === 0 || !location.trim()))} onClick={save}>Сохранить запись</button>}
+    {state.data.canEdit && <button className="primary" disabled={busy || played === undefined || (played && (players.length === 0 || !location.trim()))} aria-busy={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить запись"}</button>}
     {state.data.wasPlayed && state.data.canShare && <section className="bgstats-export"><h3>Добавить в BG Stats</h3>
       {exported ? <><a className="button primary-link bgstats-open-link" href={exported.bgStatsUrl} target="_blank" rel="noreferrer">Открыть в BG Stats ↗</a><p>BG Stats откроет подтверждение импорта. Включённая автопубликация BG Stats может отправить партию в BGG.</p><button onClick={share}>Поделиться ссылкой</button>{copied && <Notice>Ссылка скопирована</Notice>}<input aria-label="Ссылка на импорт партии" value={exported.bgStatsUrl} readOnly onFocus={e => e.target.select()} /></>
         : <><button className="primary" disabled={busy} onClick={prepareExport}>Создать ссылку для BG Stats</button><small>В ссылке будут место, имена игроков, победители и счёт. Получатель сможет прочитать эти данные.</small></>}

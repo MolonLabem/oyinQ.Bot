@@ -1,10 +1,30 @@
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Integrations;
+using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Tests;
 
 public sealed class ClubBggImportTests
 {
+    [Fact]
+    public async Task Loader_ReportsMeaningfulCountsAtRealStages()
+    {
+        var progress = new List<BggImportProgress>();
+        var service = new CampBggImportService(new ProgressBggClient());
+
+        var items = await service.LoadSelectionAsync("owner", default, value =>
+        {
+            progress.Add(value);
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(3, items.Count);
+        Assert.Collection(progress,
+            value => { Assert.Equal(BggImportStage.FetchingExpansions, value.Stage); Assert.Equal(2, value.FoundGames); Assert.Equal(0, value.FoundExpansions); },
+            value => { Assert.Equal(BggImportStage.Preparing, value.Stage); Assert.Equal(2, value.FoundGames); Assert.Equal(1, value.FoundExpansions); });
+    }
+
     [Fact]
     public void Merge_IsAdditive_AndPreservesExistingExpansionSelections()
     {
@@ -90,5 +110,16 @@ public sealed class ClubBggImportTests
             .Expansions.Select(expansion => expansion.BggId));
         Assert.Equal(2, result.AddedExpansions);
         Assert.Equal(0, result.OrphanExpansions);
+    }
+
+    private sealed class ProgressBggClient : IBoardGameGeekClient
+    {
+        public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string username, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ExternalGame>>([new(1, "Первая", 1, 4, null, null), new(2, "Вторая", 2, 5, null, null)]);
+        public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string username, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<BggOwnedExpansion>>([new(new ExternalGame(10, "Дополнение", null, null, null, null), [1])]);
+        public Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(string query, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<BggGameDetails?> GetGameDetailsAsync(long bggId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> bggIds, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

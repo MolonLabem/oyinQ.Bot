@@ -20,7 +20,7 @@ public sealed class GameWishService(AppDbContext db, GameCatalogService catalog,
             var community = await db.OyinQCommunities.AsNoTracking().SingleAsync(x => x.Key == key, ct);
             var telegramId = await db.Participants.Where(x => x.Id == participantId).Select(x => x.TelegramUserId).SingleAsync(ct);
             var saved = (await catalog.LoadAsync(key, community.Mode, telegramId, ct)).SingleOrDefault(x => x.Game.BggId == bggId);
-            if (saved is { IsBaseGame: false }) throw new ArgumentException("В хотелки можно добавить только базовую игру.");
+            if (saved is { IsBaseGame: false }) throw new ArgumentException("В вишлист можно добавить только базовую игру.");
             if (saved is not null) game = saved.Game;
             else
             {
@@ -38,7 +38,7 @@ public sealed class GameWishService(AppDbContext db, GameCatalogService catalog,
         {
             var camp = await db.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == key, ct);
             if (camp.Status != CampStatus.Active || CampParticipationPolicy.HasEnded(camp, current.TimeZoneId, clock.GetUtcNow()))
-                throw new InvalidOperationException("Хотелки можно добавлять только в действующем кэмпе.");
+                throw new InvalidOperationException("Вишлист можно изменять только в действующем кэмпе.");
         }
         var row = await db.GameWishes.SingleOrDefaultAsync(x => x.CommunityKey == key && x.ParticipantId == participantId && x.BggId == bggId, ct);
         if (wished && row is null)

@@ -18,7 +18,7 @@ internal static class ProfileEndpoints
         {
             if (MiniAppEndpointSupport.Authenticate(request, authenticator) is null) return Results.Unauthorized();
             using var stream = typeof(ProfileEndpoints).Assembly.GetManifestResourceStream("OyinQ.Changelog")
-                ?? throw new InvalidOperationException("История обновлений отсутствует.");
+                ?? throw new InvalidOperationException("Раздел «Что нового?» временно недоступен.");
             using var reader = new StreamReader(stream);
             return Results.Ok(new { markdown = reader.ReadToEnd() });
         });

@@ -9,6 +9,9 @@ public sealed record CampBggImportView(
     Guid PublicId,
     CampBggImportStatus Status,
     string BggUsername,
+    BggImportStage Stage,
+    int FoundGames,
+    int FoundExpansions,
     int ProgressCurrent,
     int? ProgressTotal,
     CampBggImportDraft? Draft,
@@ -38,6 +41,7 @@ public sealed class CampBggImportCoordinator(
                 && x.ExpiresAt <= now)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Status, CampBggImportStatus.Cancelled)
+                .SetProperty(x => x.Stage, BggImportStage.Cancelled)
                 .SetProperty(x => x.UpdatedAt, now), cancellationToken);
         var active = await dbContext.CampBggImports.AsNoTracking()
             .Where(x => x.CampId == campId && x.ParticipantId == participantId
@@ -48,6 +52,7 @@ public sealed class CampBggImportCoordinator(
         {
             PublicId = Guid.NewGuid(), CampId = campId, ParticipantId = participantId,
             BggUsername = username, Status = CampBggImportStatus.Queued,
+            Stage = BggImportStage.Queued,
             CreatedAt = now, UpdatedAt = now, ExpiresAt = now.AddDays(7)
         };
         dbContext.CampBggImports.Add(import);
@@ -71,10 +76,13 @@ public sealed class CampBggImportCoordinator(
     {
         var import = await RequireOwnedAsync(publicId, campId, participantId, cancellationToken);
         return new CampBggImportView(import.PublicId, import.Status, import.BggUsername,
-            import.ProgressCurrent, import.ProgressTotal,
+            import.Stage, import.FoundGames, import.FoundExpansions, import.ProgressCurrent, import.ProgressTotal,
             import.Status is CampBggImportStatus.Completed or CampBggImportStatus.Confirmed
                 ? CampBggImportDraftSerializer.Deserialize(import.DraftJson) : null,
-            import.Error, import.UpdatedAt, import.ExpiresAt, import.OverrideResolution,
+            import.Status == CampBggImportStatus.Failed
+                ? "Не удалось загрузить коллекцию BGG. Сохранённые игры не изменены; попробуйте ещё раз позже."
+                : null,
+            import.UpdatedAt, import.ExpiresAt, import.OverrideResolution,
             import.ConfirmationJson is not null
                 && CampBggImportConfirmationSerializer.Deserialize(import.ConfirmationJson)
                     .SelectedOverridableItems.Count > 0);
@@ -208,7 +216,7 @@ public sealed class CampBggImportCoordinator(
             or CampBggImportStatus.Failed or CampBggImportStatus.Cancelled) return;
         var now = timeProvider.GetUtcNow();
         import.CancellationRequestedAt = now;
-        if (import.Status == CampBggImportStatus.Queued) import.Status = CampBggImportStatus.Cancelled;
+        if (import.Status == CampBggImportStatus.Queued) { import.Status = CampBggImportStatus.Cancelled; import.Stage = BggImportStage.Cancelled; }
         import.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -221,6 +229,8 @@ public sealed class CampBggImportCoordinator(
         if (campId is { } eventId) await participationPolicy.RequireCompleteRegistrationAsync(eventId, participantId, cancellationToken);
         var now = timeProvider.GetUtcNow();
         import.Status = CampBggImportStatus.Queued;
+        import.Stage = BggImportStage.Queued;
+        import.FoundGames = 0; import.FoundExpansions = 0;
         import.Error = null; import.LeaseId = null; import.LeaseExpiresAt = null;
         import.CancellationRequestedAt = null; import.UpdatedAt = now; import.ExpiresAt = now.AddDays(7);
         await dbContext.SaveChangesAsync(cancellationToken);

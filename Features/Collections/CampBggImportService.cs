@@ -3,6 +3,8 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Collections;
 
+public sealed record BggImportProgress(BggImportStage Stage, int FoundGames, int FoundExpansions);
+
 public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 {
     public static CampBggImportDraft ClassifySkips(CampBggImportDraft draft,
@@ -19,7 +21,7 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
         }).ToArray() };
 
     public async Task<CampBggImportDraft> LoadDraftAsync(string username, CancellationToken cancellationToken,
-        Func<int, int, Task>? reportProgress = null)
+        Func<BggImportProgress, Task>? reportProgress = null)
     {
         var selection = await LoadSelectionAsync(username, cancellationToken, reportProgress);
         return new CampBggImportDraft(
@@ -56,7 +58,7 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
         string username,
         CancellationToken cancellationToken,
-        Func<int, int, Task>? reportProgress = null)
+        Func<BggImportProgress, Task>? reportProgress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
@@ -64,9 +66,9 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
         // collection response mixes item types and cannot preserve ownership of
         // expansions reliably.
         var baseGames = await bggClient.GetOwnedBaseGamesAsync(username.Trim(), cancellationToken);
-        if (reportProgress is not null) await reportProgress(1, 2);
+        if (reportProgress is not null) await reportProgress(new(BggImportStage.FetchingExpansions, baseGames.Count, 0));
         var expansions = await bggClient.GetOwnedExpansionsAsync(username.Trim(), cancellationToken);
-        if (reportProgress is not null) await reportProgress(2, 2);
+        if (reportProgress is not null) await reportProgress(new(BggImportStage.Preparing, baseGames.Count, expansions.Count));
         var ownedBaseIds = baseGames.Where(value => value.BggId is > 0)
             .Select(value => value.BggId!.Value)
             .ToHashSet();

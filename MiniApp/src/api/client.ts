@@ -5,14 +5,24 @@ export class ApiError extends Error {
   constructor(message: string, public status: number, public code?: string, public currentRevision?: number, public affectedGatherings?: ApiErrorBody["affectedGatherings"], public requiredDate?: string, public conflicts?: ApiErrorBody["conflicts"]) { super(message); }
 }
 
+export function fallbackApiError(status: number) {
+  if (status === 401) return "Сессия Telegram устарела. Закройте Mini App и откройте её снова.";
+  if (status === 403) return "У вас нет доступа к этому действию.";
+  if (status === 404) return "Запрошенные данные не найдены.";
+  if (status >= 500) return "Сервис временно недоступен. Попробуйте ещё раз позже.";
+  return "Не удалось выполнить запрос. Проверьте данные и попробуйте ещё раз.";
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("X-Telegram-Init-Data", telegram.initData);
   if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  const response = await fetch(`/api/miniapp${path}`, { ...options, headers });
+  let response: Response;
+  try { response = await fetch(`/api/miniapp${path}`, { ...options, headers }); }
+  catch { throw new ApiError("Нет соединения с OyinQ. Проверьте интернет и попробуйте ещё раз.", 0, "network_error"); }
   if (!response.ok) {
     const body = await response.json().catch(() => ({} as ApiErrorBody)) as ApiErrorBody;
-    throw new ApiError(body.message ?? "Не удалось выполнить запрос.", response.status, body.code, body.currentRevision, body.affectedGatherings, body.requiredDate, body.conflicts);
+    throw new ApiError(body.message?.trim() || fallbackApiError(response.status), response.status, body.code, body.currentRevision, body.affectedGatherings, body.requiredDate, body.conflicts);
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
@@ -20,8 +30,10 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 export const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 export async function download(path: string, fileName: string): Promise<void> {
-  const response = await fetch(`/api/miniapp${path}`, { headers: { "X-Telegram-Init-Data": telegram.initData } });
-  if (!response.ok) throw new ApiError("Не удалось скачать файл.", response.status);
+  let response: Response;
+  try { response = await fetch(`/api/miniapp${path}`, { headers: { "X-Telegram-Init-Data": telegram.initData } }); }
+  catch { throw new ApiError("Нет соединения с OyinQ. Не удалось скачать файл.", 0, "network_error"); }
+  if (!response.ok) throw new ApiError(response.status >= 500 ? "Сервис временно недоступен. Не удалось скачать файл." : "Не удалось скачать файл.", response.status);
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a"); link.href = url; link.download = fileName; link.click();
   URL.revokeObjectURL(url);

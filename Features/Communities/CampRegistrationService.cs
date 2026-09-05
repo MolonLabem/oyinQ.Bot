@@ -187,6 +187,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             await contributions.ExecuteDeleteAsync(cancellationToken);
             await imports.ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Status, CampBggImportStatus.Cancelled)
+                .SetProperty(x => x.Stage, BggImportStage.Cancelled)
                 .SetProperty(x => x.CancellationRequestedAt, now)
                 .SetProperty(x => x.UpdatedAt, now), cancellationToken);
             return;
@@ -196,6 +197,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         foreach (var import in await imports.ToArrayAsync(cancellationToken))
         {
             import.Status = CampBggImportStatus.Cancelled;
+            import.Stage = BggImportStage.Cancelled;
             import.CancellationRequestedAt = now;
             import.UpdatedAt = now;
         }

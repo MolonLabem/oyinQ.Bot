@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { successEventName } from "../telegram/webApp";
 import { telegram } from "../telegram/webApp";
 
@@ -12,9 +12,23 @@ export function Loading({ label = "Загрузка…" }: { label?: string }) {
 export function Empty({ children }: { children: ReactNode }) { return <Card><p className="empty">{children}</p></Card>; }
 export function ErrorState({ message, retry }: { message: string; retry?: () => void }) { return <Card className="error"><strong>Не удалось загрузить данные</strong><p>{message}</p>{retry && <button onClick={retry}>Повторить</button>}</Card>; }
 export function Cover({ src, name }: { src?: string; name: string }) { return src ? <img className="cover" src={src} alt={`Обложка игры ${name}`} /> : <div className="cover placeholder" aria-hidden>🎲</div>; }
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) { return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>; }
+export function Field({ label, children, hint, error }: { label: string; children: ReactNode; hint?: string; error?: string }) { return <label className={`field${error ? " invalid" : ""}`}><span>{label}</span>{children}{hint && <small>{hint}</small>}{error && <small className="field-error" role="alert">{error}</small>}</label>; }
 export function Notice({ children, kind = "info" }: { children: ReactNode; kind?: "info" | "warning" | "danger" | "success" }) { return <div className={`notice ${kind}`} role="status">{children}</div>; }
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: string }) { return <span className={`badge ${tone}`}>{children}</span>; }
+export type TabItem = { id: string; label: string };
+export function Tabs({ items, active, onChange, label, className = "" }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string }) {
+  const activeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { activeButton.current?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [active]);
+  return <div className={`page-tabs ${className}`.trim()} role="tablist" aria-label={label}>{items.map(item => <button
+    key={item.id} ref={active === item.id ? activeButton : undefined} type="button" role="tab"
+    aria-selected={active === item.id} className={active === item.id ? "active" : ""}
+    onClick={() => onChange(item.id)}>{item.label}</button>)}</div>;
+}
+export function SaveButton({ busy, label, busyLabel = "Сохраняем…", disabled, onClick, className = "primary" }: {
+  busy: boolean; label: string; busyLabel?: string; disabled?: boolean; onClick: () => void; className?: string;
+}) {
+  return <button type="button" className={className} disabled={busy || disabled} aria-busy={busy} onClick={onClick}>{busy ? busyLabel : label}</button>;
+}
 export function BggAttribution() {
   return <a className="bgg-attribution" href="https://boardgamegeek.com" target="_blank" rel="noreferrer" aria-label="Powered by BoardGameGeek">
     <img src="https://dm1i7q1ruvbhg.cloudfront.net/assets/powered_by_bgg-9f2993c7fad826d5407c35b5c8117b08d2a6cdf5beb1f0c02d06a7dc7f5cdd7f.png" alt="Powered by BGG" />

@@ -7,12 +7,13 @@ import { GatheringDashboard } from "./GatheringDashboard";
 import { GameProviderNotice } from "./GameProviderNotice";
 import { ReleaseAnnouncementPage } from "../pages/admin/ReleaseAnnouncementPage";
 import { PlayPanel } from "../pages/gatherings/PlayPanel";
+import { GatheringDetails } from "../pages/gatherings/GatheringsPage";
 
 describe("экраны планирования", () => {
   it("показывает очередь и явное действие владельца без обещания автоматически привезти", () => {
     mock.data = { items: [{ publicId: "g", communityKey: "camp", community: "Кэмп", gameName: "Игра", localDateTime: "4 сентября, 18:00", waitlistPosition: 1, isToday: true, provider: { summary: "Никто пока не подтвердил коробку", canBring: true, isConfirmed: false } }] };
     const markup = renderToStaticMarkup(<GatheringDashboard communityKey="camp" open={() => {}} />);
-    expect(markup).toContain("Обзор организатора"); expect(markup).toContain("Лист ожидания: 1"); expect(markup).toContain("Я привезу"); expect(markup).toContain("Никто пока не подтвердил коробку");
+    expect(markup).toContain("Требуют внимания"); expect(markup).toContain("Лист ожидания: 1"); expect(markup).toContain("Я привезу"); expect(markup).toContain("Никто пока не подтвердил коробку");
   });
   it("показывает коробку клуба без цветного предупреждения", () => {
     mock.data = { isConfirmed: false, summary: "Нет в коллекции клуба", isOwned: false };
@@ -42,5 +43,25 @@ describe("экраны планирования", () => {
     const markup = renderToStaticMarkup(<PlayPanel community={{ key: "club", name: "Клуб", mode: "Club", timeZoneId: "UTC" }} id="g" />);
     expect(markup).toContain("Виктор"); expect(markup).toContain("Поделиться ссылкой из BG Stats"); expect(markup).not.toContain("Удалить ссылку"); expect(markup).not.toContain("Сохранить запись"); expect(markup).not.toContain("Скачать");
     expect(markup.indexOf("Создать ссылку для BG Stats")).toBeLessThan(markup.indexOf("Поделиться ссылкой из BG Stats"));
+  });
+  it("оставляет административный просмотр сбора только для чтения, кроме повтора публикации", () => {
+    mock.data = {
+      gathering: { publicId: "g", gameName: "Игра", localDateTime: "5 сентября, 18:00", occupiedSeats: 1, statusText: "Идёт набор", rulesText: "Правила объяснят", expansions: [], bggId: 42 },
+      status: "Recruiting", currentUserStatus: "None", canEdit: true, canClose: true, canReopen: false,
+      canCancel: true, canManageGuests: true, canRequestRecruitment: true, canRetryPublication: true,
+      canJoin: true, canLeave: false, canRecordPlay: true, hasStarted: false,
+      confirmedParticipants: [{ name: "Организатор", isOrganizer: true }], guestParticipants: [], waitlistedParticipants: [],
+      publicationStatus: "Failed", startsAtLocal: "2026-09-05T18:00", minimumPlayers: 1, desiredPlayers: 3,
+      maximumPlayers: 4, canTeachRules: true, knownExpansions: [], selectedExpansionIds: [],
+      provider: { summary: "Можно привезти", providers: [], canBring: true, isConfirmed: false },
+    };
+    const community = { key: "camp", name: "Кэмп", mode: "Camp" as const, timeZoneId: "Asia/Almaty" };
+    const markup = renderToStaticMarkup(<GatheringDetails readOnly community={community} id="g" onBack={() => {}}
+      onCancelled={() => {}} editRegistration={() => {}} openCollection={() => {}} />);
+    expect(markup).toContain("Повторить обновление");
+    expect(markup).not.toContain("Занять место");
+    expect(markup).not.toContain("Изменить сбор");
+    expect(markup).not.toContain("Я привезу");
+    expect(markup).not.toContain("Добавить в вишлист");
   });
 });

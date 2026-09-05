@@ -483,6 +483,9 @@ internal static class AdminEndpoints
                 authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         if (!Enum.TryParse<CampStatus>(body.Status, true, out var status))
             return MiniAppEndpointSupport.Problem("validation", "Неизвестный статус кэмпа.");
+        if (status is not CampStatus.Active and not CampStatus.Cancelled)
+            return MiniAppEndpointSupport.Problem("validation",
+                "Завершение кэмпа происходит автоматически после даты окончания. Вручную можно только активировать или отменить проведение.");
         try
         {
             var result = await communities.SetCampStatusAsync(campId, status, cancellationToken);

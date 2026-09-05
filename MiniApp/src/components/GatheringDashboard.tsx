@@ -9,31 +9,31 @@ type Dashboard = { items: DashboardItem[]; hasMore: boolean; camp?: { registered
 
 export function GatheringDashboard({ communityKey, open }: { communityKey: string; open: (key: string, id: string) => void }) {
   const state = useAsync(() => api<Dashboard>(`/gatherings/dashboard?community=${encodeURIComponent(communityKey)}`), [communityKey]);
-  const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [all, setAll] = useState(false);
-  async function bring(item: DashboardItem) { setBusy(true); setError(undefined); try { await api(`/gatherings/${item.publicId}/bring`, json("POST", { communityKey: item.communityKey })); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
+  const [busyId, setBusyId] = useState<string>(); const [error, setError] = useState<string>();
+  async function bring(item: DashboardItem) { if (busyId) return; setBusyId(item.publicId); setError(undefined); try { await api(`/gatherings/${item.publicId}/bring`, json("POST", { communityKey: item.communityKey })); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusyId(undefined); } }
   if (state.loading) return <Loading />;
   if (state.error) return <ErrorState message={state.error} retry={state.reload} />;
-  const rows = state.data?.items ?? [];
-  return <section className="planning-dashboard" aria-label="Обзор организатора">
-    <h2>Обзор организатора</h2>
-    <p>Будущие сборы: {rows.filter(x => !x.recentlyCancelled).length} · Сегодня: {rows.filter(x => x.isToday && !x.recentlyCancelled).length}</p>
+  const rows = (state.data?.items ?? []).filter(item => item.recentlyCancelled || item.recruitment?.belowDesired
+    || item.fullWithWaitlist || !item.provider.isConfirmed || item.startingSoon || item.publicationFailed
+    || item.deliveryProblems > 0 || item.notificationUnavailableParticipants > 0);
+  return <section className="planning-dashboard" aria-label="Сборы, требующие внимания">
+    <h2>Требуют внимания</h2>
     {state.data?.camp && <Notice>Сегодня зарегистрированы: {state.data.camp.registeredToday}. Игр точно привезут: {state.data.camp.bringingGames}, могут привезти: {state.data.camp.availableGames}.</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}
-    {!rows.length && <Empty>Пока нет сборов, которыми вы управляете.</Empty>}
-    {(all ? rows : rows.slice(0, 8)).map(item => <Card key={item.publicId}>
+    {!rows.length && <Empty>Нет сборов, требующих действий администратора.</Empty>}
+    {rows.map(item => <Card key={item.publicId}>
       <button className="ghost" onClick={() => open(item.communityKey, item.publicId)}><strong>{item.gameName}</strong><br />{item.localDateTime} · {item.community}</button>
       <p>{item.isToday ? "Сегодня · " : ""}{item.isOrganizer ? "Вы организатор" : item.waitlistPosition ? `Лист ожидания: ${item.waitlistPosition}` : ""}{item.startingSoon ? " · В ближайшие два часа" : ""}</p>
       {item.recentlyCancelled ? <Notice>Недавно отменён</Notice> : <>
         {item.recruitment && <Notice kind={item.belowMinimum ? "warning" : "info"}>{item.recruitment.text}</Notice>}
         {item.fullWithWaitlist && <Notice>Места заняты, есть лист ожидания</Notice>}
         {!item.provider.isConfirmed && <Notice kind="warning">{item.provider.summary}</Notice>}
-        {item.provider.canBring && <button disabled={busy} onClick={() => bring(item)}>Я привезу</button>}
+        {item.provider.canBring && <button disabled={Boolean(busyId)} onClick={() => bring(item)}>{busyId === item.publicId ? "Сохраняем…" : "Я привезу"}</button>}
       </>}
       {item.publicationFailed && <Notice kind="danger">Не удалось опубликовать объявление — откройте сбор для повтора.</Notice>}
       {!item.recentlyCancelled && item.notificationUnavailableParticipants > 0 && <Notice kind="warning">Участников без доступных уведомлений: {item.notificationUnavailableParticipants}. Попросите их запустить бота.</Notice>}
       {item.deliveryProblems > 0 && <Notice kind="warning">Не подтверждена доставка важных уведомлений: {item.deliveryProblems}. Свяжитесь с участниками через сбор.</Notice>}
     </Card>)}
-    {!all && rows.length > 8 && <button onClick={() => setAll(true)}>Показать все</button>}
     {state.data?.hasMore && <Notice>Обзор ограничен первыми 200 сборами каждой выборки. Полное расписание доступно в календаре и списке сборов.</Notice>}
   </section>;
 }

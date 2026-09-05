@@ -4,7 +4,7 @@ import { useAsync } from "../../hooks/useAsync";
 
 export function ChangelogPage({ back }: { back: () => void }) {
   const changelog = useAsync(() => api<{ markdown: string }>("/profile/changelog"), []);
-  return <Page title="История обновлений" actions={<button onClick={back}>← В профиль</button>}>
+  return <Page title="Что нового?" actions={<button onClick={back}>← В профиль</button>}>
     {changelog.loading ? <Loading /> : changelog.error ? <ErrorState message={changelog.error} retry={changelog.reload} />
       : changelog.data && <Card><ChangelogContent markdown={changelog.data.markdown} /></Card>}
   </Page>;

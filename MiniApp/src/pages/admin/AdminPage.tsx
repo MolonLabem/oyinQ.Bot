@@ -2,18 +2,21 @@ import { ReleaseAnnouncementPage } from "./ReleaseAnnouncementPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
 import { RecruitmentSettings } from "./RecruitmentSettings";
-import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
+import { GatheringDashboard } from "../../components/GatheringDashboard";
+import { GatheringDetails } from "../gatherings/GatheringsPage";
+import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, Community, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
 import { Badge, BggAttribution, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { campStatusLabel, currentLocalMinute, formatInstant, formatDate, plural } from "../../app/format";
+import { bggImportProgressText, clubImportResultText, type BggImportStage } from "../../app/bggImportProgress";
 import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
 import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
-import { canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
+import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
 
-type Section = "release" | "clubs" | "camps" | "administrators" | "export" | "collection" | "participants";
+type Section = "release" | "clubs" | "camps" | "gatherings" | "administrators" | "export" | "collection" | "participants";
 type CommunityCreated = {
   id: number;
   telegramOnboardingSent: boolean;
@@ -33,6 +36,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
   const nav = [
     { id: "clubs", label: "Клубы", icon: "♣" },
     { id: "camps", label: "Кэмпы", icon: "⛺" },
+    { id: "gatherings", label: "Контроль сборов", icon: "⚑" },
     { id: "export", label: "Экспорт", icon: "↕" },
   ] as const;
   const openAdmins = (key: string, name: string) => {
@@ -78,6 +82,8 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
               setSection("participants");
             }}
           />
+        ) : section === "gatherings" ? (
+          <GatheringOperationsPage />
         ) : section === "participants" && participantCamp ? (
           <CampParticipants campId={participantCamp.id} campName={participantCamp.name} back={() => setSection("camps")} />
         ) : section === "administrators" && adminChat ? (
@@ -91,6 +97,31 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
   );
 }
 
+function GatheringOperationsPage() {
+  const overview = useAsync(() => api<AdminOverview>("/admin/overview"), []);
+  const [communityKey, setCommunityKey] = useState("");
+  const [selected, setSelected] = useState<{ communityKey: string; id: string }>();
+  const communities = useMemo(() => overview.data ? [
+    ...overview.data.clubs.filter(item => item.isActive).map<Community>(item => ({ key: item.communityKey, name: item.name, mode: "Club", timeZoneId: item.timeZoneId })),
+    ...overview.data.camps.filter(item => item.status === "Active").map<Community>(item => ({ key: item.communityKey, name: item.name, mode: "Camp", timeZoneId: item.timeZoneId, startsAtUtc: item.startsAtUtc, endsAtUtc: item.endsAtUtc, startDate: item.startDate, endDate: item.endDate }))
+  ] : [], [overview.data]);
+  useEffect(() => { if (!communities.some(item => item.key === communityKey)) setCommunityKey(communities[0]?.key ?? ""); }, [communities, communityKey]);
+  useEffect(() => telegram.back(Boolean(selected), () => setSelected(undefined)), [selected]);
+  const selectedCommunity = selected ? communities.find(item => item.key === selected.communityKey) : undefined;
+  if (selected && selectedCommunity) return <GatheringDetails readOnly community={selectedCommunity} id={selected.id}
+    onBack={() => setSelected(undefined)} onCancelled={() => setSelected(undefined)} editRegistration={() => {}} openCollection={() => {}} />;
+  return <Page title="Контроль сборов" subtitle="Набор игроков, коробки и проблемы доставки">
+    {overview.loading ? <Loading /> : overview.error ? <ErrorState message={overview.error} retry={overview.reload} /> : !communities.length
+      ? <Empty>Нет активных сообществ со сборами.</Empty> : <>
+        <Field label="Сообщество" hint="Показаны только ситуации, в которых может понадобиться действие администратора.">
+          <select value={communityKey} onChange={event => setCommunityKey(event.target.value)}>{communities.map(item =>
+            <option key={item.key} value={item.key}>{item.name} · {item.mode === "Club" ? "Клуб" : "Кэмп"}</option>)}</select>
+        </Field>
+        {communityKey && <GatheringDashboard communityKey={communityKey} open={(key, id) => setSelected({ communityKey: key, id })} />}
+      </>}
+  </Page>;
+}
+
 function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAdmin }: { manage: (id: number) => void; manageAdmins: (key: string, name: string) => void; manageParticipants?: (camp: AdminCamp) => void; view: "clubs" | "camps"; isSuperAdmin: boolean }) {
   const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
   const [create, setCreate] = useState<"club" | "camp">();
@@ -98,6 +129,7 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
   const [editing, setEditing] = useState<AdminClub>();
   const [editingCamp, setEditingCamp] = useState<AdminCamp>();
   const [mutationError, setMutationError] = useState<string>();
+  const [mutationKey, setMutationKey] = useState<string>();
   useEffect(
     () =>
       telegram.back(Boolean(create || editing || editingCamp), () => {
@@ -109,15 +141,21 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
     [create, createChat, editing, editingCamp],
   );
   async function updateCamp(id: number, status: string) {
+    if (mutationKey) return;
+    setMutationKey(`camp-${id}`);
     setMutationError(undefined);
     try {
       await changeCamp(id, status, state.data?.camps.find((camp) => camp.id === id)?.name ?? "кэмп", state.reload);
     } catch (e) {
       setMutationError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMutationKey(undefined);
     }
   }
   async function deleteCommunity(kind: CommunityKind, id: number, name: string) {
+    if (mutationKey) return;
     if (!(await telegram.confirm(deletionConfirmation(kind, name)))) return;
+    setMutationKey(`${kind}-${id}`);
     setMutationError(undefined);
     try {
       await api(`/admin/${kind}/${id}`, json("DELETE"));
@@ -125,6 +163,8 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
       state.reload();
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMutationKey(undefined);
     }
   }
   if (create === "club")
@@ -226,11 +266,11 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                       </div>
                       <Badge tone={club.isActive ? "success" : "neutral"}>{club.isActive ? "Активен" : "Архив"}</Badge>
                     </div>
-                    <div className="row">
+                    <div className="admin-card-actions">
                       <button onClick={() => manage(club.id)}>Коллекция</button>
                       <button onClick={() => setEditing(club)}>Настройки</button>
                       <button onClick={() => manageAdmins(club.communityKey, club.name)}>Администраторы</button>
-                      {canDeleteCommunity(isSuperAdmin) && <button className="danger ghost" onClick={() => deleteCommunity("clubs", club.id, club.name)}>Удалить клуб</button>}
+                      {canDeleteCommunity(isSuperAdmin) && <button disabled={Boolean(mutationKey)} className="danger ghost" onClick={() => deleteCommunity("clubs", club.id, club.name)}>{mutationKey === `clubs-${club.id}` ? "Удаляем…" : "Удалить из OyinQ"}</button>}
                     </div>
                     <details className="technical">
                       <summary>Техническая информация</summary>
@@ -262,23 +302,20 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                     </div>
                     <Badge tone={camp.status === "Active" ? "success" : "neutral"}>{campStatusLabel(camp.status)}</Badge>
                   </div>
-                  <div className="row">
+                  <div className="admin-card-actions">
                     <button onClick={() => manageParticipants?.(camp)}>Участники</button>
                     <button onClick={() => setEditingCamp(camp)}>Настройки</button>
                     <button onClick={() => manageAdmins(camp.communityKey, camp.name)}>Администраторы</button>
-                    {camp.status === "Draft" && (
-                      <button className="primary" onClick={() => updateCamp(camp.id, "Active")}>
-                        Активировать
-                      </button>
-                    )}
-                    {camp.status === "Active" && <button onClick={() => updateCamp(camp.id, "Closed")}>Закрыть</button>}
-                    {canCancelCamp(camp.status) && (
-                      <button className="danger ghost" onClick={() => updateCamp(camp.id, "Cancelled")}>
-                        Отменить
-                      </button>
-                    )}
-                    {canDeleteCommunity(isSuperAdmin) && <button className="danger ghost" onClick={() => deleteCommunity("camps", camp.id, camp.name)}>Удалить кэмп</button>}
+                    {camp.status === "Draft" && <button disabled={Boolean(mutationKey)} className="primary" onClick={() => updateCamp(camp.id, "Active")}>{mutationKey === `camp-${camp.id}` ? "Активируем…" : "Активировать"}</button>}
                   </div>
+                  {(canCancelCamp(camp.status) || canDeleteCommunity(isSuperAdmin)) && <details className="danger-actions">
+                    <summary>Опасные действия</summary>
+                    <p className="muted">Отмена означает, что событие не состоится. Удаление отключает кэмп в OyinQ, но не удаляет Telegram-группу и историю.</p>
+                    <div className="admin-card-actions">
+                      {canCancelCamp(camp.status) && <button disabled={Boolean(mutationKey)} className="danger ghost" onClick={() => updateCamp(camp.id, "Cancelled")}>{mutationKey === `camp-${camp.id}` ? "Отменяем…" : "Отменить проведение"}</button>}
+                      {canDeleteCommunity(isSuperAdmin) && <button disabled={Boolean(mutationKey)} className="danger ghost" onClick={() => deleteCommunity("camps", camp.id, camp.name)}>{mutationKey === `camps-${camp.id}` ? "Удаляем…" : "Удалить из OyinQ"}</button>}
+                    </div>
+                  </details>}
                   <details className="technical">
                     <summary>Техническая информация</summary>
                     <p>Telegram ID: <code>{camp.telegramChatId}</code></p>
@@ -299,6 +336,7 @@ function CampParticipants({ campId, campName, back }: { campId: number; campName
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
   async function sendToMe() {
+    if (sending) return;
     setSending(true);
     setSendError(undefined);
     try {
@@ -367,6 +405,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
   const sourceClubs = overview?.clubs.filter((item) => item.id !== club.id) ?? [];
   const sourceClub = sourceClubs.find((item) => item.id === source);
   async function save() {
+    if (busy) return;
     if (!active && club.isActive && !(await telegram.confirm("Архивировать клуб? Он исчезнет из выбора активных сообществ."))) return;
     setBusy(true);
     setError(undefined);
@@ -381,7 +420,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
     }
   }
   async function copyCollection() {
-    if (!sourceClub) return;
+    if (busy || !sourceClub) return;
     if (!(await telegram.confirm(`Заменить ${plural(club.gameCount, "игру", "игры", "игр")} клуба «${club.name}» коллекцией «${sourceClub.name}» (${plural(sourceClub.gameCount, "игра", "игры", "игр")})?`))) return;
     setBusy(true);
     setError(undefined);
@@ -456,12 +495,13 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
   const [source, setSource] = useState<number | "">(camp.sourceClubId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [dateErrors, setDateErrors] = useState<{ start?: string; end?: string }>({});
   const sourceClub = overview?.clubs.find((item) => item.id === source);
   async function save() {
-    if (!start || !end || end <= start) {
-      setError("Укажите корректный диапазон дат кэмпа.");
-      return;
-    }
+    if (busy) return;
+    const validation = campDateValidation(start, end);
+    setDateErrors(validation);
+    if (validation.start || validation.end) { setError(undefined); return; }
     setBusy(true);
     setError(undefined);
     try {
@@ -475,7 +515,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
     }
   }
   async function copyCollection() {
-    if (!sourceClub) return;
+    if (busy || !sourceClub) return;
     if (!(await telegram.confirm(`Заменить базовую коллекцию кэмпа снимком «${sourceClub.name}» (${plural(sourceClub.gameCount, "игра", "игры", "игр")})?`))) return;
     setBusy(true);
     setError(undefined);
@@ -496,18 +536,18 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
           <input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} />
         </Field>
         <div className="date-range">
-          <Field label="Начало кэмпа">
-            <input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} />
+          <Field label="Начало кэмпа" error={dateErrors.start}>
+            <input type="datetime-local" value={start} onChange={(event) => { setStart(event.target.value); setDateErrors({}); }} />
           </Field>
-          <Field label="Окончание кэмпа">
-            <input type="datetime-local" min={start} value={end} onChange={(event) => setEnd(event.target.value)} />
+          <Field label="Окончание кэмпа" error={dateErrors.end}>
+            <input type="datetime-local" min={start} value={end} onChange={(event) => { setEnd(event.target.value); setDateErrors({}); }} />
           </Field>
         </div>
         <Field label="Часовой пояс" hint={camp.gatherings > 0 ? "Нельзя изменить после создания первого сбора" : "Выберите город с тем же местным временем"}>
           <TimeZoneSelect value={zone} onChange={setZone} disabled={camp.gatherings > 0} />
         </Field>
         <Notice>Изменение дат не удаляет данные. Все существующие регистрации и сборы должны помещаться в новый диапазон.</Notice>
-        <button className="primary" disabled={busy || !name.trim() || !zone.trim() || !start || !end} onClick={save}>
+        <button className="primary" disabled={busy || !name.trim() || !zone.trim()} onClick={save}>
           {busy ? "Сохраняем…" : "Сохранить настройки"}
         </button>
       </Card>
@@ -558,6 +598,7 @@ function PostingTopicSetting({ communityKey }: { communityKey: string }) {
   if (!state.data || !shouldShowPostingTopic(state.data)) return null;
   const topics = selectablePostingTopics(state.data);
   async function save(messageThreadId: number | null) {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -601,10 +642,9 @@ function PostingTopicSetting({ communityKey }: { communityKey: string }) {
 }
 
 async function changeCamp(id: number, status: string, name: string, reload: () => void) {
-  if (status === "Closed" && !(await telegram.confirm(`Закрыть кэмп «${name}»?\n\nНовые регистрации, игры и сборы станут недоступны. Существующие данные сохранятся.`))) return;
-  if (status === "Cancelled" && !(await telegram.confirm(`Отменить кэмп «${name}»?\n\nБудущие сборы будут отменены, новые регистрации и изменения станут недоступны. Возобновить кэмп нельзя.`))) return;
+  if (status === "Cancelled" && !(await telegram.confirm(cancellationConfirmation(name)))) return;
   await api(`/admin/camps/${id}/status`, json("POST", { status }));
-  telegram.success(status === "Active" ? "Кэмп активирован" : status === "Closed" ? "Кэмп закрыт" : "Кэмп отменён");
+  telegram.success(status === "Active" ? "Кэмп активирован" : "Проведение кэмпа отменено");
   reload();
 }
 
@@ -615,6 +655,7 @@ function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; don
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   async function choose() {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -628,7 +669,7 @@ function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; don
     }
   }
   async function create() {
-    if (!selection && !knownChat) return;
+    if (busy || (!selection && !knownChat)) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -706,6 +747,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
   const [selection, setSelection] = useState<PeerTicket>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [dateErrors, setDateErrors] = useState<{ start?: string; end?: string }>({});
   const sourceClub = overview?.clubs.find((club) => club.id === source);
   function changeSource(value: string) {
     const id = value ? +value : "";
@@ -716,10 +758,10 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
     }
   }
   async function choose() {
-    if (!start || !end || end <= start) {
-      setError("Укажите корректный диапазон дат кэмпа.");
-      return;
-    }
+    if (busy) return;
+    const validation = campDateValidation(start, end);
+    setDateErrors(validation);
+    if (validation.start || validation.end) { setError(undefined); return; }
     setBusy(true);
     setError(undefined);
     try {
@@ -733,7 +775,11 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
     }
   }
   async function create() {
+    if (busy) return;
     if (!selection && !knownChat) return;
+    const validation = campDateValidation(start, end);
+    setDateErrors(validation);
+    if (validation.start || validation.end) { setError(undefined); return; }
     setBusy(true);
     setError(undefined);
     try {
@@ -768,11 +814,11 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
           <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="date-range">
-          <Field label="Начало кэмпа">
-            <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+          <Field label="Начало кэмпа" error={dateErrors.start}>
+            <input type="datetime-local" value={start} onChange={(e) => { setStart(e.target.value); setDateErrors({}); }} />
           </Field>
-          <Field label="Окончание кэмпа">
-            <input type="datetime-local" min={start} value={end} onChange={(e) => setEnd(e.target.value)} />
+          <Field label="Окончание кэмпа" error={dateErrors.end}>
+            <input type="datetime-local" min={start} value={end} onChange={(e) => { setEnd(e.target.value); setDateErrors({}); }} />
           </Field>
         </div>
         <Field label="Исходный клуб">
@@ -809,7 +855,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
         {error && <Notice kind="danger">{error}</Notice>}
         <div className="row">
           {selection && !knownChat && <button onClick={() => setSelection(undefined)}>Выбрать другую группу</button>}
-          <button className="primary" disabled={busy || !start || !end || !zone.trim()} onClick={selection || knownChat ? create : choose}>
+          <button className="primary" disabled={busy || !zone.trim()} onClick={selection || knownChat ? create : choose}>
             {busy ? "Ожидаем Telegram…" : selection || knownChat ? "Создать кэмп" : "Выбрать группу"}
           </button>
         </div>
@@ -824,6 +870,7 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   async function add() {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -838,16 +885,21 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
     }
   }
   async function remove(admin: Administrator) {
+    if (busy) return;
     const name = admin.displayName ?? admin.telegramUsername ?? `Telegram ${admin.telegramUserId}`;
     if (!(await telegram.confirm(`Отозвать доступ администратора «${name}» к чату «${communityName}»?`))) return;
+    setBusy(true);
+    setError(undefined);
     try {
       await api(`/admin/communities/${communityKey}/administrators/${admin.telegramUserId}`, { method: "DELETE" });
+      telegram.success("Доступ отозван");
       state.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    }
+    } finally { setBusy(false); }
   }
   async function approve(candidate: EligibleAdministrator) {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -966,6 +1018,9 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
     publicId: string;
     bggUsername: string;
     status: string;
+    stage?: BggImportStage;
+    foundGames: number;
+    foundExpansions: number;
     progressCurrent: number;
     progressTotal: number;
     addedGames: number;
@@ -1022,7 +1077,7 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
   }, [clubImport?.publicId, clubImport?.status, clubId]);
   const games = useMemo(() => searchGames(state.data?.collection.games ?? [], query), [state.data, query]);
   async function add() {
-    if (!state.data || !preview) return;
+    if (busy || !state.data || !preview) return;
     setBusy(true);
     try {
       await api(
@@ -1045,17 +1100,22 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
     }
   }
   async function remove(id: number, name: string) {
-    if (!state.data || !(await telegram.confirm(`Удалить «${name}» из коллекции клуба?\n\nИгра исчезнет из каталога, но уже созданные сборы сохранят её снимок.`))) return;
+    if (busy || !state.data || !(await telegram.confirm(`Удалить «${name}» из коллекции клуба?\n\nИгра исчезнет из каталога, но уже созданные сборы сохранят её снимок.`))) return;
+    setBusy(true);
+    setError(undefined);
     try {
       await api(`/admin/clubs/${clubId}/games/${id}?expectedRevision=${state.data.revision}`, { method: "DELETE" });
+      telegram.success("Игра удалена из коллекции");
       state.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       state.reload();
-    }
+    } finally { setBusy(false); }
   }
   async function importFile(file: File) {
-    if (!state.data || !(await telegram.confirm(`Полностью заменить текущую коллекцию (${plural(state.data.collection.games.length, "игра", "игры", "игр")}) содержимым файла?\n\nУже созданные сборы сохранят свои снимки игр.`))) return;
+    if (busy || !state.data || !(await telegram.confirm(`Полностью заменить текущую коллекцию (${plural(state.data.collection.games.length, "игра", "игры", "игр")}) содержимым файла?\n\nУже созданные сборы сохранят свои снимки игр.`))) return;
+    setBusy(true);
+    setError(undefined);
     try {
       const document = JSON.parse(await file.text());
       await api(`/admin/clubs/${clubId}/collection`, json("PUT", { expectedRevision: state.data.revision, document }));
@@ -1063,9 +1123,10 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
       state.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    }
+    } finally { setBusy(false); }
   }
   async function refreshMetadata() {
+    if (busy) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -1081,7 +1142,7 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
     }
   }
   async function importBgg() {
-    if (!bggInput.trim() || !(await telegram.confirm("Добавить все игры и связанные дополнения из коллекции BGG?\n\nТекущие игры и выбранные дополнения не будут удалены."))) return;
+    if (busy || !bggInput.trim() || !(await telegram.confirm("Добавить все игры и связанные дополнения из коллекции BGG?\n\nТекущие игры и выбранные дополнения не будут удалены."))) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -1152,9 +1213,9 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
               <input value={bggInput} maxLength={300} onChange={(event) => setBggInput(event.target.value)} placeholder="RollMoveClub" />
             </Field>
             <button disabled={!bggAvailable || busy || !bggInput.trim() || Boolean(clubImport && ["Queued", "Running"].includes(clubImport.status))} onClick={importBgg}>
-              Добавить из BGG
+              {busy ? "Запускаем импорт…" : "Добавить из BGG"}
             </button>
-            {clubImport && <Notice kind={clubImport.status === "Failed" ? "danger" : clubImport.status === "Completed" ? "success" : "info"}>{clubImport.status === "Completed" ? `Добавлено: ${plural(clubImport.addedGames, "игра", "игры", "игр")} и ${plural(clubImport.addedExpansions, "дополнение", "дополнения", "дополнений")}${clubImport.orphanExpansions ? `. Без базовой игры: ${clubImport.orphanExpansions}` : ""}.` : clubImport.status === "Failed" ? (clubImport.error ?? "Не удалось импортировать коллекцию BGG.") : `Загружаем данные BGG: ${clubImport.progressCurrent} из ${clubImport.progressTotal}`}</Notice>}
+            {clubImport && <Notice kind={clubImport.status === "Failed" ? "danger" : clubImport.status === "Completed" ? "success" : "info"}>{clubImport.status === "Completed" ? clubImportResultText(clubImport) : clubImport.status === "Failed" ? (clubImport.error ?? "Не удалось импортировать коллекцию BGG.") : bggImportProgressText(clubImport)}</Notice>}
           </Card>
           <Card className="form-grid">
             <h2>Данные игр из BGG</h2>

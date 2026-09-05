@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Integrations.BoardGameGeek;
@@ -84,23 +85,34 @@ internal static class GatheringEndpoints
 
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, GatheringPresentationService presentation,
+        CommunityContextResolver resolver, ICommunityStore communityStore,
+        IAdminAuthorizationService authorization, GatheringPresentationService presentation,
         TimeProvider timeProvider, PrivateChatCapability privateChat, GameProviderService providers, RecruitmentDigestService recruitment,
         CancellationToken cancellationToken)
     {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        var canAdminister = await authorization.CanAdministerCommunityAsync(identity.TelegramUserId, community, cancellationToken);
+        var resolvedCommunity = access?.Community;
+        if (resolvedCommunity is null && canAdminister)
+            resolvedCommunity = await communityStore.FindByKeyAsync(community, cancellationToken);
+        if (resolvedCommunity is null) return Results.Forbid();
         var gathering = await dbContext.GameGatherings.AsNoTracking()
             .Include(x => x.OrganizerParticipant).Include(x => x.Expansions)
             .Include(x => x.Participants).ThenInclude(x => x.Participant)
             .Include(x => x.Guests)
             .SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == community, cancellationToken);
         if (gathering is null) return Results.NotFound();
-        var me = gathering.Participants.SingleOrDefault(x => x.Participant.TelegramUserId == access.Identity.TelegramUserId);
-        var manages = gathering.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId;
+        var hasMemberAccess = access is not null;
+        var me = gathering.Participants.SingleOrDefault(x => x.Participant.TelegramUserId == identity.TelegramUserId);
+        var manages = gathering.OrganizerParticipant.TelegramUserId == identity.TelegramUserId;
+        var organizerControls = hasMemberAccess && manages;
         var active = me?.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted;
-        var participant = await dbContext.Participants.SingleAsync(x => x.TelegramUserId == access.Identity.TelegramUserId, cancellationToken);
-        var startUrl = await privateChat.StartUrlAsync(participant, community, publicId, cancellationToken);
+        var participant = await dbContext.Participants.SingleAsync(x => x.TelegramUserId == identity.TelegramUserId, cancellationToken);
+        var startUrl = hasMemberAccess
+            ? await privateChat.StartUrlAsync(participant, community, publicId, cancellationToken)
+            : null;
         var now = timeProvider.GetUtcNow();
         var waitlisted = gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
             .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).ToArray();
@@ -108,27 +120,28 @@ internal static class GatheringEndpoints
             ? Array.IndexOf(waitlisted, me) + 1 : (int?)null;
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
         var localStart = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
-            TimeZoneInfo.FindSystemTimeZoneById(access.Community.TimeZoneId));
-        var canManage = GatheringAccessPolicy.CanManage(gathering, manages, now);
+            TimeZoneInfo.FindSystemTimeZoneById(resolvedCommunity.TimeZoneId));
+        var canManage = GatheringAccessPolicy.CanManage(gathering, organizerControls, now);
         return Results.Ok(new
         {
-            Gathering = presentation.BuildDetails(gathering, access.Community),
+            Gathering = presentation.BuildDetails(gathering, resolvedCommunity),
             Provider = await providers.ForGatheringAsync(gathering, participant.Id, cancellationToken),
-            CanRecordPlay = GatheringAccessPolicy.CanRecordPlay(gathering, participant.Id),
+            CanRecordPlay = hasMemberAccess && GatheringAccessPolicy.CanRecordPlay(gathering, participant.Id),
             Status = gathering.Status.ToString(),
-            BotStartRequired = participant.PrivateChatStartedAt is null || participant.TelegramDeliveryBlockedAt is not null,
+            BotStartRequired = hasMemberAccess
+                && (participant.PrivateChatStartedAt is null || participant.TelegramDeliveryBlockedAt is not null),
             StartUrl = startUrl,
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanEdit = canManage,
-            CanRequestRecruitment = GatheringRecruitment.CanRequest(gathering, participant.Id, now),
-            RecruitmentDelivery = manages ? await recruitment.LatestStatusAsync(community, cancellationToken) : null,
-            CanClose = GatheringAccessPolicy.CanClose(gathering, manages, now),
-            CanReopen = GatheringAccessPolicy.CanReopen(gathering, manages, now),
-            CanCancel = GatheringAccessPolicy.CanCancel(gathering, manages, now),
+            CanRequestRecruitment = hasMemberAccess && GatheringRecruitment.CanRequest(gathering, participant.Id, now),
+            RecruitmentDelivery = organizerControls ? await recruitment.LatestStatusAsync(community, cancellationToken) : null,
+            CanClose = GatheringAccessPolicy.CanClose(gathering, organizerControls, now),
+            CanReopen = GatheringAccessPolicy.CanReopen(gathering, organizerControls, now),
+            CanCancel = GatheringAccessPolicy.CanCancel(gathering, organizerControls, now),
             CanManageGuests = canManage,
             HasStarted = gathering.StartsAtUtc <= now,
-            CanJoin = GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
-            CanLeave = GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
+            CanJoin = hasMemberAccess && GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
+            CanLeave = hasMemberAccess && GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
             WaitlistPosition = waitPosition,
             ConfirmedParticipants = new[] { new { Name = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant), IsOrganizer = true,
                     ContactUrl = ParticipantPresentation.GetContactUrl(gathering.OrganizerParticipant) } }
@@ -142,7 +155,8 @@ internal static class GatheringEndpoints
                 .Select(x => new { x.Id, x.DisplayName }),
             PublicationStatus = gathering.PublicationStatus.ToString(),
             gathering.PublicationError,
-            CanRetryPublication = manages && gathering.PublicationStatus == GatheringPublicationStatus.Failed
+            CanRetryPublication = (organizerControls || canAdminister)
+                && gathering.PublicationStatus == GatheringPublicationStatus.Failed
             ,StartsAtLocal = localStart.ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture)
             ,gathering.MinimumPlayers
             ,gathering.DesiredPlayers
@@ -310,16 +324,24 @@ internal static class GatheringEndpoints
 
     private static async Task<IResult> RetryPublicationAsync(HttpRequest request, Guid publicId,
         GatheringActionRequest body, AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
-        CommunityContextResolver resolver, GatheringPublicationService publication,
+        CommunityContextResolver resolver, IAdminAuthorizationService authorization,
+        GatheringPublicationService publication,
         CancellationToken cancellationToken)
     {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
             authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
-        var manages = await dbContext.GameGatherings.AsNoTracking().AnyAsync(x => x.PublicId == publicId
-            && x.CommunityKey == body.CommunityKey
-            && x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId, cancellationToken);
-        if (!manages) return Results.Forbid();
+        var canAdminister = await authorization.CanAdministerCommunityAsync(
+            identity.TelegramUserId, body.CommunityKey, cancellationToken);
+        if (access is null && !canAdminister) return Results.Forbid();
+        var organizerTelegramUserId = await dbContext.GameGatherings.AsNoTracking()
+            .Where(x => x.PublicId == publicId && x.CommunityKey == body.CommunityKey)
+            .Select(x => (long?)x.OrganizerParticipant.TelegramUserId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (organizerTelegramUserId is null) return Results.NotFound();
+        var manages = access is not null && organizerTelegramUserId == identity.TelegramUserId;
+        if (!manages && !canAdminister) return Results.Forbid();
         return Results.Ok(new { Published = await publication.PublishAsync(publicId, cancellationToken) });
     }
 

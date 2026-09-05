@@ -6,7 +6,8 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 namespace oyinQ.Bot.Features.Collections;
 
 public sealed record ClubBggImportView(Guid PublicId, string BggUsername, ClubBggImportStatus Status,
-    int ProgressCurrent, int ProgressTotal, int AddedGames, int AddedExpansions, int OrphanExpansions,
+    BggImportStage Stage, int FoundGames, int FoundExpansions, int ProgressCurrent, int ProgressTotal,
+    int AddedGames, int AddedExpansions, int OrphanExpansions,
     string? Error, DateTimeOffset UpdatedAt);
 
 public sealed record ClubBggImportMergeResult(ClubCollectionDocument Document, int AddedGames,
@@ -29,7 +30,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
         if (existing is not null) return ToView(existing);
         var now = timeProvider.GetUtcNow();
         var job = new ClubBggImport { PublicId = Guid.NewGuid(), ClubId = clubId, BggUsername = username,
-            Status = ClubBggImportStatus.Queued, ProgressTotal = 2, CreatedAt = now, UpdatedAt = now };
+            Status = ClubBggImportStatus.Queued, Stage = BggImportStage.Queued, CreatedAt = now, UpdatedAt = now };
         dbContext.ClubBggImports.Add(job);
         try
         {
@@ -65,8 +66,11 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
             job.Status = ClubBggImportStatus.Running;
             job.LeaseId = leaseId;
             job.LeaseExpiresAt = now.Add(LeaseDuration);
+            job.Stage = BggImportStage.FetchingGames;
+            job.FoundGames = 0;
+            job.FoundExpansions = 0;
             job.ProgressCurrent = 0;
-            job.ProgressTotal = 2;
+            job.ProgressTotal = 0;
             job.Error = null;
             job.UpdatedAt = now;
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -76,16 +80,25 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
         try
         {
             var selection = await loader.LoadSelectionAsync(job.BggUsername, cancellationToken,
-                async (current, total) =>
+                async progress =>
                 {
                     await dbContext.Entry(job).ReloadAsync(cancellationToken);
                     if (job.LeaseId != leaseId) throw new InvalidOperationException("Задача импорта передана другому обработчику.");
-                    job.ProgressCurrent = current;
-                    job.ProgressTotal = total;
+                    job.Stage = progress.Stage;
+                    job.FoundGames = progress.FoundGames;
+                    job.FoundExpansions = progress.FoundExpansions;
+                    job.ProgressCurrent = progress.FoundGames + progress.FoundExpansions;
+                    job.ProgressTotal = progress.Stage == BggImportStage.Preparing ? job.ProgressCurrent : 0;
                     job.LeaseExpiresAt = timeProvider.GetUtcNow().Add(LeaseDuration);
                     job.UpdatedAt = timeProvider.GetUtcNow();
                     await dbContext.SaveChangesAsync(cancellationToken);
                 });
+
+            await dbContext.Entry(job).ReloadAsync(cancellationToken);
+            if (job.LeaseId != leaseId) return true;
+            job.Stage = BggImportStage.Saving;
+            job.UpdatedAt = timeProvider.GetUtcNow();
+            await dbContext.SaveChangesAsync(cancellationToken);
 
             await using var finalize = await dbContext.Database.BeginTransactionAsync(cancellationToken);
             job = await dbContext.ClubBggImports
@@ -100,8 +113,9 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
             job.AddedGames = merged.AddedGames;
             job.AddedExpansions = merged.AddedExpansions;
             job.OrphanExpansions = merged.OrphanExpansions;
-            job.ProgressCurrent = 2;
-            job.ProgressTotal = 2;
+            job.ProgressCurrent = job.FoundGames + job.FoundExpansions;
+            job.ProgressTotal = job.ProgressCurrent;
+            job.Stage = BggImportStage.Completed;
             job.Status = ClubBggImportStatus.Completed;
             job.LeaseId = null;
             job.LeaseExpiresAt = null;
@@ -119,6 +133,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
             if (job.LeaseId == leaseId)
             {
                 job.Status = ClubBggImportStatus.Failed;
+                job.Stage = BggImportStage.Failed;
                 job.Error = exception.Message[..Math.Min(2000, exception.Message.Length)];
                 job.LeaseId = null;
                 job.LeaseExpiresAt = null;
@@ -188,6 +203,8 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     }
 
     private static ClubBggImportView ToView(ClubBggImport job) => new(job.PublicId, job.BggUsername,
-        job.Status, job.ProgressCurrent, job.ProgressTotal, job.AddedGames, job.AddedExpansions,
-        job.OrphanExpansions, job.Error, job.UpdatedAt);
+        job.Status, job.Stage, job.FoundGames, job.FoundExpansions, job.ProgressCurrent, job.ProgressTotal,
+        job.AddedGames, job.AddedExpansions, job.OrphanExpansions,
+        job.Status == ClubBggImportStatus.Failed ? "Не удалось загрузить коллекцию BGG. Сохранённые игры не изменены; попробуйте ещё раз позже." : null,
+        job.UpdatedAt);
 }

@@ -10,6 +10,7 @@ export function RecruitmentSettings({ communityKey }: { communityKey: string }) 
   const [hours, setHours] = useState(4); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>();
   useEffect(() => { if (state.data) setHours(state.data.hours); }, [state.data]);
   async function save() {
+    if (busy) return;
     setBusy(true); setError(undefined);
     try { await api(url, json("PUT", { hours })); telegram.success("Интервал напоминаний сохранён"); state.reload(); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
@@ -20,7 +21,7 @@ export function RecruitmentSettings({ communityKey }: { communityKey: string }) 
       <Field label="Интервал между напоминаниями о сборах" hint="Общий для всех организаторов этого сообщества. Напоминание отправляется только по запросу организатора.">
         <select value={hours} onChange={e => setHours(+e.target.value)}>{Array.from({ length: 24 }, (_, i) => i + 1).map(value =>
           <option value={value} key={value}>{value} {value === 1 || value === 21 ? "час" : value < 5 || value > 21 ? "часа" : "часов"}</option>)}</select>
-      </Field><button disabled={busy} onClick={() => void save()}>Сохранить интервал</button></>}
+      </Field><button className="primary" disabled={busy} aria-busy={busy} onClick={() => void save()}>{busy ? "Сохраняем…" : "Сохранить интервал"}</button></>}
     {error && <Notice kind="danger">{error}</Notice>}
   </Card>;
 }

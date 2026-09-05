@@ -94,6 +94,18 @@ public enum CampBggImportStatus
     Cancelled = 5
 }
 
+public enum BggImportStage
+{
+    Queued = 0,
+    FetchingGames = 1,
+    FetchingExpansions = 2,
+    Preparing = 3,
+    Saving = 4,
+    Completed = 5,
+    Failed = 6,
+    Cancelled = 7
+}
+
 public enum TelegramPeerSelectionPurpose
 {
     AddAdministrator = 0,

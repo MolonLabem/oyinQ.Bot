@@ -31,7 +31,7 @@ export function WishButton({ communityKey, bggId, initial, changed }: {
     finally { if (version === scope.current) setBusy(false); }
   }
   return <div><button type="button" aria-pressed={wished} disabled={busy || state.loading || !!state.error} onClick={() => void toggle()}>
-    {busy ? "Сохраняем…" : wished ? "♥ В хотелках" : "♡ Хочу сыграть"}</button>
+    {busy ? "Сохраняем…" : wished ? "♥ В вишлисте" : "♡ Хочу сыграть"}</button>
     {(error || state.error) && <Notice kind="danger">{error || state.error}</Notice>}</div>;
 }
 
@@ -39,13 +39,13 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
   const state = useAsync(() => api<CatalogResponse>(`/catalog?community=${encodeURIComponent(community.key)}&ownership=wishes`), [community.key]);
   const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key]);
   const [selected, setSelected] = useState<ClubGame>();
-  return <Card><h2>Мои хотелки · {community.name}</h2>
+  return <Card><h2>Вишлист · {community.name}</h2>
     <p className="muted">Игры, в которые хочется сыграть в этом сообществе. Коробку иметь не обязательно. Запись в сбор и обещание привезти игру оформляются отдельно.</p>
     <GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
-      selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label="Добавить хотелку" />
+      selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label="Добавить в вишлист" />
     {selected && <div className="row"><strong>{selected.name}</strong><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length
-      ? <Empty>Пока нет хотелок. Найдите игру выше.</Empty>
+      ? <Empty>Вишлист пока пуст. Найдите игру выше.</Empty>
       : <ul className="provider-list">{state.data.items.map(game => <li key={game.bggId}><span>{game.name}</span>
         <WishButton communityKey={community.key} bggId={game.bggId} initial={game.isWished} changed={state.reload} /></li>)}</ul>}
   </Card>;

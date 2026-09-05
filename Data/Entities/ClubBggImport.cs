@@ -7,6 +7,9 @@ public sealed class ClubBggImport
     public long ClubId { get; set; }
     public string BggUsername { get; set; } = string.Empty;
     public ClubBggImportStatus Status { get; set; }
+    public BggImportStage Stage { get; set; }
+    public int FoundGames { get; set; }
+    public int FoundExpansions { get; set; }
     public int ProgressCurrent { get; set; }
     public int ProgressTotal { get; set; }
     public int AddedGames { get; set; }

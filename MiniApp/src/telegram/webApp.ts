@@ -1,7 +1,12 @@
-const app = window.Telegram?.WebApp;
+const browserWindow = typeof window === "undefined" ? undefined : window;
+const telegramApp = browserWindow?.Telegram?.WebApp;
+// The Telegram script also exposes a WebApp-shaped object in an ordinary browser.
+// Signed initData distinguishes an actual Mini App session from that fallback.
+const app = telegramApp?.initData ? telegramApp : undefined;
+const systemDarkTheme = browserWindow?.matchMedia?.("(prefers-color-scheme: dark)");
 export const successEventName = "oyinq:success";
 function applyTheme() {
-  const scheme = app?.colorScheme ?? "light";
+  const scheme = app?.colorScheme ?? (systemDarkTheme?.matches ? "dark" : "light");
   document.documentElement.dataset.theme = scheme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content",
     app?.themeParams?.bg_color ?? (scheme === "dark" ? "#111318" : "#f4f6f8"));
@@ -9,7 +14,7 @@ function applyTheme() {
 export const telegram = {
   get initData() { return app?.initData ?? ""; },
   get startParam() { return app?.initDataUnsafe.start_param; },
-  initialize() { applyTheme(); app?.onEvent("themeChanged", applyTheme); app?.ready(); app?.expand(); },
+  initialize() { applyTheme(); app?.onEvent("themeChanged", applyTheme); if (!app) systemDarkTheme?.addEventListener("change", applyTheme); app?.ready(); app?.expand(); },
   get canFullscreen() { return Boolean(app?.requestFullscreen); },
   get isFullscreen() { return Boolean(app?.isFullscreen); },
   requestFullscreen(): Promise<boolean> {
