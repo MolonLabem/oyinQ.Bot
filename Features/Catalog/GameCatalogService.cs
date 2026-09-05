@@ -8,8 +8,10 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 namespace oyinQ.Bot.Features.Catalog;
 
 public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollection<GameType> Types,
-    IReadOnlyCollection<long> CategoryIds, string? Sort, string? Ownership = null, string? Availability = null, string? Planning = null);
+    IReadOnlyCollection<long> CategoryIds, string? Sort, string? Ownership = null, string? Availability = null,
+    string? Planning = null, IReadOnlyCollection<long>? ProviderParticipantIds = null);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
+public sealed record CatalogProviderFilter(long ParticipantId, string DisplayName);
 public sealed record GameListItemResponse(long BggId, string Name, string? OriginalName, string? ThumbnailImageUrl,
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
@@ -24,7 +26,7 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     IReadOnlyList<LocalizedTaxonomyItem> Categories, IReadOnlyList<LocalizedTaxonomyItem> Mechanics,
     IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
-    IReadOnlyList<KeyValuePair<GameType, string>> Types);
+    IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
 
 public sealed class GameNotInCollectionException(long bggId)
@@ -58,6 +60,9 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             "participants" => filtered.Where(x => x.Providers.Count > 0),
             _ => filtered
         };
+        if (query.ProviderParticipantIds is { Count: > 0 } providerParticipantIds)
+            filtered = filtered.Where(x => x.Providers.Any(provider => provider.ParticipantId is { } participantId
+                && providerParticipantIds.Contains(participantId)));
         filtered = query.Availability switch
         {
             "confirmed" => filtered.Where(x => GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed),
@@ -94,7 +99,14 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
                 value.Game.Subdomains, value.Game.Types, value.Game.CategoryItems, value.Game.Categories))
             .Distinct().Order()
             .Select(value => new KeyValuePair<GameType, string>(value, BggTaxonomyCatalog.DisplayName(value))).ToArray();
-        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types));
+        var providerFilters = effective.SelectMany(value => value.Providers)
+            .Where(value => value.ParticipantId.HasValue)
+            .DistinctBy(value => value.ParticipantId)
+            .OrderBy(value => value.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(value => value.ParticipantId)
+            .Select(value => new CatalogProviderFilter(value.ParticipantId!.Value, value.DisplayName))
+            .ToArray();
+        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters));
     }
 
     public async Task<GameDetailsResponse> DetailsAsync(string communityKey, BotMode mode, long telegramUserId,

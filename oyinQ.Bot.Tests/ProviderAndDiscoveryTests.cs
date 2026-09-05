@@ -102,6 +102,32 @@ public sealed class ProviderAndDiscoveryTests
     }
 
     [Fact]
+    public async Task CatalogFiltersByAnySelectedParticipantAndReturnsStableProviderOptions()
+    {
+        await using var f = new PlanningFixture();
+        var camp = AddCamp(f, "camp");
+        Register(f, camp, f.Me, f.Clock.Now);
+        Register(f, camp, f.Other, f.Clock.Now);
+        AddOwned(f, f.Me, 42);
+        AddOwned(f, f.Other, 43);
+        await f.Db.SaveChangesAsync();
+        var (catalog, _, contributions) = Services(f);
+        await contributions.SetCommitmentAsync(camp.Id, f.Me.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Available, default);
+        await contributions.SetCommitmentAsync(camp.Id, f.Other.Id, 43, CollectionItemType.BaseGame,
+            CampBringCommitment.Available, default);
+
+        var result = await catalog.ListAsync("camp", BotMode.Camp, f.Me.TelegramUserId,
+            new(null, null, [], [], "name", Ownership: "participants",
+                ProviderParticipantIds: [f.Other.Id]), default);
+
+        Assert.Equal(43, Assert.Single(result.Items).BggId);
+        Assert.Equal(2, result.Filters.Providers.Count);
+        Assert.Contains(result.Filters.Providers, value => value.ParticipantId == f.Me.Id && value.DisplayName == "Первый");
+        Assert.Contains(result.Filters.Providers, value => value.ParticipantId == f.Other.Id && value.DisplayName == "Второй");
+    }
+
+    [Fact]
     public async Task Dashboards_ReuseSchedule_AndLimitOrganizerToAuthorizedScope()
     {
         await using var f = new PlanningFixture(); var mine = f.Gathering("club", f.Clock.Now.AddHours(1));

@@ -13,14 +13,16 @@ export function GamesPage({ community, bggAvailable, initialGameId, onInitialCon
   const [section, setSection] = useState("catalog");
   const [query, setQuery] = useState(""); const [players, setPlayers] = useState<number>();
   const [types, setTypes] = useState<GameType[]>([]); const [categories, setCategories] = useState<number[]>([]);
-  const [ownership, setOwnership] = useState(""); const [availability, setAvailability] = useState(""); const [planning, setPlanning] = useState("");
+  const [ownership, setOwnership] = useState(""); const [providerParticipantIds, setProviderParticipantIds] = useState<number[]>([]);
+  const [availability, setAvailability] = useState(""); const [planning, setPlanning] = useState("");
   const [sort, setSort] = useState("name"); const [filtersOpen, setFiltersOpen] = useState(false); const [selected, setSelected] = useState<number | undefined>(initialGameId);
   const [initialBackToGathering] = useState<(() => void) | undefined>(() => initialGameId ? backToGathering : undefined);
   useEffect(() => { if (initialGameId) onInitialConsumed?.(); }, []);
+  useEffect(() => { setProviderParticipantIds([]); if (community.mode !== "Camp") setOwnership(value => value === "participants" ? "" : value); }, [community.key, community.mode]);
   const debouncedQuery = useDebouncedValue(query, 400);
   const params = useMemo(() => buildCatalogQuery({ communityKey: community.key, search: debouncedQuery,
     players, types, categories, sort }), [community.key, debouncedQuery, players, types, categories, sort]);
-  const state = useAsync(() => api<CatalogResponse>(`/catalog?${params}&ownership=${ownership}&availability=${availability}&planning=${planning}`), [params, ownership, availability, planning]);
+  const state = useAsync(() => api<CatalogResponse>(`/catalog?${params}&ownership=${ownership}&availability=${availability}&planning=${planning}&providers=${providerParticipantIds.join(",")}`), [params, ownership, availability, planning, providerParticipantIds]);
   const activeFilters = (players ? 1 : 0) + types.length + categories.length;
   if (selected) return <GameDetail community={community} bggId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} />;
   return <Page title="Игры" subtitle={state.data ? `${community.name} · ${state.data.items.length}` : community.name}>
@@ -28,7 +30,7 @@ export function GamesPage({ community, bggAvailable, initialGameId, onInitialCon
       { id: "catalog", label: "Каталог" }, { id: "wishlist", label: "Вишлист" }
     ]} />
     {section === "wishlist" ? <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <>
-    <div className="form-grid"><Field label="Чья игра"><select value={ownership} onChange={e => setOwnership(e.target.value)}><option value="">Все источники</option><option value="club">Есть в клубе</option><option value="mine">Есть у меня</option><option value="wishes">Мой вишлист</option>{community.mode === "Camp" && <option value="participants">Могут привезти участники</option>}</select></Field><Field label="Доступность"><select value={availability} onChange={e => setAvailability(e.target.value)}><option value="">Любая</option><option value="confirmed">Точно будут</option><option value="possible">Нужно договориться</option></select></Field><Field label="Сборы"><select value={planning} onChange={e => setPlanning(e.target.value)}><option value="">Все игры</option><option value="planned">Уже запланированы</option><option value="unplanned">Ещё не запланированы</option></select></Field></div>
+    <div className="form-grid"><Field label="Чья игра"><select value={ownership} onChange={e => { const value = e.target.value; setOwnership(value); if (value !== "participants") setProviderParticipantIds([]); }}><option value="">Все источники</option><option value="club">Есть в клубе</option><option value="mine">Есть у меня</option><option value="wishes">Мой вишлист</option>{community.mode === "Camp" && <option value="participants">Могут привезти участники</option>}</select></Field>{ownership === "participants" && <ProviderMultiSelect values={state.data?.filters.providers ?? []} selected={providerParticipantIds} toggle={value => setProviderParticipantIds(toggleValue(providerParticipantIds, value))} clear={() => setProviderParticipantIds([])} />}<Field label="Доступность"><select value={availability} onChange={e => setAvailability(e.target.value)}><option value="">Любая</option><option value="confirmed">Точно будут</option><option value="possible">Нужно договориться</option></select></Field><Field label="Сборы"><select value={planning} onChange={e => setPlanning(e.target.value)}><option value="">Все игры</option><option value="planned">Уже запланированы</option><option value="unplanned">Ещё не запланированы</option></select></Field></div>
     <div className="catalog-toolbar"><Field label="Поиск"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Название игры" /></Field><button className={activeFilters ? "filter-button active" : "filter-button"} onClick={() => setFiltersOpen(value => !value)}>Фильтры{activeFilters ? ` · ${activeFilters}` : ""}</button></div>
     {filtersOpen && <Card className="filter-panel"><div className="filter-group"><strong>На сколько игроков</strong><div className="choice-row">{[1,2,3,4,5,6].map(value => <button className={players === value ? "active" : ""} key={value} onClick={() => setPlayers(players === value ? undefined : value)}>{value}</button>)}</div><Field label="Другое количество"><input type="number" min="1" inputMode="numeric" value={players ?? ""} onChange={event => setPlayers(event.target.value ? Math.max(1, Number(event.target.value)) : undefined)} /></Field></div><FilterChecks title="Тип" values={state.data?.filters.types ?? []} selected={types} toggle={value => setTypes(toggleValue(types, value))} /><FilterChecks title="Категории" values={(state.data?.filters.categories ?? []).map(value => ({ key: value.bggId, value: value.name }))} selected={categories} toggle={value => setCategories(toggleValue(categories, value))} /><Field label="Сортировка"><select value={sort} onChange={event => setSort(event.target.value)}><option value="name">Название</option><option value="players">Количество игроков</option><option value="popular">Популярные — по подтверждённым партиям</option></select></Field>{activeFilters > 0 && <button className="ghost" onClick={() => { setPlayers(undefined); setTypes([]); setCategories([]); }}>Сбросить фильтры</button>}</Card>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? <Empty>{query.trim() || activeFilters ? "Ничего не найдено. Попробуйте изменить запрос или фильтры." : community.mode === "Club" ? "В коллекции пока нет игр. Администратор может добавить их в разделе управления коллекцией." : "На кэмпе пока нет доступных игр. Добавьте свою игру в разделе «Профиль → Моя коллекция»."}</Empty> : <CatalogGameList items={state.data.items} club={community.mode === "Club"} searching={Boolean(debouncedQuery.trim())} open={setSelected} />}</>}
@@ -38,14 +40,21 @@ export function GamesPage({ community, bggAvailable, initialGameId, onInitialCon
 export function CatalogGameList({ items, club, searching = false, open }: { items: GameListItem[]; club: boolean; searching?: boolean; open: (id: number) => void }) {
   const nestedIds = new Set(items.flatMap(game => (game.expansions ?? []).filter(exp => exp.bggId !== game.bggId).map(exp => exp.bggId)));
   const availableIds = new Set(items.map(game => game.bggId));
-  return <div className="catalog-grid">{items.filter(game => !nestedIds.has(game.bggId)).map(game => <div key={game.bggId}>
+  return <div className="catalog-grid">{items.filter(game => !nestedIds.has(game.bggId)).map(game => <div className={`catalog-game-group${game.expansions?.length ? " has-expansions" : ""}`} key={game.bggId}>
     <GameCard game={game} club={club} open={() => open(game.bggId)} />
     {Boolean(game.expansions?.length) && <details className="collection-expansions" open={searching ? true : undefined}>
-      <summary>Дополнения ({game.expansions!.length})</summary>
-      <ul>{game.expansions!.map(exp => <li key={exp.bggId}>{availableIds.has(exp.bggId)
-        ? <button className="ghost" onClick={() => open(exp.bggId)}>{exp.name}</button> : exp.name}</li>)}</ul>
+      <summary><span><strong>Дополнения</strong><small>Часть этой карточки</small></span><Badge tone="accent">{game.expansions!.length}</Badge></summary>
+      <ul className="catalog-expansion-list">{game.expansions!.map(exp => <li key={exp.bggId}>{availableIds.has(exp.bggId)
+        ? <button className="catalog-expansion-option" onClick={() => open(exp.bggId)}><span aria-hidden>↳</span><span>{exp.name}</span><small>Открыть</small></button>
+        : <div className="catalog-expansion-option static"><span aria-hidden>↳</span><span>{exp.name}</span><small>Дополнение</small></div>}</li>)}</ul>
     </details>}
   </div>)}</div>;
+}
+
+export function ProviderMultiSelect({ values, selected, toggle, clear }: { values: { participantId: number; displayName: string }[]; selected: number[]; toggle: (value: number) => void; clear: () => void }) {
+  return <fieldset className="provider-filter"><legend>Кто может привезти</legend><p className="muted">Выберите одного или нескольких участников.</p>{values.length
+    ? <div className="provider-filter-list">{values.map(item => <label className="check" key={item.participantId}><input type="checkbox" checked={selected.includes(item.participantId)} onChange={() => toggle(item.participantId)} /><span>{item.displayName}</span></label>)}</div>
+    : <p className="muted">Пока никто не отметил доступные игры.</p>}{selected.length > 0 && <button className="ghost" type="button" onClick={clear}>Сбросить выбор · {selected.length}</button>}</fieldset>;
 }
 
 function FilterChecks<T extends string | number>({ title, values, selected, toggle: change }: { title: string; values: { key: T; value: string }[]; selected: T[]; toggle: (value: T) => void }) {
