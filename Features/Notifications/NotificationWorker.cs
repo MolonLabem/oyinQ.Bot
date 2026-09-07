@@ -17,6 +17,7 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, TimeProvider
                 await using var scope = scopes.CreateAsyncScope();
                 await scope.ServiceProvider.GetRequiredService<GatheringReminderService>().EnqueueDueAsync(stoppingToken);
                 await scope.ServiceProvider.GetRequiredService<ProviderAttentionService>().EnqueueDueAsync(stoppingToken);
+                await scope.ServiceProvider.GetRequiredService<PlayConfirmationReminderService>().EnqueueDueAsync(stoppingToken);
                 var delivery = scope.ServiceProvider.GetRequiredService<NotificationDispatcher>();
                 for (var i = 0; i < 100 && await delivery.ProcessOneAsync(stoppingToken); i++) { }
             }

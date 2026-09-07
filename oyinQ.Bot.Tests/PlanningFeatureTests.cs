@@ -113,12 +113,17 @@ public sealed class PlanningFeatureTests
         var record = await service.SaveAsync(g.PublicId, "club", f.Me.Id, command, default);
         var originalSnapshot = g.GameSnapshotJson;
         Assert.Equal(f.Me.Id, Assert.Single(record!.Players).ParticipantId);
+        Assert.Equal(170, record.DurationMinutes); // The legacy client-supplied 120 is ignored.
         Assert.Equal(AttendanceOutcome.Unknown, g.Participants.Single().AttendanceOutcome);
         Assert.Equal(GatheringStatus.Completed, g.Status);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SaveAsync(g.PublicId, "club", f.Other.Id, command, default));
         await Assert.ThrowsAsync<GatheringPlayConflictException>(() => service.SaveAsync(g.PublicId, "club", f.Me.Id, command with { WasPlayed = false, ExpectedRevision = 1 }, default));
         Assert.Equal(originalSnapshot, g.GameSnapshotJson);
         Assert.Single(f.Db.GatheringPlayRecords);
+        var corrected = await service.SaveAsync(g.PublicId, "club", f.Me.Id,
+            command with { EndedAtUtc = f.Clock.Now.AddMinutes(-5), DurationMinutes = -1, ExpectedRevision = 1 }, default);
+        Assert.Equal(175, corrected!.DurationMinutes);
+        Assert.Equal(175, PlayExport.From(corrected).DurationMinutes);
 
     }
 
@@ -156,6 +161,12 @@ public sealed class PlanningFeatureTests
         await Assert.ThrowsAsync<ArgumentException>(() => service.SaveAsync(g.PublicId, "club", f.Me.Id, command with { EndedAtUtc = f.Clock.Now.AddHours(1) }, default));
         Assert.Empty(f.Db.GatheringPlayRecords);
     }
+
+    [Theory]
+    [InlineData("2026-09-04T23:30:00+05:00", "2026-09-05T01:00:00+05:00", 90)]
+    [InlineData("2026-09-04T23:30:30+05:00", "2026-09-04T20:00:00+00:00", 90)]
+    public void PlayDurationUsesInstantsAcrossMidnightAndOffsets(string start, string end, int expected) =>
+        Assert.Equal(expected, GatheringPlayTiming.DurationMinutes(DateTimeOffset.Parse(start), DateTimeOffset.Parse(end)));
 
     [Theory]
     [InlineData("javascript:alert(1)")]

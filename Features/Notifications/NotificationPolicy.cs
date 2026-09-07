@@ -9,7 +9,8 @@ public static class NotificationPolicy
         && state is NotificationState.SuppressedByPreference or NotificationState.Expired;
     public static readonly int[] ReminderPresets = [0, 30, 60, 120, 360, 720, 1440];
     public static bool IsEssential(NotificationKind kind) => kind is NotificationKind.WaitlistPromotion
-        or NotificationKind.GatheringTimeChanged or NotificationKind.GatheringCancelled or NotificationKind.GatheringFailed or NotificationKind.PostingTopicUnavailable;
+        or NotificationKind.GatheringTimeChanged or NotificationKind.GatheringCancelled or NotificationKind.GatheringFailed or NotificationKind.PostingTopicUnavailable
+        or NotificationKind.PlayConfirmationReminder;
     public static bool Allows(NotificationKind kind, NotificationPreferences preferences) => IsEssential(kind) || kind switch
     {
         NotificationKind.WishlistGathering => preferences.WishlistGathering,

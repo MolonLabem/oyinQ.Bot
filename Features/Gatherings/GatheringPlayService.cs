@@ -67,7 +67,8 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         }
         if (command.WasPlayed && (command.EndedAtUtc is null || command.EndedAtUtc < g.StartsAtUtc || command.EndedAtUtc > now))
             throw new ArgumentException("Укажите фактическое время окончания: после начала сбора и не в будущем.");
-        if (command.DurationMinutes is <= 0 or > 10080) throw new ArgumentException("Продолжительность должна быть от 1 до 10080 минут.");
+        // Legacy clients may still submit DurationMinutes; the recorded instants are authoritative.
+        var durationMinutes = GatheringPlayTiming.DurationMinutes(g.StartsAtUtc, command.EndedAtUtc!.Value);
         var location = command.Location?.Trim() ?? g.Community.Name.Trim();
         if (command.WasPlayed && (location.Length == 0 || location.Length > GatheringPlayRecord.MaxLocationLength))
             throw new ArgumentException($"Укажите место партии длиной до {GatheringPlayRecord.MaxLocationLength} символов.");
@@ -90,7 +91,7 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         record.Players.Clear();
         record.WasPlayed = command.WasPlayed;
         record.EndedAtUtc = command.WasPlayed ? command.EndedAtUtc?.ToUniversalTime() : null;
-        record.DurationMinutes = command.WasPlayed ? command.DurationMinutes : null;
+        record.DurationMinutes = durationMinutes;
         record.Location = command.WasPlayed ? location : string.Empty;
         record.HigherScoreWins = command.HigherScoreWins;
 

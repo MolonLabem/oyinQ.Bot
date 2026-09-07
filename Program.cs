@@ -117,6 +117,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderAttentionService>();
 builder.Services.AddScoped<NotificationDispatcher>();
 builder.Services.AddScoped<GatheringReminderService>();
+builder.Services.AddScoped<PlayConfirmationReminderService>();
 builder.Services.AddScoped<INotificationTransport, TelegramNotificationTransport>();
 builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<TelegramMessageCleanupProcessor>();

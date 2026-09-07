@@ -4,7 +4,8 @@ public enum NotificationKind
 {
     WaitlistPromotion, GatheringTimeChanged, GatheringCancelled, GatheringFailed,
     GatheringDetailsChanged, GatheringFull, OrganizerParticipantLeft, OrganizerReplacement,
-    OrganizerBelowMinimum, OrganizerMissingProvider, ImportCompleted, Reminder, PostingTopicUnavailable, WishlistGathering
+    OrganizerBelowMinimum, OrganizerMissingProvider, ImportCompleted, Reminder, PostingTopicUnavailable, WishlistGathering,
+    PlayConfirmationReminder
 }
 public enum NotificationState { Pending, Delivered, Failed, SuppressedByPreference, CannotMessageUser, Delivering, DeliveryUnknown, Expired }
 

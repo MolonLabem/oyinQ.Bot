@@ -18,7 +18,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
   const state = useAsync(() => api<PlayState>(base + query), [id, community.key]);
   const [played, setPlayed] = useState<boolean>(); const [players, setPlayers] = useState<string[]>([]); const [expansions, setExpansions] = useState<number[]>([]);
   const [scores, setScores] = useState<Record<string, string>>({}); const [winners, setWinners] = useState<string[]>([]); const [higherScoreWins, setHigherScoreWins] = useState(true);
-  const [end, setEnd] = useState(""); const [duration, setDuration] = useState(""); const [location, setLocation] = useState(""); const [external, setExternal] = useState("");
+  const [end, setEnd] = useState(""); const [location, setLocation] = useState(""); const [external, setExternal] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [exported, setExported] = useState<PlayExport>(); const [copied, setCopied] = useState(false);
   const [endError, setEndError] = useState<string>();
   useEffect(() => {
@@ -27,7 +27,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
     setPlayed(p.wasPlayed ?? undefined); setPlayers(selected); setExpansions(p.selectedExpansionIds ?? p.expansions.map(x => x.bggId));
     setScores(Object.fromEntries(selected.map(playerId => [playerId, String(p.players.find(x => x.id === playerId)?.score ?? 0)])));
     setWinners(p.players.filter(x => selected.includes(x.id) && x.isWinner).map(x => x.id)); setHigherScoreWins(p.higherScoreWins ?? true);
-    setEnd(currentLocalMinute(community.timeZoneId, p.endedAtUtc ? new Date(p.endedAtUtc) : new Date())); setDuration(p.durationMinutes?.toString() ?? "");
+    setEnd(currentLocalMinute(community.timeZoneId, p.endedAtUtc ? new Date(p.endedAtUtc) : new Date()));
     setLocation(p.location?.trim() || community.name); setExternal(""); setExported(undefined); setCopied(false);
   }, [state.data, community.name, community.timeZoneId]);
   function togglePlayer(playerId: string) {
@@ -44,7 +44,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
     setEndError(undefined); setBusy(true); setError(undefined);
     try {
       await api(base, json("PUT", { communityKey: community.key, wasPlayed: played, endedAtLocal: end,
-        durationMinutes: duration ? Number(duration) : null, location: location.trim(),
+        location: location.trim(),
         playerResults: players.map(playerId => ({ playerId, score: Number(scores[playerId] || 0), isWinner: winners.includes(playerId) })),
         expansionIds: expansions, expectedRevision: state.data.revision, higherScoreWins }));
       telegram.success("Запись о партии сохранена"); state.reload();
@@ -60,7 +60,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
   return <Card className="form-grid play-record-form"><h2>Игра состоялась?</h2>
     <p>Подтвердите факт партии и фактический состав. Это не меняет отметки посещаемости сбора.</p>
     {state.data.canEdit ? <><div className="choice-row"><button aria-pressed={played === true} className={played === true ? "active" : ""} onClick={() => setPlayed(true)}>Да, сыграли</button><button aria-pressed={played === false} className={played === false ? "active" : ""} onClick={() => setPlayed(false)}>Нет, не состоялась</button></div>
-    {played && <><Field label={`Окончание партии (${community.timeZoneId})`} error={endError}><input type="datetime-local" value={end} onChange={e => { setEnd(e.target.value); setEndError(undefined); }} /></Field><Field label="Продолжительность, минут (необязательно)"><input type="number" min="1" max="10080" value={duration} onChange={e => setDuration(e.target.value)} /></Field>
+    {played && <><Field label={`Окончание партии (${community.timeZoneId})`} error={endError}><input type="datetime-local" value={end} onChange={e => { setEnd(e.target.value); setEndError(undefined); }} /></Field><p className="muted">Продолжительность рассчитывается автоматически от запланированного начала сбора до окончания партии.</p>
       <Field label="Где играли"><input type="text" maxLength={160} value={location} onChange={e => setLocation(e.target.value)} placeholder={community.name} /></Field>
       <fieldset className="play-results"><legend>Кто играл и кто победил</legend><small>Можно выбрать несколько победителей. Для совместного поражения не отмечайте никого.</small>
         {state.data.players.map(p => <div className={`play-player-result${players.includes(p.id) ? " selected" : ""}`} key={p.id}>

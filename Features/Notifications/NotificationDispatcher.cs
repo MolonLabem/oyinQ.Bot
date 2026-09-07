@@ -50,6 +50,7 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             else if (row.Kind == NotificationKind.WishlistGathering && !await PrepareWishlistAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.WaitlistPromotion && !await PromotionStillValidAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.Reminder && !await PrepareReminderAsync(row, prefs, now, ct)) { }
+            else if (row.Kind == NotificationKind.PlayConfirmationReminder && !await PreparePlayConfirmationAsync(row, now, ct)) { }
             else if (row.Kind == NotificationKind.OrganizerMissingProvider && !await ProviderStillNeeded(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Participant.PrivateChatStartedAt is null || row.Participant.TelegramDeliveryBlockedAt is not null)
             { row.State = NotificationState.CannotMessageUser; row.LastAttemptAt = now; row.LastErrorCategory = "private_chat_unavailable"; }
@@ -72,6 +73,22 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             ? time.GetUtcNow().AddMinutes(Math.Pow(2, row.AttemptCount)) : DateTimeOffset.MaxValue; }
         // Keep the observed response durable even if the HTTP request that initiated work was cancelled.
         await db.SaveChangesAsync(CancellationToken.None);
+        return true;
+    }
+
+    private async Task<bool> PreparePlayConfirmationAsync(Notification row, DateTimeOffset now, CancellationToken ct)
+    {
+        var gathering = await db.GameGatherings.AsNoTracking().Include(g => g.Community)
+            .SingleOrDefaultAsync(g => g.PublicId == row.GatheringPublicId && g.CommunityKey == row.CommunityKey, ct);
+        if (gathering is null || !PlayConfirmationReminderService.NeedsConfirmation(gathering)
+            || gathering.OrganizerParticipantId != row.ParticipantId
+            || await db.GatheringPlayRecords.AnyAsync(p => p.GatheringId == gathering.Id, ct))
+        { row.State = NotificationState.Expired; return false; }
+        var due = GatheringPlayTiming.ConfirmationDueAt(gathering);
+        if (now >= due.AddDays(1)) { row.State = NotificationState.Expired; return false; }
+        if (due > now) { row.State = NotificationState.Pending; row.NextAttemptAt = due; return false; }
+        row.Text = $"Игра «{GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson).Name}» уже закончилась?\n"
+            + "Откройте сбор и отметьте, состоялась ли партия. Если сыграли — проверьте состав и результаты. Если ещё играете, заполните запись после окончания.";
         return true;
     }
 
