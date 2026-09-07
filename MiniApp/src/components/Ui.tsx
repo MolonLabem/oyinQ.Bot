@@ -9,6 +9,10 @@ export function Page({ as: Element = "main", title, titleHref, subtitle, actions
   return <Element className="page">{(hasHeading || actions) && <header className={`page-header${hasHeading ? "" : " actions-only"}`}>{hasHeading && <div>{title && <h1>{titleHref ? <a className="page-title-link" href={titleHref} target="_blank" rel="noreferrer">{title}</a> : title}</h1>}{subtitle && <p>{subtitle}</p>}</div>}{actions}</header>}{children}</Element>;
 }
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <section className={`card ${className}`}>{children}</section>; }
+// Screens wire the native button through telegram.back; retain navigation in ordinary browsers.
+export function BackButton({ onClick }: { onClick: () => void }) {
+  return telegram.hasBackButton ? null : <button className="ghost page-back" onClick={onClick}><span aria-hidden>← </span>Назад</button>;
+}
 export function Loading({ label = "Загрузка…" }: { label?: string }) { return <div className="stack" aria-live="polite"><div className="skeleton" /><div className="skeleton short" /><span className="muted">{label}</span></div>; }
 export function Empty({ children }: { children: ReactNode }) { return <Card><p className="empty">{children}</p></Card>; }
 export function ErrorState({ message, retry }: { message: string; retry?: () => void }) { return <Card className="error"><strong>Не удалось загрузить данные</strong><p>{message}</p>{retry && <button onClick={retry}>Повторить</button>}</Card>; }

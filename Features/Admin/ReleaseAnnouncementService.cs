@@ -12,7 +12,7 @@ namespace oyinQ.Bot.Features.Admin;
 
 public static class ReleaseContent
 {
-    public const string Id = "2026-09-04";
+    public const string Id = "2026-09-07";
     public static string Text
     {
         get

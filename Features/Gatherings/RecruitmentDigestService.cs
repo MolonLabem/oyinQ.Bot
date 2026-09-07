@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Features.Admin;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -27,23 +28,46 @@ public sealed class RecruitmentDigestService(AppDbContext db, TimeProvider clock
             RecruitmentDigestState.Pending or RecruitmentDigestState.Preparing => "Общее напоминание о сборах готовится.",
             RecruitmentDigestState.Delivering => "Общее напоминание отправляется.",
             RecruitmentDigestState.Delivered => "Общее напоминание о сборах отправлено.",
-            RecruitmentDigestState.Failed => "Не удалось отправить общее напоминание. Организатор может повторить запрос.",
+            RecruitmentDigestState.Failed => "Не удалось отправить общее напоминание. Организатор или администратор может повторить запрос.",
             RecruitmentDigestState.DeliveryUnknown => "Результат отправки общего напоминания неизвестен. Автоматического повтора не будет; общий интервал сохраняется.",
             RecruitmentDigestState.Expired => "Напоминание не отправлено: подходящие сборы больше недоступны.",
             _ => null
         };
     }
 
-    public async Task<RecruitmentRequestResult> RequestAsync(string key, Guid gatheringId, long participantId, CancellationToken ct)
+    public Task<RecruitmentRequestResult> RequestAsync(string key, Guid gatheringId, long participantId, CancellationToken ct) =>
+        RequestCoreAsync(key, gatheringId, participantId, ct);
+
+    public async Task<RecruitmentRequestResult> RequestAsAdminAsync(string key, long telegramUserId,
+        IAdminAuthorizationService authorization, CancellationToken ct)
+    {
+        if (!await authorization.CanAdministerCommunityAsync(telegramUserId, key, ct))
+            throw new UnauthorizedAccessException("Нет доступа к управлению этим сообществом.");
+        return await RequestCoreAsync(key, null, null, ct);
+    }
+
+    private async Task<RecruitmentRequestResult> RequestCoreAsync(string key, Guid? gatheringId, long? participantId, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var community = await CommunityMutationLock.AcquireAsync(db, key, ct);
         await RequireActiveAsync(community, ct);
-        var g = await GatheringWriteStore.LockAsync(db, gatheringId, key, ct);
         var now = clock.GetUtcNow();
-        if (g.OrganizerParticipantId != participantId) throw new UnauthorizedAccessException("Напомнить может только организатор сбора.");
-        if (!GatheringRecruitment.CanRequest(g, participantId, now))
-            throw new InvalidOperationException("Напоминание доступно для открытого сбора в ближайшие 36 часов, пока не набран оптимальный состав.");
+        if (gatheringId is { } id)
+        {
+            var g = await GatheringWriteStore.LockAsync(db, id, key, ct);
+            now = clock.GetUtcNow();
+            if (g.OrganizerParticipantId != participantId) throw new UnauthorizedAccessException("Напомнить может только организатор сбора.");
+            if (!GatheringRecruitment.CanRequest(g, participantId!.Value, now))
+                throw new InvalidOperationException("Напоминание доступно для открытого сбора в ближайшие 36 часов, пока не набран оптимальный состав.");
+        }
+        else
+        {
+            var candidates = await db.GameGatherings.AsNoTracking().Include(x => x.Participants).Include(x => x.Guests)
+                .Where(x => x.CommunityKey == key && x.StartsAtUtc > now && x.StartsAtUtc <= now.AddHours(36)
+                    && (x.Status == GatheringStatus.Recruiting || x.Status == GatheringStatus.Ready)).ToArrayAsync(ct);
+            if (GatheringRecruitment.Rank(candidates, now).Count == 0)
+                throw new InvalidOperationException("В ближайшие 36 часов нет открытых сборов со свободными местами.");
+        }
         if (AvailableAt(community) is { } available && available > now)
             return new(false, CooldownMessage(available, now), available);
         if (await db.RecruitmentDigests.AnyAsync(x => x.CommunityKey == key

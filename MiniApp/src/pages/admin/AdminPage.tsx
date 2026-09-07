@@ -7,7 +7,7 @@ import { RecruitmentSettings } from "./RecruitmentSettings";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { GatheringDetails } from "../gatherings/GatheringsPage";
 import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, Community, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
-import { Badge, BggAttribution, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import { BackButton, Badge, BggAttribution, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useAsync } from "../../hooks/useAsync";
@@ -324,7 +324,7 @@ function CampParticipants({ campId, campName, back }: { campId: number; campName
     <Page
       title="Участники кэмпа"
       subtitle={state.data?.campName ?? campName}
-      actions={<button onClick={back}>Назад</button>}
+      actions={<BackButton onClick={back} />}
     >
       <Card>
         <div className="row">
@@ -411,7 +411,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
     }
   }
   return (
-    <Page title="Настройки клуба" actions={<button onClick={done}>Назад</button>}>
+    <Page title="Настройки клуба" actions={<BackButton onClick={done} />}>
       <Card className="form-grid">
         <Field label="Название">
           <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
@@ -500,7 +500,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
     }
   }
   return (
-    <Page title="Настройки кэмпа" actions={<button onClick={done}>Назад</button>}>
+    <Page title="Настройки кэмпа" actions={<BackButton onClick={done} />}>
       <Card className="form-grid">
         <Field label="Название">
           <input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} />
@@ -665,7 +665,7 @@ function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; don
     }
   }
   return (
-    <Page title="Новый клуб" actions={<button onClick={done}>Назад</button>}>
+    <Page title="Новый клуб" actions={<BackButton onClick={done} />}>
       <Card>
         {!selection && !knownChat ? (
           <>
@@ -778,7 +778,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
     }
   }
   return (
-    <Page title="Новый кэмп" actions={<button onClick={done}>Назад</button>}>
+    <Page title="Новый кэмп" actions={<BackButton onClick={done} />}>
       <Card className="form-grid">
         <Field label="Название" hint="После выбора группы подставим её название">
           <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
@@ -889,7 +889,7 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
       subtitle={communityName}
       actions={
         <div className="row">
-          <button onClick={back}>Назад</button>
+          <BackButton onClick={back} />
           <button className="primary" disabled={busy} onClick={add}>
             Добавить администратора
           </button>
@@ -1111,7 +1111,7 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
     }
   }
   return (
-    <Page title="Коллекция клуба" actions={<button onClick={back}>Назад</button>}>
+    <Page title="Коллекция клуба" actions={<BackButton onClick={back} />}>
       {state.loading ? (
         <Loading />
       ) : state.error || !state.data ? (

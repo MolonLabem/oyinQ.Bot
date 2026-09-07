@@ -151,7 +151,7 @@ else
 var app = builder.Build();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(MiniAppStaticFiles.Options());
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -312,6 +312,6 @@ app.MapPost(
     });
 
 app.MapMiniAppEndpoints();
-app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html");
+app.MapFallbackToFile("/app/{*path:nonfile}", "app/index.html", MiniAppStaticFiles.Options());
 
 app.Run();

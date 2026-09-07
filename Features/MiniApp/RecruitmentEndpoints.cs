@@ -19,6 +19,7 @@ internal static class RecruitmentEndpoints
         group.MapPost("/gatherings/{id:guid}/recruitment", RequestAsync);
         group.MapGet("/admin/communities/{key}/recruitment", GetSettingsAsync);
         group.MapPut("/admin/communities/{key}/recruitment", SetSettingsAsync);
+        group.MapPost("/admin/communities/{key}/recruitment", RequestAsAdminAsync);
     }
 
     private static async Task<IResult> GetWishAsync(HttpRequest request, long bggId, string community,
@@ -55,6 +56,15 @@ internal static class RecruitmentEndpoints
             var participantId = await db.Participants.Where(x => x.TelegramUserId == access.Identity.TelegramUserId).Select(x => x.Id).SingleAsync(ct);
             return Results.Ok(await service.RequestAsync(body.CommunityKey, id, participantId, ct));
         }
+        catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
+    }
+
+    private static async Task<IResult> RequestAsAdminAsync(HttpRequest request, string key,
+        TelegramMiniAppAuthenticator auth, IAdminAuthorizationService authorization, RecruitmentDigestService service, CancellationToken ct)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, auth);
+        if (identity is null) return Results.Forbid();
+        try { return Results.Ok(await service.RequestAsAdminAsync(key, identity.TelegramUserId, authorization, ct)); }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
     }
 

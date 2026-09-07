@@ -12,6 +12,7 @@ function applyTheme() {
     app?.themeParams?.bg_color ?? (scheme === "dark" ? "#111318" : "#f4f6f8"));
 }
 export const telegram = {
+  get hasBackButton() { return Boolean(app?.BackButton); },
   get initData() { return app?.initData ?? ""; },
   get startParam() { return app?.initDataUnsafe.start_param; },
   initialize() { applyTheme(); app?.onEvent("themeChanged", applyTheme); if (!app) systemDarkTheme?.addEventListener("change", applyTheme); app?.ready(); app?.expand(); },

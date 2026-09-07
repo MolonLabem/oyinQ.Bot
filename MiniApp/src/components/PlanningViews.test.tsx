@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-const mock = vi.hoisted(() => ({ data: {} as unknown }));
+const mock = vi.hoisted(() => ({ data: {} as unknown, nativeBack: false }));
 vi.mock("../hooks/useAsync", () => ({ useAsync: () => ({ data: mock.data, loading: false, reload: vi.fn() }) }));
-vi.mock("../telegram/webApp", () => ({ telegram: {}, successEventName: "success" }));
+vi.mock("../telegram/webApp", () => ({ telegram: { get hasBackButton() { return mock.nativeBack; } }, successEventName: "success" }));
 import { GatheringDashboard } from "./GatheringDashboard";
 import { GameProviderNotice } from "./GameProviderNotice";
 import { ReleaseAnnouncementPage } from "../pages/admin/ReleaseAnnouncementPage";
@@ -59,7 +59,7 @@ describe("экраны планирования", () => {
       confirmedParticipants: [{ name: "Организатор", isOrganizer: true }], guestParticipants: [], waitlistedParticipants: [],
       publicationStatus: "Failed", startsAtLocal: "2026-09-05T18:00", minimumPlayers: 1, desiredPlayers: 3,
       maximumPlayers: 4, canTeachRules: true, knownExpansions: [], selectedExpansionIds: [],
-      provider: { summary: "Можно привезти", providers: [], canBring: true, isConfirmed: false },
+      provider: { summary: "Сардар — привезут", providers: [{ participantId: 1, displayName: "Сардар", commitment: "Bringing" }], canBring: true, isConfirmed: true },
     };
     const community = { key: "camp", name: "Кэмп", mode: "Camp" as const, timeZoneId: "Asia/Almaty" };
     const markup = renderToStaticMarkup(<GatheringDetails readOnly community={community} id="g" onBack={() => {}}
@@ -69,5 +69,15 @@ describe("экраны планирования", () => {
     expect(markup).not.toContain("Изменить сбор");
     expect(markup).not.toContain("Я привезу");
     expect(markup).not.toContain("Добавить в вишлист");
+    expect(markup.match(/Сардар/g)).toHaveLength(1);
+    expect(markup).toContain('notice success');
+    expect(markup).toContain("привезёт");
+    expect(markup).not.toContain("привезут");
+    expect(markup).toContain("Назад");
+    mock.nativeBack = true;
+    const nativeMarkup = renderToStaticMarkup(<GatheringDetails readOnly community={community} id="g" onBack={() => {}}
+      onCancelled={() => {}} editRegistration={() => {}} openCollection={() => {}} />);
+    mock.nativeBack = false;
+    expect(nativeMarkup).not.toContain("Назад");
   });
 });
