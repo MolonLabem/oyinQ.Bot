@@ -123,6 +123,8 @@ Camp rows created from `CommunityBootstrap:CommunitiesJson` have no event dates,
 
 Northflank provides `PORT`; do not require it as application configuration. Keep Docker's local `8080` fallback.
 
+Northflank PostgreSQL connection-string restores may preserve the source database name instead of the addon's generated `DATABASE` value. Before resuming production, pause application writes and verify the actual database, production row counts, and `__EFMigrationsHistory` against the deployed commit through private access. OyinQ's restored production database is `neondb`; do not substitute `NF_OYINQ_POSTGRES_DATABASE` without verifying where the data lives. Keep exactly one authoritative `Database__ConnectionString` across runtime variables and inherited secret groups, using the private addon host and required TLS. Never start against a missing/empty database or grant `CREATEDB` to work around a wrong target. See `docs/northflank-database-cutover.md` for verification and rollback.
+
 ## Database baseline
 
 Миграции и перенос старых данных завершаются до запуска HTTP и hosted workers; ошибка миграции должна останавливать запуск. Проверять обновление старой схемы на PostgreSQL с данными и повторным применением, а не только создание пустой базы. Выпуск с `CampOperatingInstants` требует остановки старых экземпляров: удалённые колонки дат несовместимы со старым кодом. Порядок репетиции на production-копии и выпуска: `docs/database-rollout.md`.

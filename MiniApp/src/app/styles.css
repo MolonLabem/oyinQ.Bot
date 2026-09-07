@@ -308,14 +308,19 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .provider-list li span:last-child { color: var(--muted); text-align: right; }
 
 /* Admin behaves as an application on wide screens and remains stacked on phones. */
-.admin-shell { width: 100%; max-width: var(--content-max); min-height: 100dvh; margin: 0 auto; padding: max(18px, var(--tg-safe-area-inset-top, env(safe-area-inset-top))) max(var(--space-4), var(--tg-content-safe-area-inset-right, env(safe-area-inset-right))) var(--space-6) max(var(--space-4), var(--tg-content-safe-area-inset-left, env(safe-area-inset-left))); }
-.admin-sidebar h1 { margin: 0 0 14px; font-size: 1.4rem; }
-.admin-sidebar nav { display: flex; gap: 6px; overflow-x: auto; scroll-padding-inline: 8px; scroll-snap-type: x proximity; padding-bottom: 8px; }
-.admin-sidebar nav button { display: flex; flex: 0 0 auto; max-width: none; align-items: center; gap: 8px; white-space: nowrap; scroll-snap-align: start; }
-.admin-sidebar nav button.active { color: var(--button); border-color: var(--button); background: color-mix(in srgb, var(--button) 10%, var(--surface)); }
+.admin-shell { width: 100%; max-width: var(--reading-max); margin: 0 auto; padding: 18px max(var(--space-4), var(--tg-content-safe-area-inset-right, env(safe-area-inset-right))) var(--space-6) max(var(--space-4), var(--tg-content-safe-area-inset-left, env(safe-area-inset-left))); }
+.admin-context { display: grid; gap: var(--space-1); }
+.admin-context-label { color: var(--muted); font-size: var(--font-xs); }
+.admin-community-select { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.admin-community-select select { flex: 1; width: 100%; min-width: 0; padding-left: 0; border-color: transparent; background-color: transparent; font-weight: 700; text-overflow: ellipsis; }
+.admin-main { min-width: 0; overflow-wrap: anywhere; }
+.admin-create-menu { max-width: 100%; }
+.admin-create-menu summary { min-height: var(--touch-target); padding-block: var(--space-3); color: var(--link); cursor: pointer; }
+.admin-create-menu .row { justify-content: flex-start; }
 .admin-main .page { padding-inline: 0; }
 .admin-entity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(310px, 100%), 1fr)); gap: 14px; }
-.admin-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.admin-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.admin-card-actions > button { flex: 1 1 auto; }
 .danger-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--danger) 30%, var(--separator)); }
 .danger-actions summary { min-height: 44px; padding: 11px 0; color: var(--danger); cursor: pointer; font-weight: 700; }
 .technical { margin-top: var(--space-3); padding-top: 10px; border-top: var(--surface-border); color: var(--muted); font-size: var(--font-small); }
@@ -324,10 +329,6 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 @media (min-width: 900px) {
   .page { padding: 30px 32px 46px; }
   .page-header { margin-bottom: 26px; }
-  .admin-shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 34px; }
-  .admin-sidebar { position: sticky; top: 24px; align-self: start; }
-  .admin-sidebar nav { display: grid; overflow: visible; }
-  .admin-sidebar nav button { width: 100%; max-width: 100%; justify-content: flex-start; text-align: left; white-space: normal; }
   .form-grid { gap: 10px; padding: 26px; }
 }
 @media (max-width: 700px) {

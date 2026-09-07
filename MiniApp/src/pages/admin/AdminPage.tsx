@@ -1,6 +1,8 @@
 import { ReleaseAnnouncementPage } from "./ReleaseAnnouncementPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
+import { Navigation, type Tab } from "../../components/Navigation";
+import { adminCommunityOptions, adminGatheringCommunity, type AdminCommunityOption } from "./adminNavigation";
 import { RecruitmentSettings } from "./RecruitmentSettings";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { GatheringDetails } from "../gatherings/GatheringsPage";
@@ -17,7 +19,7 @@ import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } fr
 import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
 import { campStatusTone, importStatusTone } from "../../app/semanticTones";
 
-type Section = "release" | "clubs" | "camps" | "gatherings" | "administrators" | "export" | "collection" | "participants";
+type Section = "community" | "release" | "gatherings" | "administrators" | "export" | "collection" | "participants";
 type CommunityCreated = {
   id: number;
   telegramOnboardingSent: boolean;
@@ -25,106 +27,73 @@ type CommunityCreated = {
 };
 
 export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolean; isSuperAdmin: boolean }) {
-  const [section, setSection] = useState<Section>("clubs");
-  const [clubId, setClubId] = useState<number>();
-  const [adminChat, setAdminChat] = useState<{ key: string; name: string }>();
-  const [participantCamp, setParticipantCamp] = useState<{ id: number; name: string }>();
-  useEffect(
-    () => telegram.back(section === "collection" || section === "administrators" || section === "participants", () => setSection(section === "participants" ? "camps" : "clubs")),
-    [section],
-  );
-  if (section === "collection" && clubId) return <ClubCollection clubId={clubId} bggAvailable={bggAvailable} back={() => setSection("clubs")} />;
-  const nav = [
-    { id: "clubs", label: "Клубы", icon: "♣" },
-    { id: "camps", label: "Кэмпы", icon: "⛺" },
-    { id: "gatherings", label: "Контроль сборов", icon: "⚑" },
-    { id: "export", label: "Экспорт", icon: "↕" },
-  ] as const;
-  const openAdmins = (key: string, name: string) => {
-    setAdminChat({ key, name });
-    setSection("administrators");
-  };
-  return (
+  const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
+  const [section, setSection] = useState<Section>("community");
+  const [selection, setSelection] = useState(() => localStorage.getItem("oyinq-admin-community") ?? localStorage.getItem("oyinq-community") ?? "");
+  const options = useMemo(() => state.data ? adminCommunityOptions(state.data) : [], [state.data]);
+  const selected = options.find(item => item.id === selection) ?? options[0];
+  useEffect(() => { if (selected) localStorage.setItem("oyinq-admin-community", selected.id); }, [selected?.id]);
+  const back = () => setSection("community");
+  const nested = section === "collection" || section === "administrators" || section === "participants";
+  useEffect(() => telegram.back(nested, back), [nested]);
+  const club = state.data?.clubs.find(item => item.communityKey === selected?.communityKey);
+  const camp = state.data?.camps.find(item => item.communityKey === selected?.communityKey);
+  const gatheringCommunity = state.data ? adminGatheringCommunity(state.data, selected?.communityKey) : undefined;
+  const tabs: Tab[] = [
+    { id: "community", label: "Сообщество", icon: "communities" },
+    { id: "gatherings", label: "Сборы", icon: "gatherings" },
+    { id: "export", label: "Экспорт", icon: "export" },
+    ...(isSuperAdmin ? [{ id: "release", label: "Обновления", icon: "updates" } as Tab] : []),
+  ];
+  return <div className="app-shell admin-app">
+    <header className="context-bar admin-context">
+      <span className="admin-context-label">Администрирование</span>
+      <div className="admin-community-select">
+        <span aria-hidden className={`mode-dot ${selected?.mode.toLowerCase() ?? ""}`} />
+        <select aria-label="Сообщество для администрирования" value={selected?.id ?? ""} disabled={!options.length || state.loading}
+          onChange={event => { setSelection(event.target.value); if (nested) back(); }}>
+          {!options.length && <option value="">{state.loading ? "Загрузка…" : "Нет сообществ"}</option>}
+          {options.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
+      </div>
+    </header>
     <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <h1>Администрирование</h1>
-        <nav>
-          {isSuperAdmin && <button className={section === "release" ? "active" : ""} onClick={() => setSection("release")}>Обновление OyinQ</button>}
-          {nav.map((item) => (
-            <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => setSection(item.id)}>
-              <span aria-hidden>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <div className="admin-main">
-        {section === "release" && isSuperAdmin ? <ReleaseAnnouncementPage /> : section === "clubs" ? (
-          <Communities
-            view="clubs"
-            isSuperAdmin={isSuperAdmin}
-            manage={(id) => {
-              setClubId(id);
-              setSection("collection");
-            }}
-            manageAdmins={openAdmins}
-          />
-        ) : section === "camps" ? (
-          <Communities
-            view="camps"
-            isSuperAdmin={isSuperAdmin}
-            manage={(id) => {
-              setClubId(id);
-              setSection("collection");
-            }}
-            manageAdmins={openAdmins}
-            manageParticipants={(camp) => {
-              setParticipantCamp({ id: camp.id, name: camp.name });
-              setSection("participants");
-            }}
-          />
-        ) : section === "gatherings" ? (
-          <GatheringOperationsPage />
-        ) : section === "participants" && participantCamp ? (
-          <CampParticipants campId={participantCamp.id} campName={participantCamp.name} back={() => setSection("camps")} />
-        ) : section === "administrators" && adminChat ? (
-          <Administrators communityKey={adminChat.key} communityName={adminChat.name} back={() => setSection("clubs")} />
-        ) : (
-          <Export isSuperAdmin={isSuperAdmin} />
-        )}
+      <div className="admin-main" key={`${selected?.id ?? "none"}:${section}`}>
+        {section === "release" && isSuperAdmin ? <ReleaseAnnouncementPage /> : state.loading ? <Loading />
+          : state.error ? <ErrorState message={state.error} retry={state.reload} />
+          : section === "collection" && club ? <ClubCollection clubId={club.id} bggAvailable={bggAvailable} back={back} />
+          : section === "participants" && camp ? <CampParticipants campId={camp.id} campName={camp.name} back={back} />
+          : section === "administrators" && (club || camp) && selected?.communityKey
+            ? <Administrators communityKey={selected.communityKey} communityName={selected.name} back={back} />
+          : section === "gatherings" ? <GatheringOperationsPage community={gatheringCommunity} />
+          : section === "export" ? <Export isSuperAdmin={isSuperAdmin} community={club || camp ? selected : undefined} />
+          : <Communities state={state} selected={selected} isSuperAdmin={isSuperAdmin}
+              manage={() => setSection("collection")} manageAdmins={() => setSection("administrators")}
+              manageParticipants={() => setSection("participants")} />}
         <BggAttribution />
       </div>
     </div>
-  );
+    <Navigation tabs={tabs} active={nested ? "community" : section} onChange={id => setSection(id as Section)} />
+  </div>;
 }
 
-function GatheringOperationsPage() {
-  const overview = useAsync(() => api<AdminOverview>("/admin/overview"), []);
-  const [communityKey, setCommunityKey] = useState("");
-  const [selected, setSelected] = useState<{ communityKey: string; id: string }>();
-  const communities = useMemo(() => overview.data ? [
-    ...overview.data.clubs.filter(item => item.isActive).map<Community>(item => ({ key: item.communityKey, name: item.name, mode: "Club", timeZoneId: item.timeZoneId })),
-    ...overview.data.camps.filter(item => item.status === "Active").map<Community>(item => ({ key: item.communityKey, name: item.name, mode: "Camp", timeZoneId: item.timeZoneId, startsAtUtc: item.startsAtUtc, endsAtUtc: item.endsAtUtc, startDate: item.startDate, endDate: item.endDate }))
-  ] : [], [overview.data]);
-  useEffect(() => { if (!communities.some(item => item.key === communityKey)) setCommunityKey(communities[0]?.key ?? ""); }, [communities, communityKey]);
+function GatheringOperationsPage({ community }: { community?: Community }) {
+  const [selected, setSelected] = useState<string>();
   useEffect(() => telegram.back(Boolean(selected), () => setSelected(undefined)), [selected]);
-  const selectedCommunity = selected ? communities.find(item => item.key === selected.communityKey) : undefined;
-  if (selected && selectedCommunity) return <GatheringDetails readOnly community={selectedCommunity} id={selected.id}
+  if (selected && community) return <GatheringDetails readOnly community={community} id={selected}
     onBack={() => setSelected(undefined)} onCancelled={() => setSelected(undefined)} editRegistration={() => {}} openCollection={() => {}} />;
   return <Page title="Контроль сборов" subtitle="Набор игроков, коробки и проблемы доставки">
-    {overview.loading ? <Loading /> : overview.error ? <ErrorState message={overview.error} retry={overview.reload} /> : !communities.length
-      ? <Empty>Нет активных сообществ со сборами.</Empty> : <>
-        <Field label="Сообщество" hint="Показаны только ситуации, в которых может понадобиться действие администратора.">
-          <select value={communityKey} onChange={event => setCommunityKey(event.target.value)}>{communities.map(item =>
-            <option key={item.key} value={item.key}>{item.name} · {item.mode === "Club" ? "Клуб" : "Кэмп"}</option>)}</select>
-        </Field>
-        {communityKey && <GatheringDashboard communityKey={communityKey} open={(key, id) => setSelected({ communityKey: key, id })} />}
-      </>}
+    {community ? <GatheringDashboard communityKey={community.key} open={(_key, id) => setSelected(id)} />
+      : <Empty>Выберите активное сообщество с доступом к управлению.</Empty>}
   </Page>;
 }
 
-function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAdmin }: { manage: (id: number) => void; manageAdmins: (key: string, name: string) => void; manageParticipants?: (camp: AdminCamp) => void; view: "clubs" | "camps"; isSuperAdmin: boolean }) {
-  const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
+function Communities({ manage, manageAdmins, manageParticipants, state, selected, isSuperAdmin }: {
+  manage: (id: number) => void; manageAdmins: (key: string, name: string) => void;
+  manageParticipants: (camp: AdminCamp) => void; state: ReturnType<typeof useAsync<AdminOverview>>;
+  selected?: AdminCommunityOption; isSuperAdmin: boolean;
+}) {
+  const view = selected?.mode === "Camp" ? "camps" : "clubs";
   const [create, setCreate] = useState<"club" | "camp">();
   const [createChat, setCreateChat] = useState<LockedAdminCommunity>();
   const [editing, setEditing] = useState<AdminClub>();
@@ -213,19 +182,18 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
         }}
       />
     );
-  const locked = state.data?.lockedCommunities.filter((item) =>
-    !item.communityKey && isSuperAdmin ? true : item.mode === (view === "clubs" ? "Club" : "Camp")) ?? [];
+  const locked = state.data?.lockedCommunities.filter(item =>
+    (item.communityKey ?? `chat:${item.telegramChatId}`) === selected?.id) ?? [];
+  const clubs = state.data?.clubs.filter(item => item.communityKey === selected?.communityKey) ?? [];
+  const camps = state.data?.camps.filter(item => item.communityKey === selected?.communityKey) ?? [];
   return (
     <Page
-      title={view === "clubs" ? "Клубы" : "Кэмпы"}
-      subtitle={view === "clubs" ? "Коллекции и настройки клубных сообществ" : "События, даты и базовые коллекции"}
-      actions={
-        isSuperAdmin ? (
-          <button className="primary" onClick={() => setCreate(view === "clubs" ? "club" : "camp")}>
-            {view === "clubs" ? "Новый клуб" : "Новый кэмп"}
-          </button>
-        ) : undefined
-      }
+      title={selected?.name ?? "Сообщества"}
+      subtitle={selected ? selected.mode === "Club" ? "Управление клубом" : "Управление кэмпом" : "Создайте клуб или кэмп, чтобы начать"}
+      actions={isSuperAdmin ? <details className="admin-create-menu"><summary>Добавить сообщество</summary><div className="row">
+        <button onClick={() => setCreate("club")}>Новый клуб</button>
+        <button onClick={() => setCreate("camp")}>Новый кэмп</button>
+      </div></details> : undefined}
     >
       {mutationError && <Notice kind="danger">{mutationError}</Notice>}
       {state.loading ? (
@@ -245,19 +213,20 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
               ) : (
                 <>
                   <Notice>Бот уже видит эту Telegram-группу. Настройте её в OyinQ без необходимости вступать в группу.</Notice>
-                  <button className="primary" onClick={() => { setCreateChat(item); setCreate(view === "clubs" ? "club" : "camp"); }}>
-                    {view === "clubs" ? "Создать клуб" : "Создать кэмп"}
-                  </button>
+                  {isSuperAdmin && <div className="row">
+                    <button className="primary" onClick={() => { setCreateChat(item); setCreate("club"); }}>Создать клуб</button>
+                    <button onClick={() => { setCreateChat(item); setCreate("camp"); }}>Создать кэмп</button>
+                  </div>}
                 </>
               )}
             </Card>
           ))}
           {view === "clubs" ? (
-            !state.data?.clubs.length && !locked.length ? (
+            !clubs.length && !locked.length ? (
               <Empty>Доступных клубов пока нет.</Empty>
             ) : (
               <div className="admin-entity-grid">
-                {state.data?.clubs.map((club) => (
+                {clubs.map((club) => (
                   <Card key={club.id}>
                     <div className="row">
                       <div>
@@ -284,11 +253,11 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                 ))}
               </div>
             )
-          ) : !state.data?.camps.length && !locked.length ? (
+          ) : !camps.length && !locked.length ? (
             <Empty>Доступных кэмпов пока нет.</Empty>
           ) : (
             <div className="admin-entity-grid">
-              {state.data?.camps.map((camp) => (
+              {camps.map((camp) => (
                 <Card key={camp.id}>
                   <div className="row">
                     <div>
@@ -981,30 +950,17 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
   );
 }
 
-function Export({ isSuperAdmin }: { isSuperAdmin: boolean }) {
-  const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
+function Export({ isSuperAdmin, community }: { isSuperAdmin: boolean; community?: AdminCommunityOption }) {
   const [error, setError] = useState<string>();
-  const communities = [
-    ...(state.data?.clubs ?? []).map((x) => ({
-      key: x.communityKey,
-      name: x.name,
-    })),
-    ...(state.data?.camps ?? []).map((x) => ({
-      key: x.communityKey,
-      name: x.name,
-    })),
-  ];
   return (
     <Page title="Экспорт">
       <Card>
         <h2>Данные чата</h2>
         <p>Каждый файл содержит данные только выбранного клуба или кэмпа.</p>
         <div className="stack">
-          {communities.map((item) => (
-            <button key={item.key} onClick={() => download(`/admin/exports/statistics.zip?community=${encodeURIComponent(item.key)}`, `oyinq-${item.key}-statistics.zip`).catch((e) => setError(e.message))}>
-              Скачать «{item.name}»
-            </button>
-          ))}
+          {community?.communityKey ? <button onClick={() => download(`/admin/exports/statistics.zip?community=${encodeURIComponent(community.communityKey!)}`, `oyinq-${community.communityKey}-statistics.zip`).catch((e) => setError(e.message))}>
+            Скачать «{community.name}»
+          </button> : <Notice>Выберите сообщество с доступом к управлению.</Notice>}
         </div>
         {isSuperAdmin && <button onClick={() => download("/admin/exports/statistics.zip", "oyinq-all-statistics.zip").catch((e) => setError(e.message))}>Скачать все чаты</button>}
       </Card>
