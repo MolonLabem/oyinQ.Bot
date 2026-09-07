@@ -372,6 +372,9 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .game-picker-heading > button { flex: none; min-height: 44px; white-space: nowrap; }
 
 .release-preview { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.announcement-tabs button { flex: 1; padding-inline: 8px; }
+.announcement-history-item p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+.announcement-history-item > span { color: var(--link); }
 .changelog-content { overflow-wrap: anywhere; line-height: 1.6; }
 .changelog-content h2 { margin-top: 1.5rem; }
 .changelog-content h3 { margin-top: 1.25rem; }

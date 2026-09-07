@@ -30,13 +30,13 @@ public sealed record ReleaseTarget(string Key, string Name, bool CanPost, Releas
     bool CanQueue, bool CanRetry);
 public sealed record ReleasePreview(string ReleaseId, string Text, IReadOnlyList<ReleaseTarget> Targets);
 
-public sealed class ReleaseAnnouncementService(AppDbContext db, IAdminAuthorizationService authorization,
+public sealed partial class ReleaseAnnouncementService(AppDbContext db, IAdminAuthorizationService authorization,
     ITelegramBotClient bot, ITelegramGroupMessageSender sender, TimeProvider clock, ILogger<ReleaseAnnouncementService>? logger = null)
 {
     public static bool CanRetry(ReleaseDeliveryState state) => state == ReleaseDeliveryState.Failed;
     private void RequireSuperAdmin(long telegramId)
     {
-        if (!authorization.IsSuperAdmin(telegramId)) throw new UnauthorizedAccessException("Публиковать обновление может только суперадминистратор.");
+        if (!authorization.IsSuperAdmin(telegramId)) throw new UnauthorizedAccessException("Управлять оповещениями может только суперадминистратор.");
     }
 
     public static bool CanPost(ChatMember member, ChatFullInfo chat) => member switch
@@ -62,8 +62,13 @@ public sealed class ReleaseAnnouncementService(AppDbContext db, IAdminAuthorizat
     public async Task<ReleasePreview> PreviewAsync(long telegramId, CancellationToken ct)
     {
         RequireSuperAdmin(telegramId);
+        return await PreviewContentAsync(ReleaseContent.Id, ReleaseContent.Text, ct);
+    }
+
+    private async Task<ReleasePreview> PreviewContentAsync(string id, string text, CancellationToken ct)
+    {
         var me = await bot.GetMe(ct);
-        var states = await db.ReleaseAnnouncementDeliveries.AsNoTracking().Where(x => x.ReleaseId == ReleaseContent.Id).ToDictionaryAsync(x => x.CommunityKey, ct);
+        var states = await db.ReleaseAnnouncementDeliveries.AsNoTracking().Where(x => x.ReleaseId == id).ToDictionaryAsync(x => x.CommunityKey, ct);
         var priorKeys = states.Keys.ToArray();
         var communities = await db.OyinQCommunities.AsNoTracking().Where(x => x.IsActive && x.DeletedAt == null || priorKeys.Contains(x.Key)).OrderBy(x => x.Name).ToArrayAsync(ct);
         List<ReleaseTarget> targets = [];
@@ -74,7 +79,7 @@ public sealed class ReleaseAnnouncementService(AppDbContext db, IAdminAuthorizat
             targets.Add(new(c.Key, c.Name, canPost, state?.State, state?.Error,
                 canPost && state is null, canPost && state is not null && CanRetry(state.State)));
         }
-        return new(ReleaseContent.Id, ReleaseContent.Text, targets);
+        return new(id, text, targets);
     }
 
     public async Task QueueAsync(long telegramId, string releaseId, IReadOnlyCollection<string> keys, bool confirmed, bool retryFailed, CancellationToken ct)
@@ -83,6 +88,12 @@ public sealed class ReleaseAnnouncementService(AppDbContext db, IAdminAuthorizat
         if (!confirmed || releaseId != ReleaseContent.Id || keys is null || keys.Count is 0 or > 200)
             throw new ArgumentException("Подтвердите текущий выпуск и выберите от 1 до 200 сообществ.");
         var preview = await PreviewAsync(telegramId, ct);
+        await QueueContentAsync(telegramId, preview, keys, retryFailed, ct);
+    }
+
+    private async Task QueueContentAsync(long telegramId, ReleasePreview preview, IReadOnlyCollection<string> keys, bool retryFailed, CancellationToken ct)
+    {
+        var releaseId = preview.ReleaseId;
         var selected = keys.Distinct().ToArray();
         if (selected.Any(key => !preview.Targets.Any(x => x.Key == key && x.CanPost)))
             throw new InvalidOperationException("Состав получателей изменился. Обновите предпросмотр.");

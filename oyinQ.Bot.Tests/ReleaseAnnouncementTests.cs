@@ -14,6 +14,82 @@ namespace oyinQ.Bot.Tests;
 public sealed class ReleaseAnnouncementTests
 {
     [Fact]
+    public async Task CustomDraft_IsImmutableAndIdempotent_AndDoesNotSend()
+    {
+        await using var f = new Fixture();
+        var request = Guid.NewGuid();
+        var id = await f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, request, "  Привет\r\n<клуб> & друзья  ", default);
+        Assert.Equal(id, await f.NewService().SaveCustomAsync(f.Data.Me.TelegramUserId, request, "Привет\n<клуб> & друзья", default));
+        Assert.Single(f.Data.Db.ReleaseAnnouncements);
+        Assert.Empty(f.Data.Db.ReleaseAnnouncementDeliveries);
+        Assert.False(await f.Service.DispatchOneAsync(default));
+        Assert.Empty(f.Handler.Sends);
+        var preview = await f.Service.PreviewCustomAsync(f.Data.Me.TelegramUserId, request, default);
+        Assert.Equal("Привет\n<клуб> & друзья", preview.Text);
+        Assert.Equal(["a", "b"], preview.Targets.Select(x => x.Key));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, request, "Другой текст", default));
+        Assert.Equal(id, Assert.Single((await f.Service.CustomHistoryAsync(f.Data.Me.TelegramUserId, 1, default)).Items).Id);
+    }
+
+    [Fact]
+    public async Task CustomMessage_QueuesOnlyConfirmedRecipients_AndEscapesUserText()
+    {
+        await using var f = new Fixture();
+        var request = Guid.NewGuid();
+        await f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, request, "<b>Текст</b> & друзья", default);
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], false, false, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["unknown"], true, false, default));
+        Assert.Empty(f.Data.Db.ReleaseAnnouncementDeliveries);
+        await f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a", "a"], true, false, default);
+        Assert.Single(f.Data.Db.ReleaseAnnouncementDeliveries);
+        Assert.Empty(f.Handler.Sends);
+        await f.NewService().DispatchOneAsync(default);
+        using var sent = System.Text.Json.JsonDocument.Parse(Assert.Single(f.Handler.Sends));
+        Assert.Equal("&lt;b&gt;Текст&lt;/b&gt; &amp; друзья", sent.RootElement.GetProperty("text").GetString());
+        Assert.Equal(42, sent.RootElement.GetProperty("message_thread_id").GetInt32());
+        await f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], true, false, default);
+        await f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], true, true, default);
+        Assert.False(await f.NewService().DispatchOneAsync(default));
+        Assert.Single(f.Handler.Sends);
+    }
+
+    [Fact]
+    public async Task CustomMessages_ReuseFailedAndUnknownDeliveryRules()
+    {
+        await using var f = new Fixture();
+        var request = Guid.NewGuid();
+        await f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, request, "Объявление", default);
+        f.Handler.FailChat = -1001;
+        await f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], true, false, default);
+        await f.Service.DispatchOneAsync(default);
+        Assert.True((await f.Service.PreviewCustomAsync(f.Data.Me.TelegramUserId, request, default)).Targets.Single(x => x.Key == "a").CanRetry);
+        f.Handler.FailChat = null; f.Handler.NetworkFailure = true;
+        await f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], true, true, default);
+        await f.Service.DispatchOneAsync(default);
+        Assert.Equal(ReleaseDeliveryState.DeliveryUnknown, (await f.Data.Db.ReleaseAnnouncementDeliveries.SingleAsync()).State);
+        Assert.False((await f.Service.PreviewCustomAsync(f.Data.Me.TelegramUserId, request, default)).Targets.Single(x => x.Key == "a").CanRetry);
+        await f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], true, true, default);
+        Assert.False(await f.Service.DispatchOneAsync(default));
+        Assert.Equal(2, f.Handler.Sends.Count);
+    }
+
+    [Fact]
+    public async Task CustomMessages_RequireSuperAdminAndValidText()
+    {
+        await using var f = new Fixture(); var request = Guid.NewGuid();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.SaveCustomAsync(f.Data.Other.TelegramUserId, request, "Текст", default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.CustomHistoryAsync(f.Data.Other.TelegramUserId, 1, default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.PreviewCustomAsync(f.Data.Other.TelegramUserId, request, default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => f.Service.QueueCustomAsync(f.Data.Other.TelegramUserId, request, ["a"], true, false, default));
+        foreach (var text in new[] { "", "  \n ", new string('x', 3501), "bad\0text" })
+            await Assert.ThrowsAsync<ArgumentException>(() => f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, request, text, default));
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, Guid.Empty, "Текст", default));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => f.Service.QueueCustomAsync(f.Data.Me.TelegramUserId, request, ["a"], true, false, default));
+        await f.Service.SaveCustomAsync(f.Data.Me.TelegramUserId, request, new string('x', 3500), default);
+        Assert.Empty(f.Handler.Sends);
+    }
+
+    [Fact]
     public async Task PreviewAndUnconfirmedRequestsNeverSend_OnlyManagedActiveTargetsAreEligible()
     {
         await using var f = new Fixture();

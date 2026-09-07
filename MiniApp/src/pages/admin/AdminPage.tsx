@@ -1,4 +1,4 @@
-import { ReleaseAnnouncementPage } from "./ReleaseAnnouncementPage";
+import { AnnouncementsPage } from "./AnnouncementsPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
 import { Navigation, type Tab } from "../../components/Navigation";
@@ -43,23 +43,23 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
     { id: "community", label: "Сообщество", icon: "communities" },
     { id: "gatherings", label: "Сборы", icon: "gatherings" },
     { id: "export", label: "Экспорт", icon: "export" },
-    ...(isSuperAdmin ? [{ id: "release", label: "Обновления", icon: "updates" } as Tab] : []),
+    ...(isSuperAdmin ? [{ id: "release", label: "Оповещения", icon: "updates" } as Tab] : []),
   ];
   return <div className="app-shell admin-app">
     <header className="context-bar admin-context">
       <span className="admin-context-label">Администрирование</span>
-      <div className="admin-community-select">
+      {section === "release" ? <strong>Оповещения для сообществ</strong> : <div className="admin-community-select">
         <span aria-hidden className={`mode-dot ${selected?.mode.toLowerCase() ?? ""}`} />
         <select aria-label="Сообщество для администрирования" value={selected?.id ?? ""} disabled={!options.length || state.loading}
           onChange={event => { setSelection(event.target.value); if (nested) back(); }}>
           {!options.length && <option value="">{state.loading ? "Загрузка…" : "Нет сообществ"}</option>}
           {options.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
         </select>
-      </div>
+      </div>}
     </header>
     <div className="admin-shell">
-      <div className="admin-main" key={`${selected?.id ?? "none"}:${section}`}>
-        {section === "release" && isSuperAdmin ? <ReleaseAnnouncementPage /> : state.loading ? <Loading />
+      <div className="admin-main" key={section === "release" ? "announcements" : `${selected?.id ?? "none"}:${section}`}>
+        {section === "release" && isSuperAdmin ? <AnnouncementsPage /> : state.loading ? <Loading />
           : state.error ? <ErrorState message={state.error} retry={state.reload} />
           : section === "collection" && club ? <ClubCollection clubId={club.id} bggAvailable={bggAvailable} back={back} />
           : section === "participants" && camp ? <CampParticipants campId={camp.id} campName={camp.name} back={back} />

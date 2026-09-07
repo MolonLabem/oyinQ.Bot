@@ -265,6 +265,37 @@ public sealed partial class PostgreSqlStabilizationTests
     }
 
     [PostgreSqlFact]
+    public async Task CustomAnnouncementConcurrentSaveAndQueue_CreateOneMessageAndDelivery()
+    {
+        await using var database = await Database.CreateAsync(); var actor = await SeedAsync(database);
+        var sends = new ReleaseSender();
+        using var http = new HttpClient(new ReleaseBot());
+        var bot = new Telegram.Bot.TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO", http);
+        ReleaseAnnouncementService Service(AppDbContext db) => new(db,
+            new AdminAuthorizationService(db, null!, Options.Create(new AdministrationOptions { SuperAdminTelegramUserIds = new HashSet<long> { actor.TelegramUserId } }), Time),
+            bot, sends, Time);
+        var request = Guid.NewGuid();
+        await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
+        {
+            await using var db = database.Open();
+            await Service(db).SaveCustomAsync(actor.TelegramUserId, request, "Своё сообщение", default);
+        }));
+        await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
+        {
+            await using var db = database.Open();
+            await Service(db).QueueCustomAsync(actor.TelegramUserId, request, ["club"], true, false, default);
+        }));
+        await using var verify = database.Open();
+        Assert.Single(await verify.ReleaseAnnouncements.ToArrayAsync());
+        Assert.Single(await verify.ReleaseAnnouncementDeliveries.ToArrayAsync());
+        Assert.Equal(0, sends.Calls);
+        await Service(verify).DispatchOneAsync(default);
+        Assert.Equal(1, sends.Calls);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Service(verify).SaveCustomAsync(actor.TelegramUserId, request, "Изменённый текст", default));
+        Assert.Equal("Своё сообщение", (await verify.ReleaseAnnouncements.SingleAsync()).Text);
+    }
+
+    [PostgreSqlFact]
     public async Task ReleaseRecoveryAcrossScopesPreservesDeliveredAndUnknownAndRetriesOnlyFailed()
     {
         await using var database = await Database.CreateAsync(); var actor = await SeedAsync(database);
