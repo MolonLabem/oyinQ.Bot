@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { successEventName } from "../telegram/webApp";
 import { telegram } from "../telegram/webApp";
+import type { BadgeTone } from "../app/semanticTones";
 
 export function Page({ as: Element = "main", title, titleHref, subtitle, actions, children }: { as?: "main" | "section"; title?: string; titleHref?: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [title]);
@@ -14,7 +15,7 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
 export function Cover({ src, name }: { src?: string; name: string }) { return src ? <img className="cover" src={src} alt={`Обложка игры ${name}`} /> : <div className="cover placeholder" aria-hidden>🎲</div>; }
 export function Field({ label, children, hint, error }: { label: string; children: ReactNode; hint?: string; error?: string }) { return <label className={`field${error ? " invalid" : ""}`}><span>{label}</span>{children}{hint && <small>{hint}</small>}{error && <small className="field-error" role="alert">{error}</small>}</label>; }
 export function Notice({ children, kind = "info" }: { children: ReactNode; kind?: "info" | "warning" | "danger" | "success" }) { return <div className={`notice ${kind}`} role="status">{children}</div>; }
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: string }) { return <span className={`badge ${tone}`}>{children}</span>; }
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: BadgeTone }) { return <span className={`badge ${tone}`}>{children}</span>; }
 export type TabItem = { id: string; label: string };
 export function Tabs({ items, active, onChange, label, className = "" }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string }) {
   const activeButton = useRef<HTMLButtonElement>(null);
@@ -22,6 +23,14 @@ export function Tabs({ items, active, onChange, label, className = "" }: { items
   return <div className={`page-tabs ${className}`.trim()} role="tablist" aria-label={label}>{items.map(item => <button
     key={item.id} ref={active === item.id ? activeButton : undefined} type="button" role="tab"
     aria-selected={active === item.id} className={active === item.id ? "active" : ""}
+    onClick={() => onChange(item.id)}>{item.label}</button>)}</div>;
+}
+export function SegmentedControl({ items, active, onChange, label, className = "" }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string }) {
+  const activeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { activeButton.current?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [active]);
+  return <div className={`filter-segments ${className}`.trim()} role="group" aria-label={label}>{items.map(item => <button
+    key={item.id} ref={active === item.id ? activeButton : undefined} type="button"
+    aria-pressed={active === item.id} className={active === item.id ? "active" : ""}
     onClick={() => onChange(item.id)}>{item.label}</button>)}</div>;
 }
 export function SaveButton({ busy, label, busyLabel = "Сохраняем…", disabled, onClick, className = "primary" }: {

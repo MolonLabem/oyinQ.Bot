@@ -28,6 +28,24 @@ beforeEach(() => {
 });
 
 describe("gathering detail action hierarchy", () => {
+  it("exposes direct guest controls only with the backend capability", () => {
+    state.data.guestParticipants = [{ id: 1, displayName: "Друг Антона" }];
+    expect(render()).not.toContain('aria-label="Изменить имя гостя');
+    state.data.canManageGuests = true;
+    expect(render()).toContain('aria-label="Изменить имя гостя Друг Антона"');
+    expect(render()).toContain('aria-label="Удалить гостя Друг Антона"');
+  });
+
+  it("keeps guest names read-only in the admin inspection view", () => {
+    state.data.guestParticipants = [{ id: 1, displayName: "Друг Антона" }];
+    state.data.canManageGuests = true;
+    const markup = renderToStaticMarkup(<GatheringDetails readOnly community={{ key: "club", name: "Клуб", mode: "Club", timeZoneId: "UTC" }}
+      id="g" onBack={() => {}} onCancelled={() => {}} editRegistration={() => {}} openCollection={() => {}} />);
+    expect(markup).toContain("Друг Антона");
+    expect(markup).not.toContain('aria-label="Изменить имя гостя');
+    expect(markup).not.toContain('aria-label="Удалить гостя');
+  });
+
   it("puts the gathering before actions and attaches joining to its summary", () => {
     const markup = render();
     expect(markup.indexOf("Каркассон")).toBeLessThan(markup.indexOf("Занять место"));
@@ -40,7 +58,7 @@ describe("gathering detail action hierarchy", () => {
   it("groups organizer tools behind a disclosure and keeps cancellation last", () => {
     Object.assign(state.data, { currentUserStatus: "Organizer", canJoin: false, canEdit: true, canClose: true, canCancel: true, canRequestRecruitment: true });
     const markup = render();
-    const panel = markup.slice(markup.indexOf('class="card gathering-management"'), markup.indexOf('class="card gathering-players"'));
+    const panel = markup.slice(markup.indexOf('class="card gathering-management"'), markup.indexOf('class="content-section gathering-players"'));
     expect(panel).toContain("<details><summary>");
     expect(panel).toContain("Изменить сбор");
     expect(panel).toContain("Закрыть запись");

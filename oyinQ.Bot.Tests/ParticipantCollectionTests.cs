@@ -95,6 +95,7 @@ public sealed class ParticipantCollectionTests
         Assert.Equal(new long[] { 10, 20 }, first.Items.Select(x => x.BggId).Order());
         Assert.Equal("Есть в клубе · Есть у вас", first.Items.Single(x => x.BggId == 10).AvailabilitySummary);
         Assert.Equal("Есть у вас", first.Items.Single(x => x.BggId == 20).AvailabilitySummary);
+        Assert.False(first.Items.Single(x => x.BggId == 20).IsDefinitelyAvailable);
         var second = await catalog.LoadClubAsync("club", 43, default);
         Assert.Equal(new long[] { 10, 30 }, second.Select(x => x.Game.BggId).Order());
         Assert.Equal(original, (await db.Clubs.SingleAsync()).CollectionJson);

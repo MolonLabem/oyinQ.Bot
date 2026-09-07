@@ -3,7 +3,7 @@ import { api, json } from "../api/client";
 import type { CatalogResponse, ClubGame, Community } from "../api/types";
 import { useAsync } from "../hooks/useAsync";
 import { GamePicker } from "./GamePicker";
-import { Card, Empty, ErrorState, Loading, Notice } from "./Ui";
+import { Empty, ErrorState, Loading, Notice } from "./Ui";
 
 export function WishButton({ communityKey, bggId, initial, changed }: {
   communityKey: string; bggId: number; initial?: boolean; changed?: () => void;
@@ -30,7 +30,7 @@ export function WishButton({ communityKey, bggId, initial, changed }: {
     } catch (e) { if (version === scope.current) setError(e instanceof Error ? e.message : String(e)); }
     finally { if (version === scope.current) setBusy(false); }
   }
-  return <div><button type="button" aria-pressed={wished} disabled={busy || state.loading || !!state.error} onClick={() => void toggle()}>
+  return <div><button type="button" className="wishlist-button" aria-pressed={wished} disabled={busy || state.loading || !!state.error} onClick={() => void toggle()}>
     {busy ? "Сохраняем…" : wished ? "♥ В вишлисте" : "♡ Хочу сыграть"}</button>
     {(error || state.error) && <Notice kind="danger">{error || state.error}</Notice>}</div>;
 }
@@ -39,7 +39,7 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
   const state = useAsync(() => api<CatalogResponse>(`/catalog?community=${encodeURIComponent(community.key)}&ownership=wishes`), [community.key]);
   const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key]);
   const [selected, setSelected] = useState<ClubGame>();
-  return <Card><h2>Вишлист · {community.name}</h2>
+  return <section className="content-section wishlist-panel"><h2>Вишлист · {community.name}</h2>
     <p className="muted">Игры, в которые хочется сыграть в этом сообществе. Коробку иметь не обязательно. Запись в сбор и обещание привезти игру оформляются отдельно.</p>
     <GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
       selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label="Добавить в вишлист" />
@@ -48,5 +48,5 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
       ? <Empty>Вишлист пока пуст. Найдите игру выше.</Empty>
       : <ul className="provider-list">{state.data.items.map(game => <li key={game.bggId}><span>{game.name}</span>
         <WishButton communityKey={community.key} bggId={game.bggId} initial={game.isWished} changed={state.reload} /></li>)}</ul>}
-  </Card>;
+  </section>;
 }

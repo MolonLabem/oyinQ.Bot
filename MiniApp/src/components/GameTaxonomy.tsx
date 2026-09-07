@@ -1,4 +1,4 @@
-import { Badge, Card } from "./Ui";
+import { Badge } from "./Ui";
 
 export function GameTaxonomy({
   typeNames = [], categoryNames = [], mechanicNames = [], className = ""
@@ -10,9 +10,9 @@ export function GameTaxonomy({
 }) {
   if (!typeNames.length && !categoryNames.length && !mechanicNames.length) return null;
 
-  return <Card className={`detail-section game-taxonomy ${className}`.trim()}>
+  return <section className={`content-section detail-section game-taxonomy ${className}`.trim()}>
     {typeNames.length > 0 && <TaxonomyGroup title="Тип">
-      {typeNames.map(name => <Badge tone="accent" key={name}>{name}</Badge>)}
+      {typeNames.map(name => <Badge tone="neutral" key={name}>{name}</Badge>)}
     </TaxonomyGroup>}
     {categoryNames.length > 0 && <TaxonomyGroup title="Категории">
       {categoryNames.map(name => <span className="tag" key={name}>{name}</span>)}
@@ -20,7 +20,7 @@ export function GameTaxonomy({
     {mechanicNames.length > 0 && <TaxonomyGroup title="Механики">
       {mechanicNames.map(name => <span className="tag" key={name}>{name}</span>)}
     </TaxonomyGroup>}
-  </Card>;
+  </section>;
 }
 
 function TaxonomyGroup({ title, children }: { title: string; children: React.ReactNode }) {

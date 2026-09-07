@@ -66,11 +66,12 @@ internal static class CommunityEndpoints
             resolver, cancellationToken);
         if (access is null) return Results.Forbid();
         var games = await catalog.LoadAsync(community, access.Community.Mode, access.Identity.TelegramUserId, cancellationToken);
-        return Results.Ok(games.Select(x => PresentGame(x.Game)));
+        return Results.Ok(games.Select(PresentGame));
     }
 
-    private static object PresentGame(ClubCollectionGame game)
+    private static object PresentGame(GameCatalogService.EffectiveGame value)
     {
+        var game = value.Game;
         var metadata = BggTaxonomyCatalog.Present(game);
         var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
         return new { game.BggId, game.Name, game.ThumbnailImageUrl, game.ImageUrl, game.Description,
@@ -78,6 +79,6 @@ internal static class CommunityEndpoints
             PlayerRangeDefaulted = players.WasDefaulted, game.BestPlayers,
             game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
             metadata.TypeName, metadata.TypeNames, metadata.CategoryNames, metadata.MechanicNames,
-            game.CategoryItems, game.Mechanics, game.Expansions };
+            game.CategoryItems, game.Mechanics, game.Expansions, value.IsInBaseCollection, value.IsOwned };
     }
 }

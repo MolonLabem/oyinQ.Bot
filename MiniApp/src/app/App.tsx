@@ -37,7 +37,7 @@ export function App() {
     <ProfilePage communities={bootstrap.communities} bggAvailable={capabilities.boardGameGeekAvailable}
       openGathering={(key, id) => { setProfileReturnCommunityKey(""); setCommunityKey(key); setInitialGatheringId(id); setTab("gatherings"); }} />
   </GlobalProfileShell>;
-  const tabs = [{ id: "gatherings", label: "Сборы", icon: "🎲" }, { id: "games", label: "Игры", icon: "📚" }, { id: "profile", label: "Профиль", icon: "👤" }];
+  const tabs = [{ id: "gatherings", label: "Сборы", icon: "gatherings" as const }, { id: "games", label: "Игры", icon: "games" as const }, { id: "profile", label: "Профиль", icon: "profile" as const }];
   const activeTab = mainTab(tab);
   const fullscreenActionLabel = fullscreenLabel(fullscreen);
   const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("profile"); };
@@ -54,7 +54,7 @@ export function GlobalProfileShell({ profile, select, communities, children }: {
   profile: boolean; select: (tab: string) => void; communities: React.ReactNode; children: React.ReactNode;
 }) {
   return <div className="app-shell"><div className="content">{profile ? children : communities}</div>
-    <Navigation tabs={[{ id: "communities", label: "Сообщества", icon: "👥" }, { id: "profile", label: "Профиль", icon: "👤" }]}
+    <Navigation tabs={[{ id: "communities", label: "Сообщества", icon: "communities" }, { id: "profile", label: "Профиль", icon: "profile" }]}
       active={profile ? "profile" : "communities"} onChange={select} /></div>;
 }
 

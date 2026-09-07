@@ -15,6 +15,7 @@ import { bggImportProgressText, clubImportResultText, type BggImportStage } from
 import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
 import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
 import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
+import { campStatusTone, importStatusTone } from "../../app/semanticTones";
 
 type Section = "release" | "clubs" | "camps" | "gatherings" | "administrators" | "export" | "collection" | "participants";
 type CommunityCreated = {
@@ -300,7 +301,7 @@ function Communities({ manage, manageAdmins, manageParticipants, view, isSuperAd
                         {plural(camp.registrations, "регистрация", "регистрации", "регистраций")} · {plural(camp.gatherings, "сбор", "сбора", "сборов")}
                       </p>
                     </div>
-                    <Badge tone={camp.status === "Active" ? "success" : "neutral"}>{campStatusLabel(camp.status)}</Badge>
+                    <Badge tone={campStatusTone(camp.status)}>{campStatusLabel(camp.status)}</Badge>
                   </div>
                   <div className="admin-card-actions">
                     <button onClick={() => manageParticipants?.(camp)}>Участники</button>
@@ -380,7 +381,7 @@ function CampParticipants({ campId, campName, back }: { campId: number; campName
             <Card key={participant.participantId}>
               <div className="row">
                 <h3><ContactLink url={participant.contactUrl}>{participant.displayName}</ContactLink></h3>
-                <Badge tone={participant.needsAccommodation ? "warning" : "neutral"}>
+                <Badge tone={participant.needsAccommodation ? "attention" : "neutral"}>
                   {participant.needsAccommodation ? "Нужно жильё" : "Жильё не нужно"}
                 </Badge>
               </div>
@@ -1215,7 +1216,7 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
             <button disabled={!bggAvailable || busy || !bggInput.trim() || Boolean(clubImport && ["Queued", "Running"].includes(clubImport.status))} onClick={importBgg}>
               {busy ? "Запускаем импорт…" : "Добавить из BGG"}
             </button>
-            {clubImport && <Notice kind={clubImport.status === "Failed" ? "danger" : clubImport.status === "Completed" ? "success" : "info"}>{clubImport.status === "Completed" ? clubImportResultText(clubImport) : clubImport.status === "Failed" ? (clubImport.error ?? "Не удалось импортировать коллекцию BGG.") : bggImportProgressText(clubImport)}</Notice>}
+            {clubImport && <Notice kind={clubImport.status === "Failed" ? "danger" : clubImport.status === "Completed" ? "success" : "info"}><Badge tone={importStatusTone(clubImport.status, clubImport.stage)}>{clubImport.status === "Queued" ? "В очереди" : clubImport.status === "Running" ? "Выполняется" : clubImport.status === "Completed" ? "Завершён" : "Ошибка"}</Badge><p>{clubImport.status === "Completed" ? clubImportResultText(clubImport) : clubImport.status === "Failed" ? (clubImport.error ?? "Не удалось импортировать коллекцию BGG.") : bggImportProgressText(clubImport)}</p></Notice>}
           </Card>
           <Card className="form-grid">
             <h2>Данные игр из BGG</h2>

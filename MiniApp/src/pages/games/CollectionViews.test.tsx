@@ -20,7 +20,9 @@ describe("catalog collection grouping", () => {
     expect(markup).toContain('<button class="catalog-expansion-option"');
     expect(markup).toContain('Открыть');
     expect(markup).toContain('Отдельное дополнение');
-    expect(markup).not.toContain('availability success');
+    expect(markup).toContain('availability success');
+    expect(markup).not.toContain('Подтверждено партий');
+    expect(markup).not.toContain('class="tag-list"');
   });
   it("opens nested stored expansions during search even without an independent detail row", () => {
     const markup = renderToStaticMarkup(<CatalogGameList club searching open={() => {}}

@@ -24,7 +24,8 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     int? MinPlayTimeMinutes, int? MaxPlayTimeMinutes, int? MinAge,
     IReadOnlyList<LocalizedTaxonomyItem> Categories, IReadOnlyList<LocalizedTaxonomyItem> Mechanics,
-    IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true);
+    IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true,
+    int ScheduledGatherings = 0, int RecordedPlays = 0);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
     IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
@@ -116,6 +117,14 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             .SingleOrDefault(x => x.Game.BggId == bggId) ?? throw new GameNotInCollectionException(bggId);
         var game = value.Game;
         var presentation = BggTaxonomyCatalog.Present(game);
+        var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var plannedSnapshots = await dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == communityKey
+            && x.StartsAtUtc > now && Features.Gatherings.GatheringLifecycle.ScheduledStatuses.Contains(x.Status))
+            .Select(x => x.GameSnapshotJson).ToArrayAsync(cancellationToken);
+        var playedSnapshots = await dbContext.GatheringPlayRecords.AsNoTracking().Where(x => x.WasPlayed && x.Gathering.CommunityKey == communityKey)
+            .Select(x => x.GameSnapshotJson).ToArrayAsync(cancellationToken);
+        var scheduledGatherings = plannedSnapshots.Count(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId == bggId);
+        var recordedPlays = playedSnapshots.Count(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId == bggId);
         return new GameDetailsResponse(game.BggId, game.Name, game.OriginalName,
             game.ImageUrl ?? game.ThumbnailImageUrl,
             game.Description, game.YearPublished, game.Type, presentation.TypeName, presentation.TypeNames,
@@ -125,7 +134,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             (game.Mechanics ?? []).Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeMechanic(x))).ToArray(),
             game.Expansions, BggGameUrl.FromId(game.BggId)!,
             new GameAvailabilityResponse(value.IsInBaseCollection, value.Providers,
-                GameProviderService.Describe(false, value.Providers).IsConfirmed, value.IsOwned), value.IsWished, value.IsBaseGame);
+                GameProviderService.Describe(false, value.Providers).IsConfirmed, value.IsOwned), value.IsWished, value.IsBaseGame,
+            scheduledGatherings, recordedPlays);
     }
 
     public async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
@@ -185,7 +195,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
     {
         var provider = GameProviderService.Describe(value.IsInBaseCollection, value.Providers);
         var committed = provider.IsConfirmed;
-        var coordination = !provider.IsConfirmed;
+        var coordination = !provider.IsConfirmed && value.Providers.Count > 1;
         var summary = value.IsOwned ? (value.IsInBaseCollection ? "Есть в клубе · Есть у вас" : "Есть у вас")
             : value.IsInBaseCollection ? "Есть в клубе" : committed ? "Точно будет"
             : provider.Summary;

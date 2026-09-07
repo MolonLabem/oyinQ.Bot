@@ -4,7 +4,7 @@ import { NotificationSettings } from "./NotificationSettings";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
-import { Card, Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
+import { Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { BotStartNotice } from "../../components/BotStartNotice";
@@ -44,20 +44,20 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
     {tab === "settings" && <>
     {!profile.data.botStartRequired && <Notice kind="success">Уведомления Telegram: доступны</Notice>}
     <NotificationSettings />
-    <Card className="form-grid">
+    <section className="content-section form-grid">
       <Field label="Имя" hint="Так вас будут видеть в сборах, уведомлениях и других сообществах. Если оставить поле пустым, возьмём имя из Telegram.">
         <input maxLength={128} value={name} onChange={event => setName(event.target.value)} placeholder={profile.data.telegramDisplayName} />
       </Field>
       <div><span className="muted">В Telegram</span><p>{profile.data.telegramDisplayName}{profile.data.telegramUsername ? ` · @${profile.data.telegramUsername}` : ""}</p></div>
       {error && <Notice kind="danger">{error}</Notice>}
       <SaveButton busy={busy} label="Сохранить профиль" onClick={save} />
-    </Card>
+    </section>
     {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}</>}
     {tab === "calendar" && <section className="profile-schedule"><h2>Моё расписание</h2>
       {schedule.loading ? <Loading /> : schedule.error ? <ErrorState message={schedule.error} retry={schedule.reload} /> : !schedule.data?.length ? <Empty>{profileScheduleEmptyText}</Empty> : <ProfileScheduleList items={schedule.data} communities={communities} open={openGathering} />}
       <PlayedHistory key={community?.key} communityKey={community?.key} open={openGathering} />
     </section>}
-    <button onClick={() => setShowChangelog(true)}>Что нового?</button>
+    <button className="ghost" onClick={() => setShowChangelog(true)}>Что нового?</button>
     <ProductFooter />
   </Page>;
 }

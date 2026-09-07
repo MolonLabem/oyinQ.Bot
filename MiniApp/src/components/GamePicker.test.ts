@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BggDetails, ClubGame } from "../api/types";
+import { localGameSourceLabel } from "./GamePicker";
 import { dismissGamePickerSearch, mergeGameSearchCandidates, resolveGameSelection } from "./gamePickerModel";
 import { searchGames } from "./gameSearch";
 
@@ -86,5 +87,11 @@ describe("searchGames", () => {
     let blurred = false;
     dismissGamePickerSearch({ blur: () => { blurred = true; } });
     expect(blurred).toBe(true);
+  });
+
+  it("labels local results by their actual collection source", () => {
+    expect(localGameSourceLabel({ isInBaseCollection: true, isOwned: true })).toBe("В коллекции клуба");
+    expect(localGameSourceLabel({ isOwned: true })).toBe("В вашей коллекции");
+    expect(localGameSourceLabel({})).toBe("В доступной коллекции");
   });
 });

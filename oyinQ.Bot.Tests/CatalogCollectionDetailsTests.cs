@@ -25,6 +25,8 @@ public sealed class CatalogCollectionDetailsTests
         Assert.Equal(167791, details.BggId);
         Assert.Equal("Покорение Марса", details.Name);
         Assert.Equal("Prelude", Assert.Single(details.Expansions).Name);
+        Assert.Equal(0, details.ScheduledGatherings);
+        Assert.Equal(0, details.RecordedPlays);
         var absent = await Assert.ThrowsAsync<GameNotInCollectionException>(() =>
             fixture.Service.DetailsAsync("club-b", BotMode.Club, 100, 167791, default));
         Assert.Equal(167791, absent.BggId);

@@ -230,7 +230,13 @@ function SearchResultMeta({ candidate }: { candidate: GameSearchCandidate }) {
   const differs = originalName && normalizeGameSearch(originalName) !== normalizeGameSearch(candidate.name);
   const details = [differs ? originalName : undefined, candidate.yearPublished ? String(candidate.yearPublished) : undefined]
     .filter((value): value is string => Boolean(value));
-  return <small>{details.length ? details.join(" · ") : "Настольная игра"}{candidate.localGame && <span className="local-result-note"> · В вашей коллекции</span>}</small>;
+  return <small>{details.length ? details.join(" · ") : "Настольная игра"}{candidate.localGame && <span className="local-result-note"> · {localGameSourceLabel(candidate.localGame)}</span>}</small>;
+}
+
+export function localGameSourceLabel(game: Pick<ClubGame, "isInBaseCollection" | "isOwned">): string {
+  if (game.isInBaseCollection) return "В коллекции клуба";
+  if (game.isOwned) return "В вашей коллекции";
+  return "В доступной коллекции";
 }
 
 export function GameMeta({ game, compact = false }: { game: ClubGame; compact?: boolean }) {

@@ -53,8 +53,15 @@ public sealed class ProviderAndDiscoveryTests
             Status = GatheringStatus.Recruiting, MinimumPlayers = 1, DesiredPlayers = 2, MaximumPlayers = 3,
             GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(new(GatheringGameSnapshot.CurrentVersion, 42, "Игра", null, null, 1, 8, null, [], "catalog", [])) };
         f.Db.GameGatherings.Add(g); f.Db.NotificationPreferences.Add(new() { Participant = f.Me, OrganizerMissingProvider = true }); await f.Db.SaveChangesAsync();
-        var (_, providers, contributions) = Services(f);
+        var (catalog, providers, contributions) = Services(f);
         await contributions.SetCommitmentAsync(camp.Id, f.Me.Id, 42, CollectionItemType.BaseGame, CampBringCommitment.Available, default);
+        var onePossibleProvider = Assert.Single((await catalog.ListAsync("camp", BotMode.Camp,
+            f.Other.TelegramUserId, new(null, null, [], [], null), default)).Items);
+        Assert.False(onePossibleProvider.IsDefinitelyAvailable);
+        Assert.False(onePossibleProvider.NeedsProviderCoordination);
+        var ownedButNotBringing = Assert.Single((await catalog.ListAsync("camp", BotMode.Camp,
+            f.Me.TelegramUserId, new(null, null, [], [], null), default)).Items);
+        Assert.False(ownedButNotBringing.IsDefinitelyAvailable);
         var state = await providers.ForGatheringAsync(g, f.Me.Id, default);
         Assert.Equal(GameProviderState.AvailableParticipantProviders, state.State); Assert.False(state.IsConfirmed);
         var attention = new ProviderAttentionService(f.Db, providers, new NotificationService(f.Db, f.Clock), f.Clock);

@@ -25,9 +25,9 @@ export function GatheringDashboard({ communityKey, open }: { communityKey: strin
       <button className="ghost" onClick={() => open(item.communityKey, item.publicId)}><strong>{item.gameName}</strong><br />{item.localDateTime} · {item.community}</button>
       <p>{item.isToday ? "Сегодня · " : ""}{item.isOrganizer ? "Вы организатор" : item.waitlistPosition ? `Лист ожидания: ${item.waitlistPosition}` : ""}{item.startingSoon ? " · В ближайшие два часа" : ""}</p>
       {item.needsPlayConfirmation && <Notice kind="warning">Подтвердите, состоялась ли игра, и укажите фактический состав.</Notice>}
-      {item.recentlyCancelled ? <Notice>Недавно отменён</Notice> : !item.needsPlayConfirmation && <>
+      {item.recentlyCancelled ? <Notice kind="danger">Недавно отменён</Notice> : !item.needsPlayConfirmation && <>
         {item.recruitment && <Notice kind={item.belowMinimum ? "warning" : "info"}>{item.recruitment.text}</Notice>}
-        {item.fullWithWaitlist && <Notice>Места заняты, есть лист ожидания</Notice>}
+        {item.fullWithWaitlist && <Notice kind="warning">Места заняты, есть лист ожидания</Notice>}
         {!item.provider.isConfirmed && <Notice kind="warning">{item.provider.summary}</Notice>}
         {item.provider.canBring && <button disabled={Boolean(busyId)} onClick={() => bring(item)}>{busyId === item.publicId ? "Сохраняем…" : "Я привезу"}</button>}
       </>}
