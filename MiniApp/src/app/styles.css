@@ -315,11 +315,12 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .admin-community-trigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; text-align: left; padding-inline: var(--space-2); border-color: transparent; background: transparent; color: var(--text); }
 .admin-community-trigger .context-name { flex: 1; }
 .admin-community-kind { flex: none; color: var(--muted); font-size: var(--font-xs); }
+.admin-community-trigger .community-avatar, .admin-community-trigger .mode-icon { width: 32px; height: 32px; flex-basis: 32px; }
 .admin-community-menu { position: absolute; inset: calc(100% + var(--space-1)) 0 auto; z-index: 1; display: grid; gap: var(--space-1); max-height: min(360px, 60dvh); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-2); border: var(--surface-border); border-radius: var(--radius-control); background: var(--surface); color: var(--text); box-shadow: var(--elevation-floating); }
-.admin-community-menu [role="option"] { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; padding: var(--space-2); border-color: transparent; border-radius: var(--radius-small); background: var(--surface); color: var(--text); }
-.admin-community-menu [role="option"]:hover, .admin-community-menu [role="option"]:focus-visible, .admin-community-menu [aria-selected="true"] { background: var(--tone-accent-bg); }
-.admin-community-option-label { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-.admin-community-check { flex: 0 0 1em; color: var(--link); }
+.community-picker .community-option { color: var(--text); background: var(--surface); }
+.community-picker .community-option:hover, .community-picker .community-option:focus-visible, .community-picker [aria-selected="true"] { background: var(--tone-accent-bg); }
+.community-option-label { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.community-option-check { flex: 0 0 1em; color: var(--link); }
 .admin-community-current { min-width: 0; padding-block: 10px; overflow-wrap: anywhere; }
 .admin-discovery { margin-bottom: var(--space-4); }
 .admin-discovery > summary { cursor: pointer; padding-block: var(--space-3); color: var(--muted); }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Community } from "../api/types";
 import { shouldShowCommunityPhoto } from "../app/communityAvatarState";
 
-export function CommunityAvatar({ community }: { community: Community }) {
+export function CommunityAvatar({ community }: { community: Pick<Community, "mode" | "avatarUrl"> }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [community.avatarUrl]);
   return shouldShowCommunityPhoto(community.avatarUrl, failed)

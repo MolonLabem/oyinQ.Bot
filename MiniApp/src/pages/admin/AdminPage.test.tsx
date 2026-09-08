@@ -93,6 +93,26 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("persistent admin community context", () => {
+  it("uses the shared photo cards and updates the selected chat photo", async () => {
+    data.clubs[0].avatarUrl = "data:image/jpeg;base64,AQ==";
+    data.camps[0].avatarUrl = "data:image/jpeg;base64,Ag==";
+    await mount();
+    expect(host.querySelector<HTMLImageElement>('.admin-community-trigger .community-avatar')?.src).toBe(data.clubs[0].avatarUrl);
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+    await act(async () => trigger.click());
+    const cards = host.querySelectorAll('.community-picker .card.community-option');
+    expect(cards).toHaveLength(4);
+    expect(cards[0].querySelector<HTMLImageElement>('.community-avatar')?.src).toBe(data.clubs[0].avatarUrl);
+    expect(cards[1].querySelector('.mode-icon.club')).not.toBeNull();
+    expect(cards[2].querySelector('small')?.textContent).toBe("Кэмп");
+    await act(async () => (cards[2] as HTMLButtonElement).click());
+    expect(host.querySelector<HTMLImageElement>('.admin-community-trigger .community-avatar')?.src).toBe(data.camps[0].avatarUrl);
+    const photo = host.querySelector<HTMLImageElement>('.admin-community-trigger .community-avatar')!;
+    await act(async () => photo.dispatchEvent(new Event("error")));
+    expect(host.querySelector('.admin-community-trigger .mode-icon.camp')).not.toBeNull();
+    expect(title()).toBe("Кэмп 3");
+  });
+
   it("supports keyboard navigation and dismissing the themed menu without changing context", async () => {
     await mount();
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;

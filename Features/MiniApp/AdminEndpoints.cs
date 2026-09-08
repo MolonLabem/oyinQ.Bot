@@ -146,9 +146,9 @@ internal static class AdminEndpoints
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
-    private static async Task<IResult> OverviewAsync(HttpRequest request, AppDbContext dbContext,
+    internal static async Task<IResult> OverviewAsync(HttpRequest request, AppDbContext dbContext,
         TelegramMiniAppAuthenticator authenticator, IAdminAuthorizationService authorization,
-        CancellationToken cancellationToken)
+        TelegramCommunityPhotoService photos, CancellationToken cancellationToken)
     {
         var identity = await AdminIdentityAsync(request, authenticator, authorization, cancellationToken);
         if (identity is null)
@@ -162,10 +162,13 @@ internal static class AdminEndpoints
                 x.BotChat.TelegramChatId, x.BotChat.IsActive, GameCount = x.CollectionJson, x.CollectionRevision, x.UpdatedAt,
                 Gatherings = x.BotChat.Gatherings.Count })
             .ToArrayAsync(cancellationToken);
-        var clubViews = clubs.Select(x => new { x.Id, CommunityKey = access.Single(a => a.CommunityKey == x.BotChatKey).CommunityKey,
-            x.Name, x.TelegramTitle, x.TelegramChatId, x.TimeZoneId, x.IsActive, IsApproved = true,
-            GameCount = ClubCollectionSerializer.Deserialize(x.GameCount).Games.Count,
-            x.CollectionRevision, x.UpdatedAt, x.Gatherings });
+        var clubViews = new List<object>();
+        foreach (var club in clubs)
+            clubViews.Add(new { club.Id, CommunityKey = club.BotChatKey,
+                club.Name, club.TelegramTitle, club.TelegramChatId, club.TimeZoneId, club.IsActive, IsApproved = true,
+                GameCount = ClubCollectionSerializer.Deserialize(club.GameCount).Games.Count,
+                club.CollectionRevision, club.UpdatedAt, club.Gatherings,
+                AvatarUrl = await photos.GetDataUrlAsync(club.TelegramChatId, cancellationToken) });
         var camps = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).Include(x => x.SourceClub)
             .Where(x => approvedKeys.Contains(x.BotChatKey))
             .OrderByDescending(x => x.StartsAtUtc).Select(x => new
@@ -180,11 +183,17 @@ internal static class AdminEndpoints
                 Registrations = x.Registrations.Count, Contributions = x.Contributions.Count,
                 Gatherings = x.BotChat.Gatherings.Count
             }).ToArrayAsync(cancellationToken);
+        var campViews = new List<object>();
+        foreach (var camp in camps)
+            campViews.Add(new { camp.Id, camp.CommunityKey, camp.Name, camp.TelegramTitle, camp.TelegramChatId,
+                camp.TimeZoneId, camp.IsApproved, camp.Status, camp.StartsAtUtc, camp.EndsAtUtc,
+                camp.SourceClubId, camp.SourceClubName, camp.Registrations, camp.Contributions, camp.Gatherings,
+                AvatarUrl = await photos.GetDataUrlAsync(camp.TelegramChatId, cancellationToken) });
         var locked = access.Where(x => !x.IsApproved).Select(x => new
         {
             x.CommunityKey, x.TelegramChatId, x.Name, x.Mode, x.IsActive, IsApproved = false
         });
-        return Results.Ok(new { Clubs = clubViews, Camps = camps, LockedCommunities = locked,
+        return Results.Ok(new { Clubs = clubViews, Camps = campViews, LockedCommunities = locked,
             IsSuperAdmin = authorization.IsSuperAdmin(identity.TelegramUserId) });
     }
 

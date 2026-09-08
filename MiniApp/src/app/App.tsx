@@ -11,7 +11,7 @@ import { ProfilePage } from "../pages/profile/ProfilePage";
 import { telegram } from "../telegram/webApp";
 import { fullscreenLabel } from "../pages/camp/registrationLogic";
 import { collectionVisitFromGathering, positiveGameId } from "./collectionNavigation";
-import { CommunityAvatar } from "../components/CommunityAvatar";
+import { CommunityPicker } from "../components/CommunityPicker";
 import { mainTab, miniAppLaunchContext } from "./launchContext";
 
 export function App() {
@@ -33,7 +33,7 @@ export function App() {
   if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
   if (adminMode) return bootstrap.canOpenAdminPanel ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} isSuperAdmin={bootstrap.isSuperAdmin} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна администраторам зарегистрированных чатов OyinQ.</Notice></Page>;
   if (!community) return <GlobalProfileShell profile={mainTab(tab) === "profile"}
-    select={setTab} communities={<CommunityPicker communities={bootstrap.communities} choose={key => { setCommunityKey(key); setTab("gatherings"); }} admin={bootstrap.canOpenAdminPanel} />}>
+    select={setTab} communities={<CommunityPickerPage communities={bootstrap.communities} choose={key => { setCommunityKey(key); setTab("gatherings"); }} admin={bootstrap.canOpenAdminPanel} />}>
     <ProfilePage communities={bootstrap.communities} bggAvailable={capabilities.boardGameGeekAvailable}
       openGathering={(key, id) => { setProfileReturnCommunityKey(""); setCommunityKey(key); setInitialGatheringId(id); setTab("gatherings"); }} />
   </GlobalProfileShell>;
@@ -66,6 +66,6 @@ function FullscreenIcon({ fullscreen }: { fullscreen: boolean }) {
   </svg>;
 }
 
-function CommunityPicker({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {
-  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <div className="stack">{communities.map(c => <button className="card community-option" key={c.key} onClick={() => choose(c.key)}><CommunityAvatar community={c} /><span><strong>{c.name}</strong><small>{c.mode === "Club" ? "Клуб" : "Кэмп"}</small></span></button>)}</div>}</Page>;
+function CommunityPickerPage({ communities, choose, admin }: { communities: Community[]; choose: (key: string) => void; admin: boolean }) {
+  return <Page title="Выберите сообщество" subtitle="Переключиться можно в любой момент">{communities.length === 0 ? <Notice kind="warning">У вас пока нет доступа ни к одному активному сообществу.{admin && <> Откройте <a href="?admin=1">раздел управления</a>.</>}</Notice> : <CommunityPicker communities={communities} choose={choose} />}</Page>;
 }

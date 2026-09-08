@@ -1,15 +1,18 @@
 import type { AdminCamp, AdminClub, AdminOverview, Community, CommunityMode } from "../../api/types";
 import { campStatusLabel } from "../../app/format";
+import type { CommunityPickerItem } from "../../components/CommunityPicker";
 
 export const adminCommunityStorageKey = "oyinq-admin-community";
 export type AdminSection = "community" | "settings" | "release" | "gatherings" | "administrators" | "export" | "collection" | "participants";
-export type AdminCommunityOption = { id: string; communityKey: string; name: string; mode: CommunityMode; label: string; club?: AdminClub; camp?: AdminCamp };
+export type AdminCommunityOption = CommunityPickerItem & { id: string; communityKey: string; mode: CommunityMode; label: string; club?: AdminClub; camp?: AdminCamp };
 
 export function adminCommunityOptions(overview: AdminOverview): AdminCommunityOption[] {
   return [
-    ...overview.clubs.map(club => ({ id: club.communityKey, communityKey: club.communityKey, name: club.name, mode: "Club" as const, club,
+    ...overview.clubs.map(club => ({ key: club.communityKey, id: club.communityKey, communityKey: club.communityKey, name: club.name, mode: "Club" as const, club,
+      avatarUrl: club.avatarUrl, statusLabel: club.isActive ? undefined : "Архив",
       label: `${club.name} · Клуб${club.isActive ? "" : " · Архив"}` })),
-    ...overview.camps.map(camp => ({ id: camp.communityKey, communityKey: camp.communityKey, name: camp.name, mode: "Camp" as const, camp,
+    ...overview.camps.map(camp => ({ key: camp.communityKey, id: camp.communityKey, communityKey: camp.communityKey, name: camp.name, mode: "Camp" as const, camp,
+      avatarUrl: camp.avatarUrl, statusLabel: camp.status === "Active" ? undefined : campStatusLabel(camp.status),
       label: `${camp.name} · Кэмп${camp.status === "Active" ? "" : ` · ${campStatusLabel(camp.status)}`}` })),
   ];
 }
