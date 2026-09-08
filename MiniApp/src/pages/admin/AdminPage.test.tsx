@@ -50,9 +50,12 @@ async function click(text: string) {
   await act(async () => button!.click());
 }
 async function switchTo(key: string) {
-  const select = host.querySelector<HTMLSelectElement>('select[aria-label="Сообщество для администрирования"]')!;
-  expect(select).not.toBeNull();
-  await act(async () => { select.value = key; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  const trigger = host.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+  expect(trigger).not.toBeNull();
+  await act(async () => trigger.click());
+  const option = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(item => item.value === key)!;
+  expect(option).toBeDefined();
+  await act(async () => option.click());
 }
 function title() { return host.querySelector("h1")?.textContent; }
 
@@ -90,12 +93,33 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("persistent admin community context", () => {
+  it("supports keyboard navigation and dismissing the themed menu without changing context", async () => {
+    await mount();
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+    await act(async () => { trigger.focus(); trigger.click(); });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect((document.activeElement as HTMLButtonElement).value).toBe("club-2");
+    expect(title()).toBe("Клуб 1");
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    await act(async () => trigger.click());
+    await act(async () => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(title()).toBe("Клуб 1");
+  });
+
   it("keeps admin selection separate, excludes locked chats, and restores the selected context", async () => {
     localStorage.setItem("oyinq-community", "camp-4");
     await mount();
     expect(title()).toBe("Клуб 1");
-    expect(host.querySelectorAll(".admin-community-select option")).toHaveLength(4);
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-haspopup="listbox"]')!;
+    await act(async () => trigger.click());
+    expect(host.querySelectorAll('[role="option"]')).toHaveLength(4);
     expect(host.querySelector(".admin-community-select")?.textContent).not.toContain("Закрытый клуб");
+    await act(async () => trigger.click());
     expect(host.querySelector(".admin-discovery")?.textContent).toContain("Новая группа");
     await switchTo("camp-3");
     await click("Экспорт");
@@ -111,7 +135,7 @@ describe("persistent admin community context", () => {
     data.clubs = []; data.camps = [data.camps[1]]; data.isSuperAdmin = false;
     localStorage.setItem("oyinq-admin-community", "locked");
     await mount();
-    expect(host.querySelector(".admin-community-select select")).toBeNull();
+    expect(host.querySelector('button[aria-haspopup="listbox"]')).toBeNull();
     expect(host.querySelector(".admin-community-current")?.textContent).toContain("Кэмп 4 · Кэмп");
     expect(localStorage.getItem("oyinq-admin-community")).toBe("camp-4");
   });
