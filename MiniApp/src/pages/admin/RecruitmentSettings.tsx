@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { api, json } from "../../api/client";
+import { json } from "../../api/client";
+import { useScreenRequest } from "../../hooks/useScreenRequest";
 import { Card, ErrorState, Field, Loading, Notice } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 
 export function RecruitmentSettings({ communityKey }: { communityKey: string }) {
+  const api = useScreenRequest();
   const url = `/admin/communities/${encodeURIComponent(communityKey)}/recruitment`;
   const state = useAsync(() => api<{ hours: number }>(url), [url]);
   const [hours, setHours] = useState(4); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>();

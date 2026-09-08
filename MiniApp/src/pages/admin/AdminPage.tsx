@@ -2,7 +2,9 @@ import { AnnouncementsPage } from "./AnnouncementsPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
 import { Navigation, type Tab } from "../../components/Navigation";
-import { adminCommunityOptions, adminGatheringCommunity, type AdminCommunityOption } from "./adminNavigation";
+import { adminCommunityOptions, adminCommunityStorageKey, adminGatheringCommunity, adminSectionForCommunity, resolveAdminCommunity, type AdminCommunityOption, type AdminSection as Section } from "./adminNavigation";
+import { AdminCommunitySwitcher } from "./AdminCommunitySwitcher";
+import { useScreenRequest } from "../../hooks/useScreenRequest";
 import { RecruitmentSettings } from "./RecruitmentSettings";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { GatheringDetails } from "../gatherings/GatheringsPage";
@@ -19,7 +21,6 @@ import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } fr
 import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
 import { campStatusTone, importStatusTone } from "../../app/semanticTones";
 
-type Section = "community" | "release" | "gatherings" | "administrators" | "export" | "collection" | "participants";
 type CommunityCreated = {
   id: number;
   telegramOnboardingSent: boolean;
@@ -29,16 +30,34 @@ type CommunityCreated = {
 export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolean; isSuperAdmin: boolean }) {
   const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
   const [section, setSection] = useState<Section>("community");
-  const [selection, setSelection] = useState(() => localStorage.getItem("oyinq-admin-community") ?? localStorage.getItem("oyinq-community") ?? "");
+  const [selection, setSelection] = useState(() => localStorage.getItem(adminCommunityStorageKey) ?? "");
   const options = useMemo(() => state.data ? adminCommunityOptions(state.data) : [], [state.data]);
-  const selected = options.find(item => item.id === selection) ?? options[0];
-  useEffect(() => { if (selected) localStorage.setItem("oyinq-admin-community", selected.id); }, [selected?.id]);
+  const selected = resolveAdminCommunity(options, selection);
+  useEffect(() => {
+    if (!state.data || state.loading || state.error) return;
+    setSelection(selected?.id ?? "");
+    if (selected) localStorage.setItem(adminCommunityStorageKey, selected.id);
+    else localStorage.removeItem(adminCommunityStorageKey);
+  }, [selected?.id, state.data, state.loading, state.error]);
+  const currentSection = adminSectionForCommunity(section, selected);
+  const switchCommunity = (key: string) => {
+    const next = options.find(item => item.id === key);
+    if (!next || next.id === selected?.id) return;
+    setSelection(next.id);
+    setSection(adminSectionForCommunity(currentSection, next));
+    state.reload();
+  };
   const back = () => setSection("community");
-  const nested = section === "collection" || section === "administrators" || section === "participants";
-  useEffect(() => telegram.back(nested, back), [nested]);
-  const club = state.data?.clubs.find(item => item.communityKey === selected?.communityKey);
-  const camp = state.data?.camps.find(item => item.communityKey === selected?.communityKey);
-  const gatheringCommunity = state.data ? adminGatheringCommunity(state.data, selected?.communityKey) : undefined;
+  const nested = ["collection", "administrators", "participants", "settings"].includes(currentSection);
+  useEffect(() => {
+    // These screens own their inner navigation (including global announcement
+    // drafts, which stay mounted when only the admin context changes).
+    if (["community", "gatherings", "release"].includes(currentSection)) return;
+    return telegram.back(nested, back);
+  }, [nested, selected?.id, currentSection, state.loading]);
+  const club = selected?.club;
+  const camp = selected?.camp;
+  const gatheringCommunity = adminGatheringCommunity(selected);
   const tabs: Tab[] = [
     { id: "community", label: "Сообщество", icon: "communities" },
     { id: "gatherings", label: "Сборы", icon: "gatherings" },
@@ -48,32 +67,27 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
   return <div className="app-shell admin-app">
     <header className="context-bar admin-context">
       <span className="admin-context-label">Администрирование</span>
-      {section === "release" ? <strong>Оповещения для сообществ</strong> : <div className="admin-community-select">
-        <span aria-hidden className={`mode-dot ${selected?.mode.toLowerCase() ?? ""}`} />
-        <select aria-label="Сообщество для администрирования" value={selected?.id ?? ""} disabled={!options.length || state.loading}
-          onChange={event => { setSelection(event.target.value); if (nested) back(); }}>
-          {!options.length && <option value="">{state.loading ? "Загрузка…" : "Нет сообществ"}</option>}
-          {options.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-        </select>
-      </div>}
+      <AdminCommunitySwitcher options={options} selected={selected} loading={state.loading} select={switchCommunity} />
     </header>
     <div className="admin-shell">
-      <div className="admin-main" key={section === "release" ? "announcements" : `${selected?.id ?? "none"}:${section}`}>
-        {section === "release" && isSuperAdmin ? <AnnouncementsPage /> : state.loading ? <Loading />
+      <div className="admin-main" key={currentSection === "release" ? "announcements" : `${selected?.id ?? "none"}:${currentSection}`}>
+        {currentSection === "release" && isSuperAdmin ? <AnnouncementsPage /> : state.loading ? <Loading />
           : state.error ? <ErrorState message={state.error} retry={state.reload} />
-          : section === "collection" && club ? <ClubCollection clubId={club.id} bggAvailable={bggAvailable} back={back} />
-          : section === "participants" && camp ? <CampParticipants campId={camp.id} campName={camp.name} back={back} />
-          : section === "administrators" && (club || camp) && selected?.communityKey
+          : currentSection === "settings" && club ? <EditClub club={club} overview={state.data} done={() => { back(); state.reload(); }} />
+          : currentSection === "settings" && camp ? <EditCamp camp={camp} overview={state.data} done={() => { back(); state.reload(); }} />
+          : currentSection === "collection" && club ? <ClubCollection clubId={club.id} bggAvailable={bggAvailable} back={back} />
+          : currentSection === "participants" && camp ? <CampParticipants campId={camp.id} campName={camp.name} back={back} />
+          : currentSection === "administrators" && selected
             ? <Administrators communityKey={selected.communityKey} communityName={selected.name} back={back} />
-          : section === "gatherings" ? <GatheringOperationsPage community={gatheringCommunity} />
-          : section === "export" ? <Export isSuperAdmin={isSuperAdmin} community={club || camp ? selected : undefined} />
+          : currentSection === "gatherings" ? <GatheringOperationsPage community={gatheringCommunity} />
+          : currentSection === "export" ? <Export isSuperAdmin={isSuperAdmin} community={selected} />
           : <Communities state={state} selected={selected} isSuperAdmin={isSuperAdmin}
-              manage={() => setSection("collection")} manageAdmins={() => setSection("administrators")}
+              settings={() => setSection("settings")} manage={() => setSection("collection")} manageAdmins={() => setSection("administrators")}
               manageParticipants={() => setSection("participants")} />}
         <BggAttribution />
       </div>
     </div>
-    <Navigation tabs={tabs} active={nested ? "community" : section} onChange={id => setSection(id as Section)} />
+    <Navigation tabs={tabs} active={nested ? "community" : currentSection} onChange={id => setSection(id as Section)} />
   </div>;
 }
 
@@ -88,34 +102,31 @@ function GatheringOperationsPage({ community }: { community?: Community }) {
   </Page>;
 }
 
-function Communities({ manage, manageAdmins, manageParticipants, state, selected, isSuperAdmin }: {
-  manage: (id: number) => void; manageAdmins: (key: string, name: string) => void;
-  manageParticipants: (camp: AdminCamp) => void; state: ReturnType<typeof useAsync<AdminOverview>>;
+function Communities({ manage, manageAdmins, manageParticipants, settings, state, selected, isSuperAdmin }: {
+  manage: () => void; manageAdmins: () => void; settings: () => void;
+  manageParticipants: () => void; state: ReturnType<typeof useAsync<AdminOverview>>;
   selected?: AdminCommunityOption; isSuperAdmin: boolean;
 }) {
   const view = selected?.mode === "Camp" ? "camps" : "clubs";
   const [create, setCreate] = useState<"club" | "camp">();
   const [createChat, setCreateChat] = useState<LockedAdminCommunity>();
-  const [editing, setEditing] = useState<AdminClub>();
-  const [editingCamp, setEditingCamp] = useState<AdminCamp>();
+  const api = useScreenRequest();
   const [mutationError, setMutationError] = useState<string>();
   const [mutationKey, setMutationKey] = useState<string>();
   useEffect(
     () =>
-      telegram.back(Boolean(create || editing || editingCamp), () => {
+      telegram.back(Boolean(create), () => {
         setCreate(undefined);
         setCreateChat(undefined);
-        setEditing(undefined);
-        setEditingCamp(undefined);
       }),
-    [create, createChat, editing, editingCamp],
+    [create, createChat],
   );
   async function updateCamp(id: number, status: string) {
     if (mutationKey) return;
     setMutationKey(`camp-${id}`);
     setMutationError(undefined);
     try {
-      await changeCamp(id, status, state.data?.camps.find((camp) => camp.id === id)?.name ?? "кэмп", state.reload);
+      await changeCamp(api, id, status, selected?.name ?? "кэмп", state.reload);
     } catch (e) {
       setMutationError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -160,32 +171,9 @@ function Communities({ manage, manageAdmins, manageParticipants, state, selected
         }}
       />
     );
-  if (editing)
-    return (
-      <EditClub
-        club={editing}
-        overview={state.data}
-        done={() => {
-          setEditing(undefined);
-          state.reload();
-        }}
-      />
-    );
-  if (editingCamp)
-    return (
-      <EditCamp
-        camp={editingCamp}
-        overview={state.data}
-        done={() => {
-          setEditingCamp(undefined);
-          state.reload();
-        }}
-      />
-    );
-  const locked = state.data?.lockedCommunities.filter(item =>
-    (item.communityKey ?? `chat:${item.telegramChatId}`) === selected?.id) ?? [];
-  const clubs = state.data?.clubs.filter(item => item.communityKey === selected?.communityKey) ?? [];
-  const camps = state.data?.camps.filter(item => item.communityKey === selected?.communityKey) ?? [];
+  const locked = state.data?.lockedCommunities ?? [];
+  const clubs = selected?.club ? [selected.club] : [];
+  const camps = selected?.camp ? [selected.camp] : [];
   return (
     <Page
       title={selected?.name ?? "Сообщества"}
@@ -202,7 +190,7 @@ function Communities({ manage, manageAdmins, manageParticipants, state, selected
         <ErrorState message={state.error} retry={state.reload} />
       ) : (
         <>
-          {locked.map((item) => (
+          {locked.length > 0 && <details className="admin-discovery"><summary>Другие Telegram-группы ({locked.length})</summary>{locked.map((item) => (
             <Card key={`${item.telegramChatId}-${view}`}>
               <h3>{item.name}</h3>
               {item.communityKey ? (
@@ -220,7 +208,7 @@ function Communities({ manage, manageAdmins, manageParticipants, state, selected
                 </>
               )}
             </Card>
-          ))}
+          ))}</details>}
           {view === "clubs" ? (
             !clubs.length && !locked.length ? (
               <Empty>Доступных клубов пока нет.</Empty>
@@ -237,9 +225,9 @@ function Communities({ manage, manageAdmins, manageParticipants, state, selected
                       <Badge tone={club.isActive ? "success" : "neutral"}>{club.isActive ? "Активен" : "Архив"}</Badge>
                     </div>
                     <div className="admin-card-actions">
-                      <button onClick={() => manage(club.id)}>Коллекция</button>
-                      <button onClick={() => setEditing(club)}>Настройки</button>
-                      <button onClick={() => manageAdmins(club.communityKey, club.name)}>Администраторы</button>
+                      <button onClick={manage}>Коллекция</button>
+                      <button onClick={settings}>Настройки</button>
+                      <button onClick={manageAdmins}>Администраторы</button>
                       {canDeleteCommunity(isSuperAdmin) && <button disabled={Boolean(mutationKey)} className="danger ghost" onClick={() => deleteCommunity("clubs", club.id, club.name)}>{mutationKey === `clubs-${club.id}` ? "Удаляем…" : "Удалить из OyinQ"}</button>}
                     </div>
                     <details className="technical">
@@ -273,9 +261,9 @@ function Communities({ manage, manageAdmins, manageParticipants, state, selected
                     <Badge tone={campStatusTone(camp.status)}>{campStatusLabel(camp.status)}</Badge>
                   </div>
                   <div className="admin-card-actions">
-                    <button onClick={() => manageParticipants?.(camp)}>Участники</button>
-                    <button onClick={() => setEditingCamp(camp)}>Настройки</button>
-                    <button onClick={() => manageAdmins(camp.communityKey, camp.name)}>Администраторы</button>
+                    <button onClick={manageParticipants}>Участники</button>
+                    <button onClick={settings}>Настройки</button>
+                    <button onClick={manageAdmins}>Администраторы</button>
                     {camp.status === "Draft" && <button disabled={Boolean(mutationKey)} className="primary" onClick={() => updateCamp(camp.id, "Active")}>{mutationKey === `camp-${camp.id}` ? "Активируем…" : "Активировать"}</button>}
                   </div>
                   {(canCancelCamp(camp.status) || canDeleteCommunity(isSuperAdmin)) && <details className="danger-actions">
@@ -302,6 +290,7 @@ function Communities({ manage, manageAdmins, manageParticipants, state, selected
 }
 
 function CampParticipants({ campId, campName, back }: { campId: number; campName: string; back: () => void }) {
+  const api = useScreenRequest();
   const state = useAsync(() => api<CampAdminParticipants>(`/admin/camps/${campId}/participants`), [campId]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string>();
@@ -366,6 +355,7 @@ function CampParticipants({ campId, campName, back }: { campId: number; campName
 }
 
 function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminOverview; done: () => void }) {
+  const api = useScreenRequest();
   const [name, setName] = useState(club.name);
   const [zone, setZone] = useState(club.timeZoneId);
   const [active, setActive] = useState(club.isActive);
@@ -458,6 +448,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
 }
 
 function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminOverview; done: () => void }) {
+  const api = useScreenRequest();
   const [name, setName] = useState(camp.name);
   const [zone, setZone] = useState(camp.timeZoneId);
   const [start, setStart] = useState(camp.startsAtUtc ? currentLocalMinute(camp.timeZoneId, new Date(camp.startsAtUtc)) : "");
@@ -558,6 +549,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
 }
 
 function PostingTopicSetting({ communityKey }: { communityKey: string }) {
+  const api = useScreenRequest();
   const state = useAsync(() => api<PostingTopicSettings>(`/admin/communities/${communityKey}/posting-topic`), [communityKey]);
   const [selected, setSelected] = useState<number | "">("");
   const [busy, setBusy] = useState(false);
@@ -611,7 +603,7 @@ function PostingTopicSetting({ communityKey }: { communityKey: string }) {
   );
 }
 
-async function changeCamp(id: number, status: string, name: string, reload: () => void) {
+async function changeCamp(api: typeof import("../../api/client").api, id: number, status: string, name: string, reload: () => void) {
   if (status === "Cancelled" && !(await telegram.confirm(cancellationConfirmation(name)))) return;
   await api(`/admin/camps/${id}/status`, json("POST", { status }));
   telegram.success(status === "Active" ? "Кэмп активирован" : "Проведение кэмпа отменено");
@@ -619,6 +611,7 @@ async function changeCamp(id: number, status: string, name: string, reload: () =
 }
 
 function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; done: () => void }) {
+  const api = useScreenRequest();
   const [name, setName] = useState(knownChat?.name ?? "");
   const [zone, setZone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [selection, setSelection] = useState<PeerTicket>();
@@ -629,7 +622,7 @@ function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; don
     setBusy(true);
     setError(undefined);
     try {
-      const ticket = await selectPeer("CreateClubChat");
+      const ticket = await selectPeer(api, "CreateClubChat");
       setSelection(ticket);
       if (!name.trim() && ticket.result?.chat?.title) setName(ticket.result.chat.title);
     } catch (e) {
@@ -709,6 +702,7 @@ function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; don
 }
 
 function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; knownChat?: LockedAdminCommunity; done: () => void }) {
+  const api = useScreenRequest();
   const [name, setName] = useState(knownChat?.name ?? "");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -735,7 +729,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
     setBusy(true);
     setError(undefined);
     try {
-      const ticket = await selectPeer("CreateCampChat");
+      const ticket = await selectPeer(api, "CreateCampChat");
       setSelection(ticket);
       if (!name.trim() && ticket.result?.chat?.title) setName(ticket.result.chat.title);
     } catch (e) {
@@ -835,6 +829,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
 }
 
 function Administrators({ communityKey, communityName, back }: { communityKey: string; communityName: string; back: () => void }) {
+  const api = useScreenRequest();
   const state = useAsync(() => api<Administrator[]>(`/admin/communities/${communityKey}/administrators`), [communityKey]);
   const candidates = useAsync(() => api<EligibleAdministrator[]>(`/admin/communities/${communityKey}/administrator-candidates`), [communityKey]);
   const [error, setError] = useState<string>();
@@ -844,7 +839,7 @@ function Administrators({ communityKey, communityName, back }: { communityKey: s
     setBusy(true);
     setError(undefined);
     try {
-      const selection = await selectPeer("AddAdministrator", communityKey);
+      const selection = await selectPeer(api, "AddAdministrator", communityKey);
       await api("/admin/administrators/from-selection", json("POST", { selectionId: selection.publicId, communityKey }));
       telegram.success("Администратор добавлен");
       state.reload();
@@ -971,6 +966,7 @@ function Export({ isSuperAdmin, community }: { isSuperAdmin: boolean; community?
 }
 
 function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAvailable: boolean; back: () => void }) {
+  const api = useScreenRequest();
   type ClubImport = {
     publicId: string;
     bggUsername: string;
@@ -1237,7 +1233,7 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
   );
 }
 
-async function selectPeer(purpose: "AddAdministrator" | "CreateClubChat" | "CreateCampChat", communityKey?: string): Promise<PeerTicket> {
+async function selectPeer(api: typeof import("../../api/client").api, purpose: "AddAdministrator" | "CreateClubChat" | "CreateCampChat", communityKey?: string): Promise<PeerTicket> {
   const ticket = await api<PeerTicket>("/admin/peer-selections", json("POST", { purpose, communityKey }));
   const opened = ticket.preparedButtonId ? await telegram.requestPeer(ticket.preparedButtonId) : false;
   if (!opened)
