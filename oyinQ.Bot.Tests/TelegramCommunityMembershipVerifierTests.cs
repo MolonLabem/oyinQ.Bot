@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
@@ -58,6 +59,65 @@ public sealed class TelegramCommunityMembershipVerifierTests
     private const string MemberResponse =
         "{\"ok\":true,\"result\":{\"user\":{\"id\":42,\"is_bot\":false,\"first_name\":\"User\"},\"status\":\"member\"}}";
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InvalidParticipant_DoesNotMarkChatUnavailableOrBlockOtherMembers(bool knownChat)
+    {
+        await using var fixture = new Fixture(HttpStatusCode.BadRequest,
+            "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: PARTICIPANT_ID_INVALID\"}");
+        var updatedAt = DateTimeOffset.UtcNow.AddHours(-1);
+        if (knownChat) fixture.AddKnownChat(true, updatedAt);
+
+        Assert.False(await fixture.Verifier.IsMemberAsync(-1001, 42, default));
+        if (knownChat)
+        {
+            var chat = Assert.Single(fixture.Db.KnownTelegramChats);
+            Assert.True(chat.IsBotPresent);
+            Assert.Equal(updatedAt, chat.UpdatedAt);
+        }
+        else Assert.Empty(fixture.Db.KnownTelegramChats);
+
+        fixture.Handler.Status = HttpStatusCode.OK;
+        fixture.Handler.Response = MemberResponse;
+        Assert.True(await fixture.Verifier.IsMemberAsync(-1001, 99, default));
+        Assert.Equal(2, fixture.Handler.RequestCount);
+    }
+
+    [Theory]
+    [InlineData(500)]
+    [InlineData(429)]
+    [InlineData(0)]
+    public async Task TemporaryFailure_DoesNotChangeChatStateAndAllowsNextProbe(int errorCode)
+    {
+        await using var fixture = new Fixture((HttpStatusCode)errorCode,
+            $"{{\"ok\":false,\"error_code\":{errorCode},\"description\":\"Temporary failure\"}}");
+        var updatedAt = DateTimeOffset.UtcNow.AddHours(-1);
+        fixture.AddKnownChat(true, updatedAt);
+        if (errorCode == 0) fixture.Handler.Failure = new HttpRequestException("Connection reset by peer");
+
+        await Assert.ThrowsAsync<CommunityMembershipUnavailableException>(
+            () => fixture.Verifier.IsMemberAsync(-1001, 42, default));
+        var chat = Assert.Single(fixture.Db.KnownTelegramChats);
+        Assert.True(chat.IsBotPresent);
+        Assert.Equal(updatedAt, chat.UpdatedAt);
+
+        fixture.Handler.Failure = null;
+        fixture.Handler.Status = HttpStatusCode.OK;
+        fixture.Handler.Response = MemberResponse;
+        Assert.True(await fixture.Verifier.IsMemberAsync(-1001, 42, default));
+    }
+
+    [Fact]
+    public async Task RequestCancellation_IsNotReportedAsTemporaryFailure()
+    {
+        await using var fixture = new Fixture(HttpStatusCode.OK, MemberResponse);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fixture.Verifier.IsMemberAsync(-1001, 42, cancellation.Token));
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         public Fixture(HttpStatusCode status, string response)
@@ -93,14 +153,18 @@ public sealed class TelegramCommunityMembershipVerifierTests
     private sealed class ResponseHandler(HttpStatusCode status, string response) : HttpMessageHandler
     {
         public int RequestCount { get; private set; }
+        public HttpStatusCode Status { get; set; } = status;
+        public string Response { get; set; } = response;
+        public Exception? Failure { get; set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             RequestCount++;
-            return Task.FromResult(new HttpResponseMessage(status)
+            if (Failure is { } failure) throw failure;
+            return Task.FromResult(new HttpResponseMessage(Status)
             {
-                Content = new StringContent(response, Encoding.UTF8, "application/json")
+                Content = new StringContent(Response, Encoding.UTF8, "application/json")
             });
         }
     }

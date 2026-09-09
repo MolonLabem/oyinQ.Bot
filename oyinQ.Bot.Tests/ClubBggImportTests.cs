@@ -8,6 +8,34 @@ namespace oyinQ.Bot.Tests;
 public sealed class ClubBggImportTests
 {
     [Fact]
+    public async Task Draft_WithInvalidBaseAndExpansionMetadata_CanBeSavedAndMerged()
+    {
+        var service = new CampBggImportService(new ProgressBggClient(invalidMetadata: true));
+        var draft = CampBggImportDraftSerializer.Deserialize(
+            CampBggImportDraftSerializer.Serialize(await service.LoadDraftAsync("owner", default)));
+
+        Assert.Equal(3, draft.Items.Count);
+        Assert.All(draft.Items, item =>
+        {
+            Assert.True(item.SelectedByDefault);
+            Assert.Null(item.SkipReason);
+            Assert.Null(item.Snapshot.MinAge);
+            Assert.Equal(30, item.Snapshot.MinPlayTimeMinutes);
+            Assert.Equal(90, item.Snapshot.MaxPlayTimeMinutes);
+            Assert.Null(item.Snapshot.MinPlayers);
+            Assert.Null(item.Snapshot.MaxPlayers);
+            ClubCollectionSerializer.Validate(new(2, [item.Snapshot.ToCollectionGame(item.BggId)]));
+        });
+        var expansion = Assert.Single(draft.Items, item => item.ItemType == CollectionItemType.Expansion);
+        Assert.Equal(1, expansion.ParentBggId);
+        Assert.Equal([1L], expansion.Snapshot.ParentBggIds);
+        var club = ClubBggImportService.Merge(ClubCollectionDocument.Empty,
+            await service.LoadSelectionAsync("owner", default));
+        _ = ClubCollectionSerializer.Serialize(club.Document);
+        Assert.Equal(2, club.AddedGames);
+        Assert.Equal(1, club.AddedExpansions);
+    }
+    [Fact]
     public async Task Loader_ReportsMeaningfulCountsAtRealStages()
     {
         var progress = new List<BggImportProgress>();
@@ -112,12 +140,14 @@ public sealed class ClubBggImportTests
         Assert.Equal(0, result.OrphanExpansions);
     }
 
-    private sealed class ProgressBggClient : IBoardGameGeekClient
+    private sealed class ProgressBggClient(bool invalidMetadata = false) : IBoardGameGeekClient
     {
+        private ExternalGame Metadata(ExternalGame game) => invalidMetadata ? game with
+        { MinPlayers = 0, MaxPlayers = 0, MinPlayTimeMinutes = 90, MaxPlayTimeMinutes = 30, MinAge = 200 } : game;
         public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string username, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<ExternalGame>>([new(1, "Первая", 1, 4, null, null), new(2, "Вторая", 2, 5, null, null)]);
+            Task.FromResult<IReadOnlyList<ExternalGame>>([Metadata(new(1, "Первая", 1, 4, null, null)), Metadata(new(2, "Вторая", 2, 5, null, null))]);
         public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string username, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<BggOwnedExpansion>>([new(new ExternalGame(10, "Дополнение", null, null, null, null), [1])]);
+            Task.FromResult<IReadOnlyList<BggOwnedExpansion>>([new(Metadata(new ExternalGame(10, "Дополнение", null, null, null, null)), [1])]);
         public Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(string query, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<BggGameDetails?> GetGameDetailsAsync(long bggId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> bggIds, CancellationToken cancellationToken) => throw new NotSupportedException();

@@ -49,6 +49,12 @@ public sealed class TelegramCommunityMembershipVerifier(
                 or ChatMemberStatus.Member
                 or ChatMemberStatus.Restricted;
         }
+        catch (ApiRequestException exception) when (exception.ErrorCode == 400
+            && exception.Message.Contains("PARTICIPANT_ID_INVALID", StringComparison.OrdinalIgnoreCase))
+        {
+            // This rejection concerns this user only, not the bot's access to the chat.
+            return false;
+        }
         catch (ApiRequestException exception) when (IsChatUnavailable(exception))
         {
             known ??= new KnownTelegramChat
@@ -67,6 +73,15 @@ public sealed class TelegramCommunityMembershipVerifier(
                 "Telegram chat {TelegramChatId} is unavailable to the bot; excluding it from community access until the next availability probe.",
                 telegramChatId);
             return false;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested
+            && (exception is RequestException and not ApiRequestException
+                or HttpRequestException or OperationCanceledException
+                || exception is ApiRequestException { ErrorCode: 429 or >= 500 }))
+        {
+            logger.LogWarning(exception, "Telegram membership check for chat {TelegramChatId} temporarily failed.",
+                telegramChatId);
+            throw new CommunityMembershipUnavailableException(exception);
         }
     }
 

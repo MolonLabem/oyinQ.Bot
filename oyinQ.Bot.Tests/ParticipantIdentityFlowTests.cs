@@ -156,6 +156,18 @@ public sealed class ParticipantIdentityFlowTests
         return await new MiniAppIdentityFilter().InvokeAsync(EndpointFilterInvocationContext.Create(context), next);
     }
 
+    [Fact]
+    public async Task MembershipOutage_ReturnsServiceUnavailableWithoutTechnicalDetails()
+    {
+        await using var db = CreateDb();
+        var result = await ThroughFilter(db, _ => throw new CommunityMembershipUnavailableException(
+            new HttpRequestException("Technical transport details")));
+        Assert.Equal(503, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        var body = JsonSerializer.Serialize(Assert.IsAssignableFrom<IValueHttpResult>(result).Value);
+        Assert.Contains("telegram_unavailable", body);
+        Assert.DoesNotContain("Technical transport details", body);
+    }
+
     private static string SignedData()
     {
         var values = new SortedDictionary<string, string>(StringComparer.Ordinal)

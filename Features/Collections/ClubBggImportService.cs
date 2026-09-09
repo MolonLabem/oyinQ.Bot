@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Collections;
@@ -190,16 +191,11 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     private static ClubCollectionGame ToGame(CampImportSelectionItem item,
         IReadOnlyList<ClubCollectionExpansion> expansions)
     {
-        var minPlayTime = item.MinPlayTimeMinutes is >= 0 ? item.MinPlayTimeMinutes : null;
-        var maxPlayTime = item.MaxPlayTimeMinutes is >= 0 ? item.MaxPlayTimeMinutes : null;
-        if (minPlayTime.HasValue && maxPlayTime.HasValue && minPlayTime > maxPlayTime)
-            (minPlayTime, maxPlayTime) = (maxPlayTime, minPlayTime);
-        return new ClubCollectionGame(item.BggId, item.Name, item.ThumbnailImageUrl, item.ImageUrl,
-            item.MinPlayers, item.MaxPlayers, item.BestPlayers, expansions, item.Types, item.Categories,
-            item.Description is { Length: > 20_000 } ? item.Description[..20_000] : item.Description,
-            item.YearPublished is >= 1000 and <= 3000 ? item.YearPublished : null,
-            minPlayTime, maxPlayTime, item.MinAge is >= 0 and <= 100 ? item.MinAge : null,
-            item.Type, item.Subdomains, item.CategoryItems, item.Mechanics, item.OriginalName);
+        return BggGameMapper.ToCollectionGame(new ExternalGame(item.BggId, item.Name,
+            item.MinPlayers, item.MaxPlayers, item.BestPlayers, BggGameUrl.FromId(item.BggId),
+            item.ThumbnailImageUrl, item.ImageUrl, item.Types, item.Categories, item.Description,
+            item.YearPublished, item.MinPlayTimeMinutes, item.MaxPlayTimeMinutes, item.MinAge,
+            item.Subdomains, item.CategoryItems, item.Mechanics, item.Type, item.OriginalName), expansions);
     }
 
     private static ClubBggImportView ToView(ClubBggImport job) => new(job.PublicId, job.BggUsername,

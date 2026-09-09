@@ -1,4 +1,5 @@
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Collections;
@@ -75,45 +76,14 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 
         var items = new List<CampImportSelectionItem>();
         items.AddRange(baseGames.Where(value => value.BggId is > 0).Select(value =>
-            new CampImportSelectionItem(
-                value.BggId!.Value,
-                CollectionItemType.BaseGame,
-                null,
-                value.Name,
-                true,
-                value.ThumbnailImageUrl,
-                value.ImageUrl,
-                value.MinPlayers,
-                value.MaxPlayers,
-                value.BestPlayers,
-                value.Types,
-                value.Categories,
-                value.Description, value.YearPublished, value.MinPlayTimeMinutes, value.MaxPlayTimeMinutes,
-                value.MinAge, value.Type, value.Subdomains, value.CategoryItems, value.Mechanics,
-                OriginalName: value.OriginalName)));
+            ToSelection(value, CollectionItemType.BaseGame, null, null)));
         items.AddRange(expansions.Where(value => value.Expansion.BggId is > 0).Select(value =>
         {
             var parentIds = value.ParentBggIds.Where(x => x > 0).Distinct().ToArray();
             var parentId = parentIds.FirstOrDefault(ownedBaseIds.Contains);
             if (parentId <= 0) parentId = value.ParentBggIds.FirstOrDefault();
-            return new CampImportSelectionItem(
-                value.Expansion.BggId!.Value,
-                CollectionItemType.Expansion,
-                parentId > 0 ? parentId : null,
-                value.Expansion.Name,
-                true,
-                value.Expansion.ThumbnailImageUrl,
-                value.Expansion.ImageUrl,
-                value.Expansion.MinPlayers,
-                value.Expansion.MaxPlayers,
-                value.Expansion.BestPlayers,
-                value.Expansion.Types,
-                value.Expansion.Categories,
-                value.Expansion.Description, value.Expansion.YearPublished,
-                value.Expansion.MinPlayTimeMinutes, value.Expansion.MaxPlayTimeMinutes,
-                value.Expansion.MinAge, value.Expansion.Type, value.Expansion.Subdomains,
-                value.Expansion.CategoryItems, value.Expansion.Mechanics, parentIds,
-                value.Expansion.OriginalName);
+            return ToSelection(value.Expansion, CollectionItemType.Expansion,
+                parentId > 0 ? parentId : null, parentIds);
         }));
 
         return items
@@ -123,4 +93,15 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
             .ToArray();
     }
 
+    private static CampImportSelectionItem ToSelection(ExternalGame game, CollectionItemType itemType,
+        long? parentId, IReadOnlyList<long>? parentIds)
+    {
+        var snapshot = BggGameMapper.ToCollectionSnapshot(game, parentIds);
+        return new(game.BggId!.Value, itemType, parentId, snapshot.Name, true,
+            snapshot.ThumbnailImageUrl, snapshot.ImageUrl, snapshot.MinPlayers, snapshot.MaxPlayers,
+            snapshot.BestPlayers, snapshot.Types, snapshot.Categories, snapshot.Description,
+            snapshot.YearPublished, snapshot.MinPlayTimeMinutes, snapshot.MaxPlayTimeMinutes,
+            snapshot.MinAge, snapshot.Type, snapshot.Subdomains, snapshot.CategoryItems,
+            snapshot.Mechanics, snapshot.ParentBggIds, snapshot.OriginalName);
+    }
 }

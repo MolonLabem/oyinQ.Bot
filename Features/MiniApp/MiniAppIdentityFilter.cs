@@ -1,4 +1,5 @@
 using oyinQ.Bot.Integrations.Telegram;
+using oyinQ.Bot.Features.Communities;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
@@ -14,6 +15,11 @@ public sealed class MiniAppIdentityFilter : IEndpointFilter
         await services.GetRequiredService<ParticipantIdentityService>().GetOrCreateAsync(
             identity.TelegramUserId, identity.TelegramUsername, identity.DisplayName, null,
             context.HttpContext.RequestAborted);
-        return await next(context);
+        try { return await next(context); }
+        catch (CommunityMembershipUnavailableException exception)
+        {
+            return MiniAppEndpointSupport.Problem("telegram_unavailable", exception.Message,
+                StatusCodes.Status503ServiceUnavailable);
+        }
     }
 }

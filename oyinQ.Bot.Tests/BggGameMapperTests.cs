@@ -7,6 +7,34 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class BggGameMapperTests
 {
+    [Theory]
+    [InlineData(90, 30, 200, 30, 90, null)]
+    [InlineData(-1, 60, -1, null, 60, null)]
+    [InlineData(60, -1, 12, 60, null, 12)]
+    [InlineData(null, null, null, null, null, null)]
+    [InlineData(0, 0, 0, 0, 0, 0)]
+    public void InvalidOptionalMetadata_IsNormalizedForBothCollections(int? minimum, int? maximum,
+        int? age, int? expectedMinimum, int? expectedMaximum, int? expectedAge)
+    {
+        var provider = new ExternalGame(42, "Игра", 1, 4, null, null,
+            Description: new string('x', 19_999) + "🎲tail", YearPublished: 0,
+            MinPlayTimeMinutes: minimum, MaxPlayTimeMinutes: maximum, MinAge: age);
+        var snapshot = BggGameMapper.ToCollectionSnapshot(provider);
+        var game = BggGameMapper.ToCollectionGame(provider);
+        Assert.Equal(expectedMinimum, snapshot.MinPlayTimeMinutes);
+        Assert.Equal(expectedMaximum, snapshot.MaxPlayTimeMinutes);
+        Assert.Equal(expectedAge, snapshot.MinAge);
+        Assert.Equal(new string('x', 19_999), snapshot.Description);
+        Assert.Null(snapshot.YearPublished);
+        Assert.Equal(snapshot.MinPlayTimeMinutes, game.MinPlayTimeMinutes);
+        Assert.Equal(snapshot.MaxPlayTimeMinutes, game.MaxPlayTimeMinutes);
+        Assert.Equal(snapshot.MinAge, game.MinAge);
+        Assert.Equal(snapshot.Description, game.Description);
+        Assert.Equal(snapshot.YearPublished, game.YearPublished);
+        _ = CollectionItemSnapshotSerializer.Serialize(snapshot);
+        _ = ClubCollectionSerializer.Serialize(new(2, [game]));
+    }
+
     [Fact]
     public void ProviderGame_UsesOneMetadataProjectionForCollectionAndGathering()
     {
