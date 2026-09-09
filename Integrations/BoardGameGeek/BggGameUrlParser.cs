@@ -4,6 +4,9 @@ namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
 public static partial class BggGameUrlParser
 {
+    public static long? ParseInput(string? value) => Parse(value)
+        ?? (long.TryParse(value, out var id) && id > 0 ? id : null);
+
     public static long? Parse(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

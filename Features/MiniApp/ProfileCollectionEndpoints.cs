@@ -50,21 +50,12 @@ internal static class ProfileCollectionEndpoints
         ParticipantCollectionService collection, ILogger<ParticipantCollectionService> logger, CancellationToken ct)
     {
         var owner = await OwnerAsync(request, authenticator, db, ct);
-        var id = BggGameUrlParser.Parse(body.BggInput)
-            ?? (long.TryParse(body.BggInput, out var parsed) && parsed > 0 ? parsed : null);
+        var id = BggGameUrlParser.ParseInput(body.BggInput);
         if (id is null) return MiniAppEndpointSupport.Problem("validation", "Укажите BGG ID или ссылку.");
         try
         {
             var selected = (body.ExpansionBggIds ?? []).ToHashSet();
-            var items = await bgg.GetItemsByIdsAsync(selected.Append(id.Value).ToHashSet(), ct);
-            if (!items.Any(x => x.Game.BggId == id)
-                || selected.Any(expansionId => !items.Any(x => x.Game.BggId == expansionId
-                    && x.IsExpansion && x.ParentBggIds.Contains(id.Value))))
-                throw new InvalidOperationException("BGG не подтвердил игру или связь дополнения.");
-            var draft = items.Select(x => new CampBggImportDraftItem(x.Game.BggId!.Value,
-                x.IsExpansion ? CollectionItemType.Expansion : CollectionItemType.BaseGame,
-                x.ParentBggIds.Count > 0 ? x.ParentBggIds[0] : null,
-                BggGameMapper.ToCollectionSnapshot(x.Game, x.ParentBggIds), ParentBggIds: x.ParentBggIds)).ToArray();
+            var draft = await new BggSelectionService(bgg).LoadOwnershipAsync(id.Value, selected, ct);
             await collection.UpsertAsync(owner, draft, CollectionItemSource.Manual, DateTimeOffset.UtcNow, ct);
             return Results.NoContent();
         }

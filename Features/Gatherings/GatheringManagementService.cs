@@ -57,7 +57,6 @@ public sealed class GatheringManagementService(
         await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(participant.Id, command.StartsAt, null,
             command.ConfirmScheduleConflict, timeProvider.GetUtcNow(), cancellationToken);
         var now = timeProvider.GetUtcNow();
-        ValidateGamePlayerLimits(snapshot, command.MinimumPlayers, command.MaximumPlayers);
         var gathering = GatheringRules.Create(community.Key, snapshot, participant.Id,
             command.StartsAt, command.MinimumPlayers, command.DesiredPlayers, command.MaximumPlayers,
             command.Description, command.CanTeachRules, now);
@@ -85,6 +84,12 @@ public sealed class GatheringManagementService(
     {
         var now = timeProvider.GetUtcNow();
         GatheringRules.EnsureFutureStart(command.StartsAt, now);
+        var original = await dbContext.GameGatherings.AsNoTracking().Include(x => x.OrganizerParticipant)
+            .SingleOrDefaultAsync(x => x.PublicId == publicId && x.CommunityKey == communityKey, cancellationToken)
+            ?? throw new KeyNotFoundException("Сбор не найден.");
+        GatheringAccessPolicy.RequireOrganizer(original, telegramUserId);
+        var enriched = await gameSelection.EnrichExpansionMetadataAsync(
+            GatheringGameSnapshotSerializer.Deserialize(original.GameSnapshotJson), cancellationToken, command.SelectedExpansionIds);
         GameGathering gathering;
         IReadOnlyList<GameGatheringParticipant> promoted;
         bool timeChanged;
@@ -92,14 +97,17 @@ public sealed class GatheringManagementService(
             IsolationLevel.Serializable, cancellationToken))
         {
             gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
+            now = timeProvider.GetUtcNow();
+            var currentSnapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+            if (currentSnapshot.BggId == enriched.BggId)
+                gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(
+                    GatheringGameSelectionService.ApplyExpansionMetadata(currentSnapshot, enriched.KnownExpansions ?? []));
             timeChanged = gathering.StartsAtUtc != command.StartsAt.ToUniversalTime();
             if (timeChanged) await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(gathering.OrganizerParticipantId, command.StartsAt, publicId, command.ConfirmScheduleConflict, now, cancellationToken);
             var community = await dbContext.OyinQCommunities.AsNoTracking()
                 .SingleAsync(x => x.Key == communityKey, cancellationToken);
             await EnsureCommunityMutationAllowedAsync(community.ToBotCommunity(), telegramUserId,
                 command.StartsAt, cancellationToken);
-            ValidateGamePlayerLimits(GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson),
-                command.MinimumPlayers, command.MaximumPlayers);
             var beforeDetails = (gathering.MinimumPlayers, gathering.DesiredPlayers, gathering.MaximumPlayers,
                 gathering.Description, gathering.CanTeachRules, gathering.GameSnapshotJson);
             promoted = GatheringRules.Update(gathering, command.StartsAt, command.MinimumPlayers,
@@ -116,15 +124,6 @@ public sealed class GatheringManagementService(
             await transaction.CommitAsync(cancellationToken);
         }
         return new(gathering, promoted.Select(x => GatheringPromotion.Capture(x.Participant)).ToArray());
-    }
-
-    private static void ValidateGamePlayerLimits(GatheringGameSnapshot snapshot, int minimum, int maximum)
-    {
-        var gameRange = PlayerCountRange.Normalize(snapshot.MinPlayers, snapshot.MaxPlayers);
-        if (minimum < gameRange.Minimum)
-            throw new InvalidOperationException($"Для «{snapshot.Name}» минимум игроков — {gameRange.Minimum}.");
-        if (maximum > gameRange.Maximum)
-            throw new InvalidOperationException($"Для «{snapshot.Name}» максимум игроков — {gameRange.Maximum}.");
     }
 
     public async Task<GameGathering> ChangeLifecycleAsync(Guid publicId, string communityKey,

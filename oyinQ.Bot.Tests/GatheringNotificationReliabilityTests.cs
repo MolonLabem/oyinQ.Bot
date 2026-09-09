@@ -139,7 +139,7 @@ public sealed class GatheringNotificationReliabilityTests
     {
         await using var fixture = await ClubFixture.CreateAsync(1, 2, confirmed: 1, waitlisted: 3,
             snapshotMaximum: 6);
-        var management = new GatheringManagementService(fixture.Db, null!,
+        var management = new GatheringManagementService(fixture.Db, new GatheringGameSelectionService(fixture.Db, new SelectionBggClient()),
             new CampParticipationPolicy(fixture.Db, fixture.TimeProvider), fixture.Notifications,
             fixture.TimeProvider);
 
@@ -251,8 +251,8 @@ public sealed class GatheringNotificationReliabilityTests
             Telegram = telegram;
             Logger = logger;
             TimeProvider = timeProvider;
-            Service = new GatheringService(db, new CampParticipationPolicy(db, timeProvider));
             Notifications = CreateNotifications(db, telegram, logger);
+            Service = new GatheringService(db, new CampParticipationPolicy(db, timeProvider), notificationService: Notifications);
         }
 
         public AppDbContext Db { get; }
@@ -437,7 +437,7 @@ public sealed class GatheringNotificationReliabilityTests
         await db.SaveChangesAsync();
         var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO", new HttpClient(telegram));
         var links = new MiniAppLinkBuilder(Options.Create(new BotOptions { PublicBaseUrl = "https://example.test" }));
-        var dispatcher = new NotificationDispatcher(db, new FixedTimeProvider(DateTimeOffset.UtcNow > Now ? DateTimeOffset.UtcNow : Now), new TelegramNotificationTransport(bot, links));
+        var dispatcher = new NotificationDispatcher(db, new FixedTimeProvider(Now), new TelegramNotificationTransport(bot, links));
         for (var i = 0; i < 20 && await dispatcher.ProcessOneAsync(default); i++) { }
     }
 

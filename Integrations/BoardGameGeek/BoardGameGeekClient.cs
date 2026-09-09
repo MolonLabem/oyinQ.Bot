@@ -139,7 +139,7 @@ public sealed class BoardGameGeekClient(
             .ToDictionary(value => value.Game.BggId!.Value);
         var expansions = linkedExpansions.Select(expansion =>
             expansionById.TryGetValue(expansion.BggId, out var enriched)
-                ? new BggExpansion(expansion.BggId, enriched.Game.Name, enriched.Game.OriginalName)
+                ? BggGameMapper.ToBggExpansion(enriched)
                 : expansion)
             .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();

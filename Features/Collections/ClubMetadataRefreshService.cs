@@ -157,7 +157,7 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
     {
         var expansions = existing.Expansions.Select(selected => details.Expansions
                 .Where(x => x.BggId == selected.BggId)
-                .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName))
+                .Select(value => BggGameMapper.ToCollectionExpansion(value).WithMetadataFallback(selected))
                 .SingleOrDefault() ?? selected).ToArray();
         return BggGameMapper.ToCollectionGame(details.Game, expansions);
     }

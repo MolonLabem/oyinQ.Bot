@@ -10,6 +10,16 @@ namespace oyinQ.Bot.Tests;
 public sealed class CatalogMetadataTests
 {
     [Fact]
+    public void PlayerFilter_IncludesStoredExpansionRangeWithoutChangingBaseMetadata()
+    {
+        var game = Game() with { MinPlayers = 2, MaxPlayers = 4, Expansions = [new(20, "Дополнение", MinPlayers: 2, MaxPlayers: 5)] };
+        Assert.True(GameCatalogService.Matches(game, new CatalogQuery(null, 5, [], [], null)));
+        Assert.False(GameCatalogService.Matches(game with { Expansions = [] }, new CatalogQuery(null, 5, [], [], null)));
+        Assert.Equal(4, game.MaxPlayers);
+        Assert.Equal(5, GameCatalogService.ExpansionRange(game)!.Value.Maximum);
+    }
+
+    [Fact]
     public void VersionOneDocument_IsReadAsCurrentVersion()
     {
         var document = ClubCollectionSerializer.Deserialize("""

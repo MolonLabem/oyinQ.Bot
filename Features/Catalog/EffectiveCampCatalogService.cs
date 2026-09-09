@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace oyinQ.Bot.Features.Catalog;
 
 public sealed record EffectiveCampExpansion(long BggId, string Name, string? OriginalName,
-    IReadOnlyList<CampCatalogProvider> Providers);
+    IReadOnlyList<CampCatalogProvider> Providers, int? MinPlayers = null, int? MaxPlayers = null);
 
 public sealed record EffectiveCampGame(ClubCollectionGame Game, bool IsInBaseCollection,
     IReadOnlyList<CampCatalogProvider> Providers, IReadOnlyList<EffectiveCampExpansion> Expansions);
@@ -34,7 +34,7 @@ public sealed class EffectiveCampCatalogService(
         {
             var personal = contributions.SingleOrDefault(x => x.ItemType == CollectionItemType.BaseGame
                 && x.BggId == game.BggId);
-            bases.Add((personal is null ? game : MergeMetadata(game, personal.Snapshot), true,
+            bases.Add((personal is null ? game : game.WithMetadataFallback(personal.Snapshot), true,
                 personal?.Providers ?? []));
         }
         bases.AddRange(contributions.Where(x => x.ItemType == CollectionItemType.BaseGame
@@ -47,20 +47,22 @@ public sealed class EffectiveCampCatalogService(
         {
             var expansionMap = value.Game.Expansions
                 .Select(x => new EffectiveCampExpansion(x.BggId, x.Name, x.OriginalName,
-                    contributedExpansions.SingleOrDefault(c => c.BggId == x.BggId)?.Providers ?? []))
+                    contributedExpansions.SingleOrDefault(c => c.BggId == x.BggId)?.Providers ?? [], x.MinPlayers, x.MaxPlayers))
                 .Concat(contributedExpansions.Where(x => x.ParentBggIds.Contains(value.Game.BggId))
                     .Select(x => new EffectiveCampExpansion(x.BggId, x.Name,
-                        x.Snapshot.OriginalName, x.Providers)))
+                        x.Snapshot.OriginalName, x.Providers, x.Snapshot.MinPlayers, x.Snapshot.MaxPlayers)))
                 .GroupBy(x => x.BggId)
                 .Select(group => new EffectiveCampExpansion(group.Key,
                     group.Select(x => x.Name).First(x => !string.IsNullOrWhiteSpace(x)),
                     group.Select(x => x.OriginalName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
-                    group.SelectMany(x => x.Providers).DistinctBy(x => x.ParticipantId).ToArray()))
+                    group.SelectMany(x => x.Providers).DistinctBy(x => x.ParticipantId).ToArray(),
+                    group.Select(x => x.MinPlayers).FirstOrDefault(x => x.HasValue),
+                    group.Select(x => x.MaxPlayers).FirstOrDefault(x => x.HasValue)))
                 .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             var game = value.Game with
             {
                 Expansions = expansionMap.Select(x => new ClubCollectionExpansion(x.BggId, x.Name,
-                    x.OriginalName)).ToArray()
+                    x.OriginalName, x.MinPlayers, x.MaxPlayers)).ToArray()
             };
             return new EffectiveCampGame(game, value.InBase, value.Providers, expansionMap);
         }).OrderBy(x => x.Game.Name, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -69,30 +71,5 @@ public sealed class EffectiveCampCatalogService(
     private static ClubCollectionGame ToGame(EffectiveCampCatalogItem value) =>
         value.Snapshot.ToCollectionGame(value.BggId);
 
-    private static ClubCollectionGame MergeMetadata(ClubCollectionGame current,
-        CollectionItemSnapshot fallback) => current with
-    {
-        ThumbnailImageUrl = current.ThumbnailImageUrl ?? fallback.ThumbnailImageUrl,
-        ImageUrl = current.ImageUrl ?? fallback.ImageUrl,
-        Description = current.Description ?? fallback.Description,
-        YearPublished = current.YearPublished ?? fallback.YearPublished,
-        MinPlayers = current.MinPlayers ?? fallback.MinPlayers,
-        MaxPlayers = current.MaxPlayers ?? fallback.MaxPlayers,
-        BestPlayers = current.BestPlayers ?? fallback.BestPlayers,
-        MinPlayTimeMinutes = current.MinPlayTimeMinutes ?? fallback.MinPlayTimeMinutes,
-        MaxPlayTimeMinutes = current.MaxPlayTimeMinutes ?? fallback.MaxPlayTimeMinutes,
-        MinAge = current.MinAge ?? fallback.MinAge,
-        Type = BggTaxonomyCatalog.ResolveType(current.Type,
-            current.Subdomains is { Count: > 0 } ? current.Subdomains : fallback.Subdomains,
-            current.Types is { Count: > 0 } ? current.Types : fallback.Types,
-            current.CategoryItems is { Count: > 0 } ? current.CategoryItems : fallback.CategoryItems,
-            current.Categories is { Count: > 0 } ? current.Categories : fallback.Categories),
-        Types = current.Types is { Count: > 0 } ? current.Types : fallback.Types,
-        Categories = current.Categories is { Count: > 0 } ? current.Categories : fallback.Categories,
-        Subdomains = current.Subdomains is { Count: > 0 } ? current.Subdomains : fallback.Subdomains,
-        CategoryItems = current.CategoryItems is { Count: > 0 } ? current.CategoryItems : fallback.CategoryItems,
-        Mechanics = current.Mechanics is { Count: > 0 } ? current.Mechanics : fallback.Mechanics,
-        OriginalName = string.IsNullOrWhiteSpace(current.OriginalName)
-            ? fallback.OriginalName : current.OriginalName
-    };
+
 }

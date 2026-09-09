@@ -24,7 +24,8 @@ beforeEach(() => {
   root = createRoot(host);
   vi.mocked(api).mockImplementation(async <T,>(path: string): Promise<T> => {
     if (path.startsWith("/bgg/search")) return [{ bggId: 134342, name: details.game.name }] as T;
-    if (path.endsWith("&allowExpansions=true")) return details as T;
+    if (path.endsWith("&mode=item")) return details as T;
+    if (path.endsWith("&mode=base")) return { game: { bggId: 110327, name: "Lords of Waterdeep", itemType: "BaseGame" }, expansions: [{ bggId: 134342, name: details.game.name, minPlayers: 2, maxPlayers: 6 }], selectedExpansionIds: [134342] } as T;
     throw new Error("Запрошенные данные не найдены.");
   });
 });
@@ -36,13 +37,13 @@ afterEach(async () => {
 });
 
 it.each([
-  { allowExpansions: true, viaSearch: true },
-  { allowExpansions: true, viaSearch: false },
-  { allowExpansions: false, viaSearch: true },
-  { allowExpansions: false, viaSearch: false },
-])("opens expansions only when enabled: %o", async ({ allowExpansions, viaSearch }) => {
+  { selectionMode: "item" as const, viaSearch: true },
+  { selectionMode: "item" as const, viaSearch: false },
+  { selectionMode: "base" as const, viaSearch: true },
+  { selectionMode: "base" as const, viaSearch: false },
+])("resolves expansions for each selection purpose: %o", async ({ selectionMode, viaSearch }) => {
   const selected = vi.fn();
-  await act(async () => root.render(<GamePicker bggAvailable allowExpansions={allowExpansions} onSelect={selected} />));
+  await act(async () => root.render(<GamePicker bggAvailable selectionMode={selectionMode} onSelect={selected} />));
   const input = host.querySelector("input")!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input,
@@ -58,11 +59,11 @@ it.each([
     const find = Array.from(host.querySelectorAll("button")).find(button => button.textContent === "Найти")!;
     await act(async () => find.click());
   }
-  if (allowExpansions) {
-    expect(selected).toHaveBeenCalledWith(details.game, "bgg");
+  if (selectionMode === "item") {
+    expect(selected).toHaveBeenCalledWith(details.game, "bgg", []);
     expect(host.textContent).not.toContain("Запрошенные данные не найдены.");
   } else {
-    expect(selected).not.toHaveBeenCalled();
-    expect(host.textContent).toContain("Запрошенные данные не найдены.");
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ bggId: 110327, itemType: "BaseGame", expansions: [expect.objectContaining({ bggId: 134342, maxPlayers: 6 })] }), "bgg", [134342]);
+    expect(host.textContent).not.toContain("Запрошенные данные не найдены.");
   }
 });

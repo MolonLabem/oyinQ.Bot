@@ -39,7 +39,7 @@ public sealed class GatheringGameSelectionServiceTests
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.SelectAsync([100]));
 
-        Assert.Equal("Выбрано дополнение, которое не относится к этой игре.", error.Message);
+        Assert.Equal("Дополнение не относится к выбранной базовой игре.", error.Message);
     }
 
     [Fact]
@@ -175,6 +175,6 @@ public sealed class GatheringGameSelectionServiceTests
         public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string username,
             CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> bggIds,
-            CancellationToken cancellationToken) => throw new NotSupportedException();
+            CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<BggCollectionItem>>([]);
     }
 }

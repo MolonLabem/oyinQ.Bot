@@ -28,10 +28,12 @@ public static class GatheringRules
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(communityKey);
         ArgumentNullException.ThrowIfNull(gameSnapshot);
+        gameSnapshot = GatheringGameSnapshotSerializer.Normalize(gameSnapshot);
         GatheringGameSnapshotSerializer.Validate(gameSnapshot);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(organizerParticipantId);
         EnsureFutureStart(startsAt, now);
         ValidatePlayerLimits(minimumPlayers, desiredPlayers, maximumPlayers);
+        ValidateGamePlayerLimits(gameSnapshot, minimumPlayers, maximumPlayers);
 
         var gathering = new GameGathering
         {
@@ -72,6 +74,15 @@ public static class GatheringRules
         }
     }
 
+    public static void ValidateGamePlayerLimits(GatheringGameSnapshot snapshot, int minimum, int maximum)
+    {
+        var range = PlayerCountRange.Normalize(snapshot.MinPlayers, snapshot.MaxPlayers);
+        if (minimum < range.Minimum)
+            throw new InvalidOperationException($"Для «{snapshot.Name}» минимум игроков — {range.Minimum}.");
+        if (maximum > range.Maximum)
+            throw new InvalidOperationException($"Для «{snapshot.Name}» максимум игроков — {range.Maximum}.");
+    }
+
     public static IReadOnlyList<GameGatheringParticipant> Update(
         GameGathering gathering,
         DateTimeOffset startsAt,
@@ -90,7 +101,8 @@ public static class GatheringRules
         if (maximumPlayers < occupiedSeats)
             throw new InvalidOperationException("Максимум игроков не может быть меньше числа подтверждённых участников.");
 
-        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson).WithExpansions(selectedExpansionIds);
+        ValidateGamePlayerLimits(snapshot, minimumPlayers, maximumPlayers);
         var known = snapshot.KnownExpansions ?? snapshot.SelectedExpansions;
         var selected = GatheringExpansionSelection.Select(known, selectedExpansionIds);
         snapshot = snapshot with { Version = GatheringGameSnapshot.CurrentVersion,

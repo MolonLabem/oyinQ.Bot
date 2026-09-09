@@ -41,7 +41,7 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
   const [selected, setSelected] = useState<ClubGame>();
   return <section className="content-section wishlist-panel"><h2>Вишлист · {community.name}</h2>
     <p className="muted">Игры, в которые хочется сыграть в этом сообществе. Коробку иметь не обязательно. Запись в сбор и обещание привезти игру оформляются отдельно.</p>
-    <GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
+    <GamePicker selectionMode="wish" catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
       selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label="Добавить в вишлист" />
     {selected && <div className="row"><strong>{selected.name}</strong><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length

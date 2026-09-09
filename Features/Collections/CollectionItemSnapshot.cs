@@ -25,6 +25,7 @@ public sealed record CollectionItemSnapshot(
     string? OriginalName = null)
 {
     public const int CurrentVersion = 3;
+    public ClubCollectionExpansion ToExpansion(long bggId) => new(bggId, Name, OriginalName, MinPlayers, MaxPlayers);
     public ClubCollectionGame ToCollectionGame(long bggId) => new(bggId, Name, ThumbnailImageUrl, ImageUrl,
         MinPlayers, MaxPlayers, BestPlayers, [], Types, Categories, Description, YearPublished,
         MinPlayTimeMinutes, MaxPlayTimeMinutes, MinAge,

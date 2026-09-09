@@ -115,6 +115,57 @@ public sealed partial class PostgreSqlStabilizationTests
     }
 
     [PostgreSqlFact]
+    public async Task ManualCampSelection_IsAtomicAcrossOwnershipAndEveryExpansion()
+    {
+        await using var database = await Database.CreateAsync();
+        var actor = await SeedAsync(database, camp: true);
+        var expansion = new CampBggImportDraftItem(43, CollectionItemType.Expansion, 42,
+            Item().Snapshot with { Name = "Дополнение", MinPlayers = 1, MaxPlayers = 5, ParentBggIds = [42] }, ParentBggIds: [42]);
+        await using (var failing = database.Open(new RejectContribution()))
+        {
+            var campId = await failing.Camps.Select(item => item.Id).SingleAsync();
+            var service = new CampContributionSelectionService(failing, new(failing, Time), Time);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddManualSelectionAsync(
+                campId, actor.Id, [Item(), expansion], Now, default));
+        }
+        await using (var verify = database.Open())
+        {
+            Assert.Empty(await verify.ParticipantCollectionItems.ToArrayAsync());
+            Assert.Empty(await verify.CampGameContributions.ToArrayAsync());
+            var campId = await verify.Camps.Select(item => item.Id).SingleAsync();
+            await new CampContributionSelectionService(verify, new(verify, Time), Time)
+                .AddManualSelectionAsync(campId, actor.Id, [Item(), expansion], Now, default);
+        }
+        await using var saved = database.Open();
+        Assert.Equal(2, await saved.ParticipantCollectionItems.CountAsync());
+        Assert.Equal(2, await saved.CampGameContributions.CountAsync());
+        var personal = await saved.ParticipantCollectionItems.SingleAsync(item => item.BggId == 43);
+        Assert.Equal(5, personal.ReadSnapshot().MaxPlayers);
+    }
+
+    [PostgreSqlFact]
+    public async Task ClubExpansionAddition_PreservesMembershipAndRequiresCurrentRevision()
+    {
+        await using var database = await Database.CreateAsync(); await SeedAsync(database);
+        await using var db = database.Open();
+        var clubId = await db.Clubs.Select(item => item.Id).SingleAsync();
+        var service = new ClubCollectionService(db);
+        var before = await service.GetAsync(clubId, default);
+        var existing = new ClubCollectionGame(42, "База", null, null, 2, 4, null, [new(44, "Сохранённое дополнение")]);
+        await service.AddOrReplaceGameAsync(clubId, existing, before.Revision, Now, default);
+        var current = await service.GetAsync(clubId, default);
+        var details = new BggGameDetails(new ExternalGame(42, "База BGG", 2, 4, null, null), [new(43, "Пятый игрок", MinPlayers: 2, MaxPlayers: 5)]);
+        var merged = BggGameMapper.ToCollectionSelection(details, [43], current.Collection.Games.Single());
+        await Assert.ThrowsAsync<ClubCollectionConflictException>(() => service.AddOrReplaceGameAsync(
+            clubId, merged, before.Revision, Now, default));
+        await service.AddOrReplaceGameAsync(clubId, merged, current.Revision, Now, default);
+        await using var verify = database.Open();
+        var saved = (await new ClubCollectionService(verify).GetAsync(clubId, default)).Collection.Games.Single();
+        Assert.Equal([44L, 43L], saved.Expansions.Select(item => item.BggId));
+        Assert.Equal(5, GatheringGameSnapshot.FromClubGame(saved, [43]).MaxPlayers);
+    }
+
+    [PostgreSqlFact]
     public async Task ConcurrentIdentityAndCollectionUpsertDeduplicateAtDatabaseBoundary()
     {
         await using var database = await Database.CreateAsync();
@@ -246,7 +297,20 @@ public sealed partial class PostgreSqlStabilizationTests
         await db.Database.MigrateAsync();
         await db.Database.MigrateAsync();
         for (var i = 0; i < preservedQueries.Length; i++)
-            Assert.Equal(before[i], await db.Database.SqlQueryRaw<string>(preservedQueries[i]).ToArrayAsync());
+        {
+            var after = await db.Database.SqlQueryRaw<string>(preservedQueries[i]).ToArrayAsync();
+            Assert.Equal(before[i].Length, after.Length);
+            for (var row = 0; row < after.Length; row++)
+            {
+                using var original = System.Text.Json.JsonDocument.Parse(before[i][row]);
+                using var migrated = System.Text.Json.JsonDocument.Parse(after[row]);
+                // Additive columns (e.g. import progress) are allowed; every original value must survive.
+                foreach (var column in original.RootElement.EnumerateObject())
+                    Assert.True(migrated.RootElement.TryGetProperty(column.Name, out var value)
+                        && System.Text.Json.JsonElement.DeepEquals(column.Value, value),
+                        $"Original column {column.Name} changed in row {row}: {preservedQueries[i]}");
+            }
+        }
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         Assert.Null((await db.Participants.SingleAsync()).PrivateChatStartedAt);
         Assert.NotEqual(Guid.Empty, (await db.Participants.SingleAsync()).PublicId);
@@ -444,6 +508,17 @@ public sealed partial class PostgreSqlStabilizationTests
         {
             if (data.Context!.ChangeTracker.Entries<GameGathering>().Any(x => x.State == EntityState.Added))
                 throw new InvalidOperationException("Проверка отката после сохранения коллекции и вклада.");
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class RejectContribution : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData data,
+            InterceptionResult<int> result, CancellationToken ct = default)
+        {
+            if (data.Context!.ChangeTracker.Entries<CampGameContribution>().Any(item => item.State == EntityState.Added))
+                throw new InvalidOperationException("Отказ после записи владения, перед записью вкладов.");
             return ValueTask.FromResult(result);
         }
     }

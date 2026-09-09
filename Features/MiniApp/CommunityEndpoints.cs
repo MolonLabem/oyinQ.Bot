@@ -74,7 +74,7 @@ internal static class CommunityEndpoints
         var game = value.Game;
         var metadata = BggTaxonomyCatalog.Present(game);
         var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
-        return new { game.BggId, game.Name, game.ThumbnailImageUrl, game.ImageUrl, game.Description,
+        return new { game.BggId, game.Name, game.OriginalName, ItemType = value.IsBaseGame ? "BaseGame" : "Expansion", game.ThumbnailImageUrl, game.ImageUrl, game.Description,
             game.YearPublished, MinPlayers = players.Minimum, MaxPlayers = players.Maximum,
             PlayerRangeDefaulted = players.WasDefaulted, game.BestPlayers,
             game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,

@@ -24,16 +24,26 @@ public sealed record GatheringGameSnapshot(
     IReadOnlyList<GameTaxonomyItem>? Categories = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     bool PlayerRangeDefaulted = false,
-    string? OriginalName = null)
+    string? OriginalName = null,
+    int? BaseMinPlayers = null,
+    int? BaseMaxPlayers = null)
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
+
+    public GatheringGameSnapshot WithExpansions(IReadOnlyCollection<long> selectedIds) =>
+        GatheringGameSnapshotSerializer.Normalize(this with
+        {
+            SelectedExpansions = GatheringExpansionSelection.Select(KnownExpansions ?? SelectedExpansions, selectedIds)
+        });
 
     public static GatheringGameSnapshot FromClubGame(
         ClubCollectionGame game,
         IReadOnlyCollection<long> selectedExpansionIds,
         string source = "catalog")
     {
-        var players = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
+        var basePlayers = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
+        var selected = GatheringExpansionSelection.Select(game.Expansions, selectedExpansionIds);
+        var players = basePlayers.WithExpansions(selected);
         return new(
             CurrentVersion,
             game.BggId,
@@ -43,7 +53,7 @@ public sealed record GatheringGameSnapshot(
             players.Minimum,
             players.Maximum,
             game.BestPlayers,
-            GatheringExpansionSelection.Select(game.Expansions, selectedExpansionIds),
+            selected,
             source,
             game.Expansions.ToArray(),
             game.Description,
@@ -56,7 +66,7 @@ public sealed record GatheringGameSnapshot(
             game.CategoryItems,
             game.Mechanics,
             players.WasDefaulted,
-            game.OriginalName);
+            game.OriginalName, basePlayers.Minimum, basePlayers.Maximum);
     }
 }
 
@@ -98,14 +108,18 @@ public static class GatheringGameSnapshotSerializer
         }
     }
 
-    private static GatheringGameSnapshot Normalize(GatheringGameSnapshot snapshot)
+    internal static GatheringGameSnapshot Normalize(GatheringGameSnapshot snapshot)
     {
-        var players = PlayerCountRange.Normalize(snapshot.MinPlayers, snapshot.MaxPlayers);
+        var basePlayers = PlayerCountRange.Normalize(snapshot.BaseMinPlayers ?? snapshot.MinPlayers,
+            snapshot.BaseMaxPlayers ?? snapshot.MaxPlayers);
+        var players = basePlayers.WithExpansions(snapshot.SelectedExpansions ?? []);
         return snapshot with
         {
             SelectedExpansions = snapshot.SelectedExpansions ?? [],
             MinPlayers = players.Minimum,
             MaxPlayers = players.Maximum,
+            BaseMinPlayers = basePlayers.Minimum,
+            BaseMaxPlayers = basePlayers.Maximum,
             PlayerRangeDefaulted = snapshot.PlayerRangeDefaulted || players.WasDefaulted
         };
     }
@@ -113,7 +127,7 @@ public static class GatheringGameSnapshotSerializer
     public static void Validate(GatheringGameSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (snapshot.Version is not 1 and not 2 and not GatheringGameSnapshot.CurrentVersion)
+        if (snapshot.Version is not 1 and not 2 and not 3 and not GatheringGameSnapshot.CurrentVersion)
         {
             throw new InvalidOperationException($"Неподдерживаемая версия снимка игры сбора: {snapshot.Version}.");
         }

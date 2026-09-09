@@ -1,3 +1,4 @@
+using oyinQ.Bot.Features.Gatherings;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
@@ -16,7 +17,7 @@ public sealed record GameListItemResponse(long BggId, string Name, string? Origi
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     string AvailabilitySummary, bool IsDefinitelyAvailable,
-    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null);
+    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null, PlayerCountRange? ExpansionPlayerRange = null);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider, bool IsOwned = false);
 public sealed record GameDetailsResponse(long BggId, string Name, string? OriginalName, string? ImageUrl, string? Description,
@@ -25,7 +26,7 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     int? MinPlayTimeMinutes, int? MaxPlayTimeMinutes, int? MinAge,
     IReadOnlyList<LocalizedTaxonomyItem> Categories, IReadOnlyList<LocalizedTaxonomyItem> Mechanics,
     IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true,
-    int ScheduledGatherings = 0, int RecordedPlays = 0);
+    int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
     IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
@@ -135,7 +136,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             game.Expansions, BggGameUrl.FromId(game.BggId)!,
             new GameAvailabilityResponse(value.IsInBaseCollection, value.Providers,
                 GameProviderService.Describe(false, value.Providers).IsConfirmed, value.IsOwned), value.IsWished, value.IsBaseGame,
-            scheduledGatherings, recordedPlays);
+            scheduledGatherings, recordedPlays, ExpansionRange(game));
     }
 
     public async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
@@ -165,18 +166,21 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         var document = ClubCollectionSerializer.Deserialize(json);
         var clubOwnedIds = document.Games.Select(x => x.BggId)
             .Concat(document.Games.SelectMany(x => x.Expansions).Select(x => x.BggId)).ToHashSet();
-        var games = document.Games
-            .Select(x => new EffectiveGame(x, true, [], ownedIds.Contains(x.BggId))).ToList();
         var personalSnapshots = personal.Select(x => (Item: x, Snapshot: x.ReadSnapshot())).ToArray();
+        var games = document.Games.Select(game =>
+        {
+            var fallback = personalSnapshots.SingleOrDefault(x => x.Item.BggId == game.BggId && x.Item.ItemType == CollectionItemType.BaseGame).Snapshot;
+            return new EffectiveGame(fallback is null ? game : game.WithMetadataFallback(fallback), true, [], ownedIds.Contains(game.BggId));
+        }).ToList();
         foreach (var (item, snapshot) in personalSnapshots.Where(x => games.All(g => g.Game.BggId != x.Item.BggId)))
             games.Add(new(snapshot.ToCollectionGame(item.BggId), clubOwnedIds.Contains(item.BggId), [], true, IsBaseGame: item.ItemType == CollectionItemType.BaseGame));
         var expansionsByParent = personalSnapshots.Where(x => x.Item.ItemType == CollectionItemType.Expansion)
             .SelectMany(x => (x.Snapshot.ParentBggIds ?? (x.Item.ParentBggId is { } parent ? [parent] : []))
-                .Select(parent => (Parent: parent, Expansion: new ClubCollectionExpansion(x.Item.BggId, x.Snapshot.Name, x.Snapshot.OriginalName))))
+                .Select(parent => (Parent: parent, Expansion: x.Snapshot.ToExpansion(x.Item.BggId))))
             .ToLookup(x => x.Parent, x => x.Expansion);
         var merged = games.Select(value => value with { Game = value.Game with
         {
-            Expansions = value.Game.Expansions.Concat(expansionsByParent[value.Game.BggId]).DistinctBy(x => x.BggId).ToArray()
+            Expansions = ClubCollectionExpansion.Merge(value.Game.Expansions, expansionsByParent[value.Game.BggId])
         }}).ToArray();
         return await WithWishesAsync(merged, key, telegramUserId, cancellationToken);
     }
@@ -204,12 +208,23 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             value.Game.ThumbnailImageUrl,
             value.Game.Type, presentation.TypeName, presentation.TypeNames, value.Game.MinPlayers,
             value.Game.MaxPlayers, value.Game.BestPlayers, summary,
-            value.IsInBaseCollection || committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions);
+            value.IsInBaseCollection || committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions, ExpansionPlayerRange: ExpansionRange(value.Game));
+    }
+
+    public static PlayerCountRange? ExpansionRange(ClubCollectionGame game)
+    {
+        var basic = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers);
+        var expanded = basic.WithExpansions(game.Expansions);
+        return !basic.WasDefaulted && expanded != basic ? expanded : null;
     }
 
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)
     {
-        if (query.Players is { } players && !(game.MinPlayers <= players && game.MaxPlayers >= players)) return false;
+        if (query.Players is { } players)
+        {
+            var range = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers).WithExpansions(game.Expansions);
+            if (range.WasDefaulted || players < range.Minimum || players > range.Maximum) return false;
+        }
         if (query.Types.Count > 0 && !BggTaxonomyCatalog.ResolveTypes(game.Type, game.Subdomains,
                 game.Types, game.CategoryItems, game.Categories).Any(query.Types.Contains)) return false;
         return query.CategoryIds.Count == 0

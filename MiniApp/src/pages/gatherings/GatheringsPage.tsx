@@ -11,7 +11,9 @@ import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { currentLocalMinute, isFutureLocalDateTime } from "../../app/format";
 import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringHistoryFilter, gatheringListView, initialGatheringListState, type GatheringHistoryFilter, type GatheringListState, type GatheringListView } from "./gatheringListState";
-import { normalizePlayerCountRange } from "./playerCountRange";
+import { resolvePlayerCountRange, fitPlayerLimits, type PlayerLimits } from "./playerCountRange";
+import { GatheringPlayerLimits } from "./GatheringPlayerLimits";
+import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { gatheringDateTimeBounds, isWithinCampDateRange, revalidateGatheringStart } from "./gatheringDateRange";
 import { GatheringBggLink, GatheringCollectionAction, GatheringTypeTag } from "./GatheringGameMetadata";
 import { BotStartNotice } from "../../components/BotStartNotice";
@@ -61,13 +63,16 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
   useEffect(() => {
     setStarts(current => revalidateGatheringStart(current, community, dateBounds));
   }, [community.key, community.startDate, community.endDate, dateBounds.min, dateBounds.max]);
-  const chosenPlayers = normalizePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers);
-  const gameMinimum = chosenPlayers.minimum;
-  const gameMaximum = chosenPlayers.maximum;
-  const playerOptions = Array.from({ length: gameMaximum - gameMinimum + 1 }, (_, index) => gameMinimum + index);
-  function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg") {
-    setAddToCollection(false); setBringToCamp(false); setSource(nextSource); setChosen(game); setExpansions([]); setError(undefined);
-    const players = normalizePlayerCountRange(game.minPlayers, game.maxPlayers);
+  const chosenPlayers = resolvePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers, chosen?.expansions ?? [], expansions);
+  function changeLimits(value: PlayerLimits) { setMinimum(value.minimum); setDesired(value.desired); setMaximum(value.maximum); }
+  function changeExpansions(ids: number[]) {
+    changeLimits(fitPlayerLimits({ minimum, desired, maximum }, chosenPlayers,
+      resolvePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers, chosen?.expansions ?? [], ids)));
+    setExpansions(ids);
+  }
+  function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg", initialExpansions: number[] = []) {
+    setAddToCollection(false); setBringToCamp(false); setSource(nextSource); setChosen(game); setExpansions(initialExpansions); setError(undefined);
+    const players = resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, initialExpansions);
     const nextMinimum = players.minimum;
     const nextMaximum = players.maximum;
     const suggested = Number.parseInt(game.bestPlayers?.match(/\d+/)?.[0] ?? "", 10);
@@ -90,8 +95,8 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
       bggAvailable={bggAvailable} selected={chosen} onSelect={chooseGame}
       onClear={() => { setChosen(undefined); setExpansions([]); }}
       hint="Игры из коллекции найдутся сразу, а поиск в BGG может занять несколько секунд. Можно вставить ссылку или ID." /></section>
-    {chosen && <section className="content-section gathering-create-section"><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><GameProviderNotice mode={community.mode} communityKey={community.key} bggId={chosen.bggId} startsAtLocal={starts} ownership={source === "bgg" ? { gameName: chosen.name, add: addToCollection, bring: bringToCamp, camp: community.mode === "Camp", setAdd: value => { setAddToCollection(value); if (!value) setBringToCamp(false); }, setBring: setBringToCamp } : undefined} /><WishButton key={chosen.bggId} communityKey={community.key} bggId={chosen.bggId} /><GameMeta game={chosen} /></div></div>{chosen.expansions.length > 0 && <fieldset><legend>Дополнения</legend>{chosen.expansions.map(exp => <label className="check" key={exp.bggId}><input type="checkbox" checked={expansions.includes(exp.bggId)} onChange={() => setExpansions(current => current.includes(exp.bggId) ? current.filter(id => id !== exp.bggId) : [...current, exp.bggId])} />{exp.name}</label>)}</fieldset>}{(chosen.playerRangeDefaulted || chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков. Мы поставили 1–12 — проверьте значения перед созданием сбора.</Notice>}</section>}
-    <section className="content-section gathering-create-section form-grid"><h2>Параметры сбора</h2><Field label="Дата и время" hint={community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}><input type="datetime-local" min={dateBounds.min} max={dateBounds.max} value={starts} onChange={e => setStarts(e.target.value)} /></Field><div className="limits"><Field label="Минимум"><select value={minimum} onChange={e => { const value = +e.target.value; setMinimum(value); if (desired < value) setDesired(value); }} disabled={!chosen}>{playerOptions.filter(value => value <= desired).map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Оптимально"><select value={desired} onChange={e => setDesired(+e.target.value)} disabled={!chosen}>{playerOptions.filter(value => value >= minimum && value <= maximum).map(value => <option key={value}>{value}</option>)}</select></Field><Field label="Максимум"><select value={maximum} onChange={e => { const value = +e.target.value; setMaximum(value); if (desired > value) setDesired(value); }} disabled={!chosen}>{playerOptions.filter(value => value >= desired).map(value => <option key={value}>{value}</option>)}</select></Field></div><Field label="Описание" hint="Например: играем со всеми дополнениями, новичкам помогу разобраться."><textarea value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
+    {chosen && <section className="content-section gathering-create-section"><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><GameProviderNotice mode={community.mode} communityKey={community.key} bggId={chosen.bggId} startsAtLocal={starts} ownership={source === "bgg" ? { gameName: chosen.name, add: addToCollection, bring: bringToCamp, camp: community.mode === "Camp", setAdd: value => { setAddToCollection(value); if (!value) setBringToCamp(false); }, setBring: setBringToCamp } : undefined} /><WishButton key={chosen.bggId} communityKey={community.key} bggId={chosen.bggId} /><GameMeta game={chosen} /></div></div><ExpansionPicker expansions={chosen.expansions} selected={expansions} onChange={changeExpansions} />{(chosen.playerRangeDefaulted || chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков. Мы поставили 1–12 — проверьте значения перед созданием сбора.</Notice>}</section>}
+    <section className="content-section gathering-create-section form-grid"><h2>Параметры сбора</h2><Field label="Дата и время" hint={community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}><input type="datetime-local" min={dateBounds.min} max={dateBounds.max} value={starts} onChange={e => setStarts(e.target.value)} /></Field><GatheringPlayerLimits range={chosenPlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} disabled={!chosen} /><Field label="Описание" hint="Например: играем со всеми дополнениями, новичкам помогу разобраться."><textarea value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
     {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Редактировать регистрацию</button>}</Notice>}<button className="primary sticky-action" disabled={busy || !chosen} onClick={submit}>{busy ? "Создаём…" : "Создать сбор"}</button>
   </Page>;
 }
@@ -107,7 +112,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
   if (state.loading && !state.data) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<BackButton onClick={onBack} />}><ErrorState message={state.error ?? "Сбор не найден"} /></Page>;
   const value = state.data;
   const working = busy || state.loading;
-  if (editing && value.canEdit) return <EditGathering community={community} id={id} value={value} done={() => { setEditing(false); state.reload(); }} cancel={() => setEditing(false)} />;
+  if (editing && value.canEdit) return <EditGatheringLoader community={community} id={id} done={() => { setEditing(false); state.reload(); }} cancel={() => setEditing(false)} />;
   const organizer = value.confirmedParticipants.find(participant => participant.isOrganizer);
   const freeSeats = Math.max(0, value.maximumPlayers - value.gathering.occupiedSeats);
   const occupiedPercent = Math.min(100, Math.round(value.gathering.occupiedSeats / value.maximumPlayers * 100));
@@ -199,14 +204,25 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
   </Page>;
 }
 
-function EditGathering({ community, id, value, done, cancel }: { community: Community; id: string; value: GatheringDetail; done: () => void; cancel: () => void }) {
+function EditGatheringLoader({ community, id, done, cancel }: { community: Community; id: string; done: () => void; cancel: () => void }) {
+  const state = useAsync(() => api<GatheringDetail>(`/gatherings/${id}?community=${encodeURIComponent(community.key)}&forEdit=true`), [community.key, id]);
+  if (state.loading) return <Loading />;
+  if (state.error || !state.data) return <Page title="Изменить сбор" actions={<BackButton onClick={cancel} />}><ErrorState message={state.error ?? "Сбор не найден"} retry={state.reload} /></Page>;
+  return <EditGathering community={community} id={id} value={state.data} done={done} cancel={cancel} />;
+}
+
+export function EditGathering({ community, id, value, done, cancel }: { community: Community; id: string; value: GatheringDetail; done: () => void; cancel: () => void }) {
   const [starts, setStarts] = useState(value.startsAtLocal); const [minimum, setMinimum] = useState(value.minimumPlayers); const [desired, setDesired] = useState(value.desiredPlayers); const [maximum, setMaximum] = useState(value.maximumPlayers); const [description, setDescription] = useState(value.description ?? ""); const [teach, setTeach] = useState(value.canTeachRules); const [selected, setSelected] = useState(value.selectedExpansionIds); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>();
-  const gamePlayers = normalizePlayerCountRange(value.gameMinimumPlayers, value.gameMaximumPlayers);
-  const gameMinimum = gamePlayers.minimum;
-  const gameMaximum = gamePlayers.maximum;
-  const playerOptions = Array.from({ length: gameMaximum - gameMinimum + 1 }, (_, index) => gameMinimum + index);
+  const gamePlayers = resolvePlayerCountRange(value.gameBaseMinimumPlayers ?? value.gameMinimumPlayers, value.gameBaseMaximumPlayers ?? value.gameMaximumPlayers, value.knownExpansions, selected);
+  function changeLimits(value: PlayerLimits) { setMinimum(value.minimum); setDesired(value.desired); setMaximum(value.maximum); }
+  function changeExpansions(ids: number[]) {
+    changeLimits(fitPlayerLimits({ minimum, desired, maximum }, gamePlayers,
+      resolvePlayerCountRange(value.gameBaseMinimumPlayers ?? value.gameMinimumPlayers,
+        value.gameBaseMaximumPlayers ?? value.gameMaximumPlayers, value.knownExpansions, ids)));
+    setSelected(ids);
+  }
   const dateBounds = gatheringDateTimeBounds(community, currentLocalMinute(community.timeZoneId));
   const invalidCampDate = !isWithinCampDateRange(starts, community);
   async function save() { if (busy) return; if (invalidCampDate) { setError("Дата сбора должна быть в пределах дат кэмпа."); return; } if (!isFutureLocalDateTime(starts, community.timeZoneId)) { setError("Выберите дату и время в будущем."); return; } setBusy(true); setError(undefined); try { await gatheringMutation(`/gatherings/${id}`, json("PUT", { communityKey: community.key, startsAtLocal: starts, minimumPlayers: minimum, desiredPlayers: desired, maximumPlayers: maximum, description, canTeachRules: teach, selectedExpansionIds: selected })); telegram.success("Сбор обновлён"); done(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
-  return <Page title="Изменить сбор" actions={<button className="ghost" onClick={cancel}>Отмена</button>}><section className="content-section form-grid"><Field label="Дата и время" hint={community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}><input type="datetime-local" min={dateBounds.min} max={dateBounds.max} value={starts} onChange={e => setStarts(e.target.value)} /></Field>{invalidCampDate && <Notice kind="warning">Сохранённая дата находится вне текущих дат кэмпа. Выберите допустимую дату перед сохранением.</Notice>}<div className="limits"><Field label="Минимум"><select value={minimum} onChange={e => { const next = +e.target.value; setMinimum(next); if (desired < next) setDesired(next); }}>{playerOptions.filter(option => option <= desired).map(option => <option key={option}>{option}</option>)}</select></Field><Field label="Оптимально"><select value={desired} onChange={e => setDesired(+e.target.value)}>{playerOptions.filter(option => option >= minimum && option <= maximum).map(option => <option key={option}>{option}</option>)}</select></Field><Field label="Максимум"><select value={maximum} onChange={e => { const next = +e.target.value; setMaximum(next); if (desired > next) setDesired(next); }}>{playerOptions.filter(option => option >= desired).map(option => <option key={option}>{option}</option>)}</select></Field></div>{(value.gamePlayerRangeDefaulted || gamePlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков, поэтому мы поставили 1–12.</Notice>}<Field label="Описание"><textarea maxLength={300} value={description} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label>{value.knownExpansions.length > 0 && <fieldset><legend>Дополнения</legend>{value.knownExpansions.map(exp => <label className="check" key={exp.bggId}><input type="checkbox" checked={selected.includes(exp.bggId)} onChange={() => setSelected(current => current.includes(exp.bggId) ? current.filter(x => x !== exp.bggId) : [...current, exp.bggId])} />{exp.name}</label>)}</fieldset>}{error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy || invalidCampDate} onClick={save}>{busy ? "Сохраняем…" : "Сохранить"}</button></section></Page>;
+  return <Page title="Изменить сбор" actions={<button className="ghost" onClick={cancel}>Отмена</button>}><section className="content-section form-grid"><Field label="Дата и время" hint={community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}><input type="datetime-local" min={dateBounds.min} max={dateBounds.max} value={starts} onChange={e => setStarts(e.target.value)} /></Field>{invalidCampDate && <Notice kind="warning">Сохранённая дата находится вне текущих дат кэмпа. Выберите допустимую дату перед сохранением.</Notice>}<GatheringPlayerLimits range={gamePlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} />{(value.gamePlayerRangeDefaulted || gamePlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков, поэтому мы поставили 1–12.</Notice>}<Field label="Описание"><textarea maxLength={300} value={description} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label><ExpansionPicker expansions={value.knownExpansions} selected={selected} onChange={changeExpansions} />{error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy || invalidCampDate} onClick={save}>{busy ? "Сохраняем…" : "Сохранить"}</button></section></Page>;
 }

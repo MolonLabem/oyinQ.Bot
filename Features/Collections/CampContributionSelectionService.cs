@@ -16,7 +16,14 @@ public sealed record CampImportSelectionItem(long BggId, CollectionItemType Item
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     IReadOnlyList<long>? ParentBggIds = null,
-    string? OriginalName = null);
+    string? OriginalName = null)
+{
+    public CollectionItemSnapshot ToSnapshot() =>
+        Integrations.BoardGameGeek.BggGameMapper.ToCollectionSnapshot(this);
+
+    public CampBggImportDraftItem ToDraftItem() => new(BggId, ItemType, ParentBggId,
+        ToSnapshot(), ParentBggIds: ParentBggIds);
+}
 
 public sealed record EffectiveCampCatalogItem(long BggId, CollectionItemType ItemType,
     IReadOnlyList<long> ParentBggIds, CollectionItemSnapshot Snapshot, int CopyCount,
@@ -118,31 +125,44 @@ public sealed class CampContributionSelectionService(
     public async Task AddManualAsync(long campId, long participantId, long bggId,
         CollectionItemType itemType, long? parentBggId, CollectionItemSnapshot snapshot,
         DateTimeOffset now, CancellationToken cancellationToken)
+        => await AddManualSelectionAsync(campId, participantId,
+            [new(bggId, itemType, parentBggId, snapshot, ParentBggIds: snapshot.ParentBggIds)], now, cancellationToken);
+
+    public async Task AddManualSelectionAsync(long campId, long participantId,
+        IReadOnlyCollection<CampBggImportDraftItem> items, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        await using var transaction = dbContext.Database.CurrentTransaction is null && dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (dbContext.Database.IsRelational())
+            await dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE").SingleAsync(cancellationToken);
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
-        await new ParticipantCollectionService(dbContext).UpsertAsync(participantId,
-            [new CampBggImportDraftItem(bggId, itemType, parentBggId, snapshot)],
+        await new ParticipantCollectionService(dbContext).UpsertAsync(participantId, items,
             CollectionItemSource.Manual, now, cancellationToken);
-        var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
-            x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
-            cancellationToken);
-        if (contribution is null)
+        foreach (var item in items)
         {
-            contribution = new CampGameContribution
+            var (bggId, itemType, parentBggId, snapshot) = (item.BggId, item.ItemType, item.ParentBggId, item.Snapshot);
+            var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
+                x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
+                cancellationToken);
+            if (contribution is null)
             {
-                CampId = campId, ParticipantId = participantId, BggId = bggId,
-                ItemType = itemType, CreatedAt = now.ToUniversalTime()
-            };
-            dbContext.CampGameContributions.Add(contribution);
+                contribution = new CampGameContribution
+                {
+                    CampId = campId, ParticipantId = participantId, BggId = bggId,
+                    ItemType = itemType, CreatedAt = now.ToUniversalTime()
+                };
+                dbContext.CampGameContributions.Add(contribution);
+            }
+            contribution.Source = CollectionItemSource.Manual;
+            contribution.ParentBggId = parentBggId;
+            contribution.SnapshotJson = CollectionItemSnapshotSerializer.Serialize(snapshot with
+            {
+                ParentBggIds = snapshot.ParentBggIds ?? (parentBggId is { } parent ? [parent] : [])
+            });
+            contribution.UpdatedAt = now.ToUniversalTime();
         }
-        contribution.Source = CollectionItemSource.Manual;
-        contribution.ParentBggId = parentBggId;
-        contribution.SnapshotJson = CollectionItemSnapshotSerializer.Serialize(snapshot with
-        {
-            ParentBggIds = snapshot.ParentBggIds ?? (parentBggId is { } parent ? [parent] : [])
-        });
-        contribution.UpdatedAt = now.ToUniversalTime();
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task RemoveAsync(long campId, long participantId, long bggId,

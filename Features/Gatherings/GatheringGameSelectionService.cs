@@ -13,13 +13,46 @@ public sealed class GatheringGameSelectionService(
     EffectiveCampCatalogService? campCatalog = null,
     ILogger<GatheringGameSelectionService>? logger = null)
 {
+    public async Task<GatheringGameSnapshot> EnrichExpansionMetadataAsync(GatheringGameSnapshot snapshot,
+        CancellationToken ct, IReadOnlyCollection<long>? selected = null)
+    {
+        var missing = (snapshot.KnownExpansions ?? snapshot.SelectedExpansions)
+            .Where(item => (selected is null || selected.Contains(item.BggId))
+                && PlayerCountRange.Normalize(item.MinPlayers, item.MaxPlayers).WasDefaulted)
+            .Select(item => item.BggId).ToArray();
+        if (snapshot.BggId is null || missing.Length == 0) return snapshot;
+        try
+        {
+            var items = await bggClient.GetItemsByIdsAsync(missing, ct);
+            var metadata = items.Where(item => item.IsExpansion && missing.Contains(item.Game.BggId ?? 0)
+                    && item.ParentBggIds.Contains(snapshot.BggId.Value))
+                .Select(item => BggGameMapper.ToCollectionExpansion(BggGameMapper.ToBggExpansion(item))).ToArray();
+            return ApplyExpansionMetadata(snapshot, metadata);
+        }
+        catch (HttpRequestException exception) when (!ct.IsCancellationRequested)
+        {
+            logger?.LogWarning(exception, "BGG expansion metadata unavailable for gathering game {BggId}.", snapshot.BggId);
+            return snapshot;
+        }
+    }
+
+    public static GatheringGameSnapshot ApplyExpansionMetadata(GatheringGameSnapshot snapshot,
+        IReadOnlyList<ClubCollectionExpansion> metadata)
+    {
+        var known = (snapshot.KnownExpansions ?? snapshot.SelectedExpansions).Select(item =>
+            metadata.FirstOrDefault(value => value.BggId == item.BggId) is { } extra
+                ? item.WithMetadataFallback(extra) : item).ToArray();
+        return (snapshot with { KnownExpansions = known })
+            .WithExpansions(snapshot.SelectedExpansions.Select(item => item.BggId).ToArray());
+    }
+
     public async Task<GatheringGameSnapshot> FromClubCollectionAsync(
         string communityKey, long bggId, IReadOnlyCollection<long> selectedExpansionIds,
         CancellationToken cancellationToken, long telegramUserId = 0)
     {
         var catalog = new GameCatalogService(dbContext, campCatalog!);
         var game = (await catalog.LoadClubAsync(communityKey, telegramUserId, cancellationToken))
-            .SingleOrDefault(x => x.Game.BggId == bggId)?.Game
+            .SingleOrDefault(x => x.Game.BggId == bggId && x.IsBaseGame)?.Game
             ?? throw new KeyNotFoundException("Игра не найдена в доступной вам коллекции.");
         return await FromSavedGameAsync(game, selectedExpansionIds, cancellationToken);
     }
@@ -31,18 +64,10 @@ public sealed class GatheringGameSelectionService(
     public async Task<(GatheringGameSnapshot Snapshot, IReadOnlyList<CampBggImportDraftItem> Ownership)> ExternalSelectionAsync(
         long bggId, IReadOnlyCollection<long> selectedExpansionIds, CancellationToken cancellationToken)
     {
-        var details = await bggClient.GetGameDetailsAsync(bggId, cancellationToken)
-            ?? throw new KeyNotFoundException("Игра не найдена в BGG.");
+        var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(bggId, selectedExpansionIds, cancellationToken);
         var snapshot = FromCanonicalDetails(details, selectedExpansionIds, "bgg");
         if (snapshot.BggId != bggId) throw new InvalidOperationException("BGG вернул данные другой игры.");
-        List<CampBggImportDraftItem> items = [new(bggId, CollectionItemType.BaseGame, null,
-            BggGameMapper.ToCollectionSnapshot(details.Game))];
-        // Details already contain provider-validated expansion identities and titles. Do not invent rich metadata.
-        items.AddRange(details.Expansions.Where(x => selectedExpansionIds.Contains(x.BggId)).Select(x =>
-            new CampBggImportDraftItem(x.BggId, CollectionItemType.Expansion, bggId,
-                new(CollectionItemSnapshot.CurrentVersion, x.Name, null, null, null, null, null,
-                    ParentBggIds: [bggId], OriginalName: x.OriginalName))));
-        return (snapshot, items);
+        return (snapshot, BggGameMapper.ToOwnership(details, selectedExpansionIds));
     }
 
     public async Task<GatheringGameSnapshot> FromCampCatalogAsync(
@@ -53,7 +78,7 @@ public sealed class GatheringGameSelectionService(
     {
         var effective = (await new GameCatalogService(dbContext, campCatalog!)
                 .LoadAsync(communityKey, Common.Options.BotMode.Camp, telegramUserId, cancellationToken))
-            .SingleOrDefault(x => x.Game.BggId == bggId)
+            .SingleOrDefault(x => x.Game.BggId == bggId && x.IsBaseGame)
             ?? throw new KeyNotFoundException("Игра не найдена в каталоге этого кэмпа.");
         return await FromSavedGameAsync(effective.Game, selectedExpansionIds, cancellationToken);
     }
@@ -63,15 +88,12 @@ public sealed class GatheringGameSelectionService(
     {
         try
         {
-            var details = await bggClient.GetGameDetailsAsync(savedGame.BggId, cancellationToken);
-            if (details is not null)
-            {
-                return FromCanonicalDetails(details, selectedExpansionIds, "catalog");
-            }
-
-            logger?.LogWarning(
-                "BGG returned no details for saved game {BggId}; using the saved gathering snapshot.",
-                savedGame.BggId);
+            var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(savedGame.BggId, selectedExpansionIds, cancellationToken);
+            return FromCanonicalDetails(details, selectedExpansionIds, "catalog");
+        }
+        catch (KeyNotFoundException)
+        {
+            logger?.LogWarning("BGG returned no details for saved game {BggId}; using saved metadata.", savedGame.BggId);
         }
         catch (HttpRequestException exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -86,12 +108,8 @@ public sealed class GatheringGameSelectionService(
     private static GatheringGameSnapshot FromCanonicalDetails(BggGameDetails details,
         IReadOnlyCollection<long> selectedExpansionIds, string source)
     {
-        var expansions = details.Expansions
-            .DistinctBy(value => value.BggId)
-            .Select(value => new ClubCollectionExpansion(value.BggId, value.Name, value.OriginalName))
-            .ToArray();
         return GatheringGameSnapshot.FromClubGame(
-            BggGameMapper.ToCollectionGame(details.Game, expansions), selectedExpansionIds, source);
+            BggGameMapper.ToCollectionGame(details), selectedExpansionIds, source);
     }
 
 }

@@ -1,3 +1,4 @@
+import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { AnnouncementsPage } from "./AnnouncementsPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
@@ -1124,9 +1125,9 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
             <GamePicker
               bggAvailable={bggAvailable}
               selected={preview}
-              onSelect={(game) => {
+              onSelect={(game, _source, expansions) => {
                 setPreview(game);
-                setSelectedExpansions([]);
+                setSelectedExpansions(expansions);
               }}
               onClear={() => {
                 setPreview(undefined);
@@ -1142,17 +1143,7 @@ function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAva
                     <GameMeta game={preview} />
                   </div>
                 </div>
-                {preview.expansions.length > 0 && (
-                  <fieldset>
-                    <legend>Дополнения в коллекции</legend>
-                    {preview.expansions.map((exp) => (
-                      <label className="check" key={exp.bggId}>
-                        <input type="checkbox" checked={selectedExpansions.includes(exp.bggId)} onChange={() => setSelectedExpansions((current) => (current.includes(exp.bggId) ? current.filter((id) => id !== exp.bggId) : [...current, exp.bggId]))} />
-                        {exp.name}
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
+                <ExpansionPicker expansions={preview.expansions} selected={selectedExpansions} onChange={setSelectedExpansions} label="Дополнения в коллекции" />
                 <button className="primary" disabled={busy} onClick={add}>
                   {busy ? "Сохраняем…" : "Сохранить игру и дополнения"}
                 </button>

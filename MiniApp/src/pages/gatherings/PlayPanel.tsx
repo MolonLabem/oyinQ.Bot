@@ -1,3 +1,4 @@
+import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
 import type { Community, Expansion } from "../../api/types";
@@ -72,7 +73,7 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
         </div>)}
       </fieldset>
       {hasScores && <Field label="Как сравнивать счёт"><select value={higherScoreWins ? "higher" : "lower"} onChange={e => setHigherScoreWins(e.target.value === "higher")}><option value="higher">Больше — лучше</option><option value="lower">Меньше — лучше</option></select></Field>}
-      {state.data.expansions.length > 0 && <fieldset><legend>С какими дополнениями</legend>{state.data.expansions.map(p => <label className="check" key={p.bggId}><input type="checkbox" checked={expansions.includes(p.bggId)} onChange={() => setExpansions(old => old.includes(p.bggId) ? old.filter(x => x !== p.bggId) : [...old, p.bggId])} />{p.name}</label>)}</fieldset>}
+      <ExpansionPicker expansions={state.data.expansions} selected={expansions} onChange={setExpansions} label="С какими дополнениями" />
     </>}
     </> : <Notice>{state.data.wasPlayed === true ? "Партия подтверждена." : state.data.wasPlayed === false ? "Сбор не состоялся." : "Ожидаем подтверждения организатора или администратора."}</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}

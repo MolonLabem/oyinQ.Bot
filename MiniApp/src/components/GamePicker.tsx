@@ -15,22 +15,23 @@ import {
 export { normalizeGameSearch, searchGames } from "./gameSearch";
 
 export function GamePicker({
-  catalog = [], catalogLoading = false, catalogError, bggAvailable, selected, onSelect, onClear, allowExpansions = false,
+  catalog = [], catalogLoading = false, catalogError, bggAvailable, selected, onSelect, onClear, selectionMode = "base",
   label = "Найдите игру", hint = "Введите название, BGG ID или ссылку"
 }: {
   catalog?: ClubGame[];
   catalogLoading?: boolean;
   catalogError?: string;
   bggAvailable: boolean;
-  allowExpansions?: boolean;
+  selectionMode?: "base" | "item" | "wish";
   selected?: ClubGame;
-  onSelect: (game: ClubGame, source: GameSource) => void;
+  onSelect: (game: ClubGame, source: GameSource, selectedExpansionIds: number[]) => void;
   onClear?: () => void;
   label?: string;
   hint?: string;
 }) {
   const [input, setInput] = useState("");
   const [results, setResults] = useState<BggBaseGameSearchResult[]>([]);
+  const [parentChoice, setParentChoice] = useState<{ input: string; games: BggBaseGameSearchResult[] }>();
   const [searching, setSearching] = useState(false);
   const [loadingGame, setLoadingGame] = useState(false);
   const [open, setOpen] = useState(false);
@@ -42,7 +43,7 @@ export function GamePicker({
   const inputId = useId();
   const resultsId = useId();
   const normalized = normalizeGameSearch(input);
-  const catalogMatches = useMemo(() => rankGames(catalog, normalized).slice(0, 25), [catalog, normalized]);
+  const catalogMatches = useMemo(() => rankGames(selectionMode === "item" ? catalog : catalog.filter(game => game.itemType !== "Expansion"), normalized).slice(0, 25), [catalog, normalized, selectionMode]);
   const candidates = useMemo(() => mergeGameSearchCandidates(catalogMatches, results), [catalogMatches, results]);
   const isReference = looksLikeBggReference(input);
   const selectionCurrent = Boolean(selected && input.trim() === selected.name);
@@ -99,6 +100,7 @@ export function GamePicker({
   }, [searchMode]);
 
   function changeInput(value: string) {
+    setParentChoice(undefined);
     setInput(value);
     setOpen(true);
     setError(undefined);
@@ -116,12 +118,14 @@ export function GamePicker({
     closeSearch();
     try {
       const resolved = await resolveGameSelection(candidate, bggAvailable, bggId =>
-        api<BggDetails>(`/bgg/game?input=${encodeURIComponent(String(bggId))}${allowExpansions ? "&allowExpansions=true" : ""}`)
+        api<BggDetails>(`/bgg/game?input=${encodeURIComponent(String(bggId))}&mode=${selectionMode}`)
       );
+      if (resolved.baseGames?.length) { setParentChoice({ input: String(candidate.bggId), games: resolved.baseGames }); return; }
+      setParentChoice(undefined);
       setInput(resolved.game.name);
       setResults([]);
       setError(resolved.fallbackWarning);
-      onSelect(resolved.game, resolved.source);
+      onSelect(resolved.game, resolved.source, resolved.selectedExpansionIds ?? []);
     } catch (reason) {
       setOpen(true);
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -130,7 +134,7 @@ export function GamePicker({
     }
   }
 
-  async function chooseReference(value: string) {
+  async function chooseReference(value: string, baseGameId?: number) {
     if (!bggAvailable) {
       setError("BGG сейчас недоступен. Выберите игру из сохранённой коллекции.");
       return;
@@ -139,11 +143,13 @@ export function GamePicker({
     setError(undefined);
     closeSearch();
     try {
-      const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}${allowExpansions ? "&allowExpansions=true" : ""}`);
+      const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}&mode=${selectionMode}${baseGameId ? `&baseGameId=${baseGameId}` : ""}`);
+      if (details.baseGames?.length) { setParentChoice({ input: value, games: details.baseGames }); return; }
+      setParentChoice(undefined);
       const game = { ...details.game, expansions: uniqueByBggId(details.expansions) };
       setInput(game.name);
       setResults([]);
-      onSelect(game, "bgg");
+      onSelect(game, "bgg", details.selectedExpansionIds ?? []);
     } catch (reason) {
       setOpen(true);
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -157,7 +163,7 @@ export function GamePicker({
     if (!value) return;
     if (isReference) {
       const localId = /^\d+$/.test(value) ? Number(value) : undefined;
-      const local = localId ? catalog.find(game => game.bggId === localId) : undefined;
+      const local = localId ? catalog.find(game => game.bggId === localId && (selectionMode === "item" || game.itemType !== "Expansion")) : undefined;
       if (local) await chooseCandidate({ bggId: local.bggId, name: local.name, originalName: local.originalName, yearPublished: local.yearPublished, localGame: local });
       else await chooseReference(value);
       return;
@@ -220,6 +226,7 @@ export function GamePicker({
       {!searching && !hasResults && normalized.length < 2 && <p className="picker-status">Введите хотя бы два символа.</p>}
       {!searching && !hasResults && normalized.length >= 2 && !error && <p className="picker-status">Совпадений пока нет.</p>}
     </div>}
+    {parentChoice && <div className="stack"><p>Выберите базовую игру для дополнения:</p>{parentChoice.games.map(game => <button type="button" disabled={loadingGame} key={game.bggId} onClick={() => void chooseReference(parentChoice.input, game.bggId)}>{game.name}</button>)}</div>}
     {!searchMode && catalogLoading && <p className="picker-status">Загружаем коллекцию…</p>}
     {!searchMode && catalogError && <Notice kind="warning">Коллекцию загрузить не удалось: {catalogError}</Notice>}
     {error && <Notice kind={error.startsWith("BGG не ответил") ? "warning" : "danger"}>{error}</Notice>}

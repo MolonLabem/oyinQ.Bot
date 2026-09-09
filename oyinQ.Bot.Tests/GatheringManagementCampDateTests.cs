@@ -81,7 +81,7 @@ public sealed class GatheringManagementCampDateTests
         {
             Db = db;
             Participant = participant;
-            Service = new GatheringManagementService(db, null!,
+            Service = new GatheringManagementService(db, new GatheringGameSelectionService(db, new SelectionBggClient()),
                 new CampParticipationPolicy(db, timeProvider), null!, timeProvider);
         }
 

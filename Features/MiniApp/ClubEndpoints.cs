@@ -90,25 +90,19 @@ internal static class ClubEndpoints
         if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
         if (!bggOptions.Value.IsAvailable)
             return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
-        var bggId = BggGameUrlParser.Parse(body.BggInput)
-            ?? (long.TryParse(body.BggInput, out var parsed) && parsed > 0 ? parsed : null);
+        var bggId = BggGameUrlParser.ParseInput(body.BggInput);
         if (bggId is null) return MiniAppEndpointSupport.Problem("validation", "Вставьте ссылку BGG или выберите игру из поиска.");
         try
         {
             var current = await service.GetAsync(clubId, cancellationToken);
             var existing = current.Collection.Games.SingleOrDefault(value => value.BggId == bggId.Value);
-            if (existing is not null)
+            var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
+            if (existing is not null && selected.All(id => existing.Expansions.Any(item => item.BggId == id)))
                 return Results.Json(new { code = "already_exists", message = "Эта игра уже есть в коллекции клуба.", game = existing,
                     currentRevision = current.Revision }, statusCode: StatusCodes.Status409Conflict);
-            var details = await bggClient.GetGameDetailsAsync(bggId.Value, cancellationToken)
-                ?? throw new KeyNotFoundException("Игра не найдена в BGG.");
-            var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
-            if (selected.Any(id => details.Expansions.All(x => x.BggId != id)))
-                throw new InvalidOperationException("BGG не связывает выбранное дополнение с этой игрой.");
-            var expansions = details.Expansions.Where(x => selected.Contains(x.BggId))
-                .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName)).ToArray();
+            var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(bggId.Value, body.ExpansionBggIds ?? [], cancellationToken);
             await service.AddOrReplaceGameAsync(clubId,
-                BggGameMapper.ToCollectionGame(details.Game, expansions),
+                BggGameMapper.ToCollectionSelection(details, selected, existing),
                 body.ExpectedRevision, DateTimeOffset.UtcNow, cancellationToken);
             return Results.Ok(await service.GetAsync(clubId, cancellationToken));
         }

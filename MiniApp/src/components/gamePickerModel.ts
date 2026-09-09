@@ -47,7 +47,7 @@ export async function resolveGameSelection(
   candidate: GameSearchCandidate,
   bggAvailable: boolean,
   loadDetails: (bggId: number) => Promise<BggDetails>
-): Promise<{ game: ClubGame; source: GameSource; fallbackWarning?: string }> {
+): Promise<{ game: ClubGame; source: GameSource; fallbackWarning?: string; selectedExpansionIds?: number[]; baseGames?: BggDetails["baseGames"] }> {
   const source: GameSource = candidate.localGame ? "catalog" : "bgg";
   if (!bggAvailable) {
     if (!candidate.localGame) throw new Error("BGG сейчас недоступен.");
@@ -58,7 +58,8 @@ export async function resolveGameSelection(
     const details = await loadDetails(candidate.bggId);
     return {
       game: { ...details.game, expansions: uniqueByBggId(details.expansions) },
-      source,
+      source: details.game.bggId === candidate.bggId ? source : "bgg",
+      selectedExpansionIds: details.selectedExpansionIds, baseGames: details.baseGames,
     };
   } catch (reason) {
     if (!candidate.localGame) throw reason;

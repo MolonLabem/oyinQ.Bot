@@ -85,7 +85,8 @@ internal static class GatheringEndpoints
         return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
     }
 
-    private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community,
+    private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community, bool? forEdit,
+        GatheringGameSelectionService gameSelection,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, ICommunityStore communityStore,
         IAdminAuthorizationService authorization, GatheringPresentationService presentation,
@@ -124,6 +125,11 @@ internal static class GatheringEndpoints
         var localStart = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
             TimeZoneInfo.FindSystemTimeZoneById(resolvedCommunity.TimeZoneId));
         var canManage = GatheringAccessPolicy.CanManage(gathering, organizerControls, now);
+        if (forEdit == true)
+        {
+            if (!canManage) return Results.Forbid();
+            snapshot = await gameSelection.EnrichExpansionMetadataAsync(snapshot, cancellationToken);
+        }
         return Results.Ok(new
         {
             Gathering = presentation.BuildDetails(gathering, resolvedCommunity),
@@ -165,6 +171,8 @@ internal static class GatheringEndpoints
             ,gathering.MaximumPlayers
             ,GameMinimumPlayers = snapshot.MinPlayers
             ,GameMaximumPlayers = snapshot.MaxPlayers
+            ,GameBaseMinimumPlayers = snapshot.BaseMinPlayers
+            ,GameBaseMaximumPlayers = snapshot.BaseMaxPlayers
             ,GamePlayerRangeDefaulted = snapshot.PlayerRangeDefaulted
             ,gathering.Description
             ,gathering.CanTeachRules

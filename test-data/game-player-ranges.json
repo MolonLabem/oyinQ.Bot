@@ -1,0 +1,9 @@
+[
+  { "name": "base only", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Fifth player","minPlayers":2,"maxPlayers":5}], "selected": [], "expectedMinimum":2,"expectedMaximum":4,"defaulted":false },
+  { "name": "selected fifth player", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Fifth player","minPlayers":2,"maxPlayers":5}], "selected": [20], "expectedMinimum":2,"expectedMaximum":5,"defaulted":false },
+  { "name": "unknown expansion range", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Unknown"}], "selected": [20], "expectedMinimum":2,"expectedMaximum":4,"defaulted":false },
+  { "name": "partial expansion range", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Partial","maxPlayers":9}], "selected": [20], "expectedMinimum":2,"expectedMaximum":4,"defaulted":false },
+  { "name": "invalid expansion range", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Invalid","minPlayers":6,"maxPlayers":3}], "selected": [20], "expectedMinimum":2,"expectedMaximum":4,"defaulted":false },
+  { "name": "union not sum", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Five","minPlayers":2,"maxPlayers":5},{"bggId":21,"name":"Six","minPlayers":1,"maxPlayers":6}], "selected": [20,21], "expectedMinimum":1,"expectedMaximum":6,"defaulted":false },
+  { "name": "invalid base fallback", "minimum": 0, "maximum": 4, "expansions": [{"bggId":20,"name":"Five","minPlayers":2,"maxPlayers":5}], "selected": [20], "expectedMinimum":1,"expectedMaximum":12,"defaulted":true }
+]

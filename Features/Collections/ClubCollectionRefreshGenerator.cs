@@ -137,15 +137,11 @@ public static class ClubCollectionRefreshGenerator
 
     public static CampImportSelectionItem ToSelection(BggCollectionItem item)
     {
-        var game = item.Game;
         var parentId = item.ParentBggIds.FirstOrDefault();
-        return new CampImportSelectionItem(game.BggId!.Value,
+        return BggGameMapper.ToImportSelection(item.Game,
             item.IsExpansion ? CollectionItemType.Expansion : CollectionItemType.BaseGame,
             parentId > 0 ? parentId : null,
-            game.Name, true, game.ThumbnailImageUrl, game.ImageUrl, game.MinPlayers, game.MaxPlayers,
-            game.BestPlayers, game.Types, game.Categories, game.Description, game.YearPublished,
-            game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type, game.Subdomains,
-            game.CategoryItems, game.Mechanics, item.ParentBggIds, game.OriginalName);
+            item.ParentBggIds);
     }
 
     private static bool TryReadPositiveId(JsonElement element, out long bggId)

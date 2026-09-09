@@ -28,32 +28,7 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
         return new CampBggImportDraft(
             CampBggImportDraft.CurrentVersion,
             username.Trim(),
-            selection.Select(value => new CampBggImportDraftItem(
-                value.BggId,
-                value.ItemType,
-                value.ParentBggId,
-                new CollectionItemSnapshot(
-                    CollectionItemSnapshot.CurrentVersion,
-                    value.Name,
-                    value.ThumbnailImageUrl,
-                    value.ImageUrl,
-                    value.MinPlayers,
-                    value.MaxPlayers,
-                    value.BestPlayers,
-                    value.Types,
-                    value.Categories,
-                    value.Description,
-                    value.YearPublished,
-                    value.MinPlayTimeMinutes,
-                    value.MaxPlayTimeMinutes,
-                    value.MinAge,
-                    value.Type,
-                    value.Subdomains,
-                    value.CategoryItems,
-                    value.Mechanics,
-                    value.ParentBggIds,
-                    value.OriginalName),
-                ParentBggIds: value.ParentBggIds)).ToArray());
+            selection.Select(value => value.ToDraftItem()).ToArray());
     }
 
     public async Task<IReadOnlyList<CampImportSelectionItem>> LoadSelectionAsync(
@@ -76,13 +51,13 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
 
         var items = new List<CampImportSelectionItem>();
         items.AddRange(baseGames.Where(value => value.BggId is > 0).Select(value =>
-            ToSelection(value, CollectionItemType.BaseGame, null, null)));
+            BggGameMapper.ToImportSelection(value, CollectionItemType.BaseGame, null, null)));
         items.AddRange(expansions.Where(value => value.Expansion.BggId is > 0).Select(value =>
         {
             var parentIds = value.ParentBggIds.Where(x => x > 0).Distinct().ToArray();
             var parentId = parentIds.FirstOrDefault(ownedBaseIds.Contains);
             if (parentId <= 0) parentId = value.ParentBggIds.FirstOrDefault();
-            return ToSelection(value.Expansion, CollectionItemType.Expansion,
+            return BggGameMapper.ToImportSelection(value.Expansion, CollectionItemType.Expansion,
                 parentId > 0 ? parentId : null, parentIds);
         }));
 
@@ -93,15 +68,4 @@ public sealed class CampBggImportService(IBoardGameGeekClient bggClient)
             .ToArray();
     }
 
-    private static CampImportSelectionItem ToSelection(ExternalGame game, CollectionItemType itemType,
-        long? parentId, IReadOnlyList<long>? parentIds)
-    {
-        var snapshot = BggGameMapper.ToCollectionSnapshot(game, parentIds);
-        return new(game.BggId!.Value, itemType, parentId, snapshot.Name, true,
-            snapshot.ThumbnailImageUrl, snapshot.ImageUrl, snapshot.MinPlayers, snapshot.MaxPlayers,
-            snapshot.BestPlayers, snapshot.Types, snapshot.Categories, snapshot.Description,
-            snapshot.YearPublished, snapshot.MinPlayTimeMinutes, snapshot.MaxPlayTimeMinutes,
-            snapshot.MinAge, snapshot.Type, snapshot.Subdomains, snapshot.CategoryItems,
-            snapshot.Mechanics, snapshot.ParentBggIds, snapshot.OriginalName);
-    }
 }

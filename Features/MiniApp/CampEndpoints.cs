@@ -267,26 +267,14 @@ internal static class CampEndpoints
         if (!bggOptions.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         var owned = await OwnedCampAsync(request, body.CommunityKey, dbContext, authenticator, resolver, cancellationToken);
         if (owned.Error is not null) return owned.Error;
-        var bggId = BggGameUrlParser.Parse(body.BggInput)
-            ?? (long.TryParse(body.BggInput, out var parsed) && parsed > 0 ? parsed : null);
+        var bggId = BggGameUrlParser.ParseInput(body.BggInput);
         if (bggId is null) return MiniAppEndpointSupport.Problem("validation", "Вставьте ссылку BGG или выберите игру.");
         try
         {
-            var details = await bggClient.GetGameDetailsAsync(bggId.Value, cancellationToken)
-                ?? throw new KeyNotFoundException("Игра не найдена в BGG.");
+            var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(bggId.Value, body.ExpansionBggIds ?? [], cancellationToken);
             var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
-            if (selected.Any(id => details.Expansions.All(x => x.BggId != id)))
-                throw new InvalidOperationException("Выбрано неизвестное дополнение.");
-            await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, bggId.Value,
-                CollectionItemType.BaseGame, null, BggGameMapper.ToCollectionSnapshot(details.Game),
-                DateTimeOffset.UtcNow, cancellationToken);
-            foreach (var expansion in details.Expansions.Where(x => selected.Contains(x.BggId)))
-                await contributions.AddManualAsync(owned.CampId, owned.ParticipantId, expansion.BggId,
-                    CollectionItemType.Expansion, bggId.Value,
-                    new CollectionItemSnapshot(CollectionItemSnapshot.CurrentVersion,
-                        expansion.Name, null, null, null, null, null,
-                        ParentBggIds: [bggId.Value], OriginalName: expansion.OriginalName),
-                    DateTimeOffset.UtcNow, cancellationToken);
+            await contributions.AddManualSelectionAsync(owned.CampId, owned.ParticipantId,
+                BggGameMapper.ToOwnership(details, selected).ToArray(), DateTimeOffset.UtcNow, cancellationToken);
             return Results.NoContent();
         }
         catch (Exception exception) when (exception is not HttpRequestException)

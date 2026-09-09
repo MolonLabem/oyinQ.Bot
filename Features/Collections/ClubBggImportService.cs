@@ -176,7 +176,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     private static IEnumerable<ClubCollectionExpansion> LinkedExpansions(long baseId,
         IEnumerable<CampImportSelectionItem> expansions) => expansions
         .Where(x => (x.ParentBggIds ?? []).Contains(baseId))
-        .Select(x => new ClubCollectionExpansion(x.BggId, x.Name, x.OriginalName));
+        .Select(item => item.ToSnapshot().ToExpansion(item.BggId));
 
     private static IReadOnlyList<ClubCollectionExpansion> MergeExpansions(
         IReadOnlyList<ClubCollectionExpansion> existing, IEnumerable<ClubCollectionExpansion> imported,
@@ -184,19 +184,13 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     {
         var additions = imported.Where(x => existing.All(current => current.BggId != x.BggId)).ToArray();
         added += additions.Length;
-        return existing.Concat(additions).DistinctBy(x => x.BggId)
+        return ClubCollectionExpansion.Merge(existing, imported)
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static ClubCollectionGame ToGame(CampImportSelectionItem item,
-        IReadOnlyList<ClubCollectionExpansion> expansions)
-    {
-        return BggGameMapper.ToCollectionGame(new ExternalGame(item.BggId, item.Name,
-            item.MinPlayers, item.MaxPlayers, item.BestPlayers, BggGameUrl.FromId(item.BggId),
-            item.ThumbnailImageUrl, item.ImageUrl, item.Types, item.Categories, item.Description,
-            item.YearPublished, item.MinPlayTimeMinutes, item.MaxPlayTimeMinutes, item.MinAge,
-            item.Subdomains, item.CategoryItems, item.Mechanics, item.Type, item.OriginalName), expansions);
-    }
+        IReadOnlyList<ClubCollectionExpansion> expansions) =>
+        item.ToSnapshot().ToCollectionGame(item.BggId) with { Expansions = expansions };
 
     private static ClubBggImportView ToView(ClubBggImport job) => new(job.PublicId, job.BggUsername,
         job.Status, job.Stage, job.FoundGames, job.FoundExpansions, job.ProgressCurrent, job.ProgressTotal,

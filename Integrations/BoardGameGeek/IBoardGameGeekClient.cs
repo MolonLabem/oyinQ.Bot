@@ -1,4 +1,5 @@
 using oyinQ.Bot.Integrations;
+using oyinQ.Bot.Features.Collections;
 
 namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
@@ -8,7 +9,8 @@ public sealed record BggBaseGameSearchResult(
     int? YearPublished,
     string? OriginalName = null);
 
-public sealed record BggExpansion(long BggId, string Name, string? OriginalName = null);
+public sealed record BggExpansion(long BggId, string Name, string? OriginalName = null,
+    int? MinPlayers = null, int? MaxPlayers = null, CollectionItemSnapshot? Snapshot = null);
 
 public sealed record BggGameDetails(
     ExternalGame Game,

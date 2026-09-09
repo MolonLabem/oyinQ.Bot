@@ -33,9 +33,48 @@ public sealed record ClubCollectionGame(
 {
     [JsonIgnore]
     public bool HasExpansions => Expansions is { Count: > 0 };
+
+    public ClubCollectionGame WithMetadataFallback(CollectionItemSnapshot fallback) => this with
+    {
+        ThumbnailImageUrl = this.ThumbnailImageUrl ?? fallback.ThumbnailImageUrl,
+        ImageUrl = this.ImageUrl ?? fallback.ImageUrl,
+        Description = this.Description ?? fallback.Description,
+        YearPublished = this.YearPublished ?? fallback.YearPublished,
+        MinPlayers = this.MinPlayers ?? fallback.MinPlayers,
+        MaxPlayers = this.MaxPlayers ?? fallback.MaxPlayers,
+        BestPlayers = this.BestPlayers ?? fallback.BestPlayers,
+        MinPlayTimeMinutes = this.MinPlayTimeMinutes ?? fallback.MinPlayTimeMinutes,
+        MaxPlayTimeMinutes = this.MaxPlayTimeMinutes ?? fallback.MaxPlayTimeMinutes,
+        MinAge = this.MinAge ?? fallback.MinAge,
+        Type = BggTaxonomyCatalog.ResolveType(this.Type,
+            this.Subdomains is { Count: > 0 } ? this.Subdomains : fallback.Subdomains,
+            this.Types is { Count: > 0 } ? this.Types : fallback.Types,
+            this.CategoryItems is { Count: > 0 } ? this.CategoryItems : fallback.CategoryItems,
+            this.Categories is { Count: > 0 } ? this.Categories : fallback.Categories),
+        Types = this.Types is { Count: > 0 } ? this.Types : fallback.Types,
+        Categories = this.Categories is { Count: > 0 } ? this.Categories : fallback.Categories,
+        Subdomains = this.Subdomains is { Count: > 0 } ? this.Subdomains : fallback.Subdomains,
+        CategoryItems = this.CategoryItems is { Count: > 0 } ? this.CategoryItems : fallback.CategoryItems,
+        Mechanics = this.Mechanics is { Count: > 0 } ? this.Mechanics : fallback.Mechanics,
+        OriginalName = string.IsNullOrWhiteSpace(this.OriginalName)
+            ? fallback.OriginalName : this.OriginalName
+    };
 }
 
-public sealed record ClubCollectionExpansion(long BggId, string Name, string? OriginalName = null);
+public sealed record ClubCollectionExpansion(long BggId, string Name, string? OriginalName = null,
+    int? MinPlayers = null, int? MaxPlayers = null)
+{
+    public static IReadOnlyList<ClubCollectionExpansion> Merge(IEnumerable<ClubCollectionExpansion> existing,
+        IEnumerable<ClubCollectionExpansion> additions) => existing.Concat(additions).GroupBy(item => item.BggId)
+        .Select(group => group.Aggregate((current, next) => current.WithMetadataFallback(next))).ToArray();
+
+    public ClubCollectionExpansion WithMetadataFallback(ClubCollectionExpansion fallback) => this with
+    {
+        OriginalName = OriginalName ?? fallback.OriginalName,
+        MinPlayers = MinPlayers ?? fallback.MinPlayers,
+        MaxPlayers = MaxPlayers ?? fallback.MaxPlayers
+    };
+}
 public sealed record GameTaxonomyItem(long BggId, string Name);
 
 public enum GameType

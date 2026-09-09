@@ -9,4 +9,18 @@ public readonly record struct PlayerCountRange(int Minimum, int Maximum, bool Wa
         minimum is >= 1 && maximum is >= 1 && minimum <= maximum
             ? new PlayerCountRange(minimum.Value, maximum.Value, false)
             : new PlayerCountRange(DefaultMinimum, DefaultMaximum, true);
+
+    public PlayerCountRange WithExpansions(IEnumerable<oyinQ.Bot.Features.Collections.ClubCollectionExpansion> expansions)
+    {
+        var minimum = Minimum;
+        var maximum = Maximum;
+        foreach (var expansion in expansions)
+        {
+            var range = Normalize(expansion.MinPlayers, expansion.MaxPlayers);
+            if (range.WasDefaulted) continue;
+            minimum = Math.Min(minimum, range.Minimum);
+            maximum = Math.Max(maximum, range.Maximum);
+        }
+        return new(minimum, maximum, WasDefaulted);
+    }
 }

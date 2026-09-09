@@ -35,8 +35,13 @@ public sealed class ProfileCollectionSearchTests
         Assert.Equal(134342, Assert.Single(search.EnumerateArray()).GetProperty("bggId").GetInt64());
 
         var path = $"/api/miniapp/bgg/game?input={Uri.EscapeDataString(input)}";
-        Assert.Equal(HttpStatusCode.NotFound, (await fixture.Client.GetAsync(path)).StatusCode);
-        var preview = await fixture.Client.GetFromJsonAsync<JsonElement>(path + "&allowExpansions=true");
+        var gatheringPreview = await fixture.Client.GetFromJsonAsync<JsonElement>(path);
+        Assert.Equal(110327, gatheringPreview.GetProperty("game").GetProperty("bggId").GetInt64());
+        Assert.Equal("BaseGame", gatheringPreview.GetProperty("game").GetProperty("itemType").GetString());
+        Assert.Equal(134342, Assert.Single(gatheringPreview.GetProperty("selectedExpansionIds").EnumerateArray()).GetInt64());
+        Assert.Equal(6, Assert.Single(gatheringPreview.GetProperty("expansions").EnumerateArray()).GetProperty("maxPlayers").GetInt32());
+        Assert.Equal(HttpStatusCode.BadRequest, (await fixture.Client.GetAsync(path + "&mode=wish")).StatusCode);
+        var preview = await fixture.Client.GetFromJsonAsync<JsonElement>(path + "&mode=item");
         Assert.Equal("Expansion", preview.GetProperty("game").GetProperty("itemType").GetString());
         Assert.Equal(134342, preview.GetProperty("game").GetProperty("bggId").GetInt64());
         Assert.Empty(preview.GetProperty("expansions").EnumerateArray());
