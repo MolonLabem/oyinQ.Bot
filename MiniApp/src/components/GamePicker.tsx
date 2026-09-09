@@ -15,13 +15,14 @@ import {
 export { normalizeGameSearch, searchGames } from "./gameSearch";
 
 export function GamePicker({
-  catalog = [], catalogLoading = false, catalogError, bggAvailable, selected, onSelect, onClear,
+  catalog = [], catalogLoading = false, catalogError, bggAvailable, selected, onSelect, onClear, allowExpansions = false,
   label = "Найдите игру", hint = "Введите название, BGG ID или ссылку"
 }: {
   catalog?: ClubGame[];
   catalogLoading?: boolean;
   catalogError?: string;
   bggAvailable: boolean;
+  allowExpansions?: boolean;
   selected?: ClubGame;
   onSelect: (game: ClubGame, source: GameSource) => void;
   onClear?: () => void;
@@ -115,7 +116,7 @@ export function GamePicker({
     closeSearch();
     try {
       const resolved = await resolveGameSelection(candidate, bggAvailable, bggId =>
-        api<BggDetails>(`/bgg/game?input=${encodeURIComponent(String(bggId))}`)
+        api<BggDetails>(`/bgg/game?input=${encodeURIComponent(String(bggId))}${allowExpansions ? "&allowExpansions=true" : ""}`)
       );
       setInput(resolved.game.name);
       setResults([]);
@@ -138,7 +139,7 @@ export function GamePicker({
     setError(undefined);
     closeSearch();
     try {
-      const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}`);
+      const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}${allowExpansions ? "&allowExpansions=true" : ""}`);
       const game = { ...details.game, expansions: uniqueByBggId(details.expansions) };
       setInput(game.name);
       setResults([]);

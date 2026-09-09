@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.MiniApp;
@@ -32,6 +33,7 @@ internal static class BggEndpoints
     }
 
     private static async Task<IResult> GetGameAsync(HttpRequest request, string input,
+        bool? allowExpansions,
         TelegramMiniAppAuthenticator authenticator, IBoardGameGeekClient client,
         IOptions<BggOptions> options, ILogger<BoardGameGeekClient> logger,
         CancellationToken cancellationToken)
@@ -43,6 +45,17 @@ internal static class BggEndpoints
         try
         {
             var details = await client.GetGameDetailsAsync(id.Value, cancellationToken);
+            var itemType = CollectionItemType.BaseGame;
+            if (details is null && allowExpansions == true)
+            {
+                var item = (await client.GetItemsByIdsAsync([id.Value], cancellationToken))
+                    .SingleOrDefault(value => value.Game.BggId == id.Value && value.IsExpansion);
+                if (item is not null)
+                {
+                    details = new BggGameDetails(item.Game, []);
+                    itemType = CollectionItemType.Expansion;
+                }
+            }
             if (details is null) return Results.NotFound();
             var collectionGame = BggGameMapper.ToCollectionGame(details.Game);
             var metadata = BggTaxonomyCatalog.Present(collectionGame);
@@ -50,6 +63,7 @@ internal static class BggEndpoints
             return Results.Ok(new
             {
                 Game = new { collectionGame.BggId, collectionGame.Name, collectionGame.OriginalName,
+                    ItemType = itemType.ToString(),
                     collectionGame.ThumbnailImageUrl,
                     collectionGame.ImageUrl, MinPlayers = players.Minimum, MaxPlayers = players.Maximum,
                     PlayerRangeDefaulted = players.WasDefaulted,

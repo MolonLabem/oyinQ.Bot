@@ -25,7 +25,7 @@ describe("глобальный профиль", () => {
     vi.stubGlobal("localStorage", { getItem: () => null });
     hooks.data = [{ bggId: 42, itemType: "BaseGame", snapshot: { name: "Моя игра" } }];
     const markup = renderToStaticMarkup(<ProfileCollectionPage bggAvailable />);
-    expect(markup).toContain("Моя игра"); expect(markup).toContain("Импортировать коллекцию"); expect(markup).toContain("Добавить одну игру");
+    expect(markup).toContain("Моя игра"); expect(markup).toContain("Импортировать коллекцию"); expect(markup).toContain("Добавить игру или дополнение");
     expect(markup).not.toContain("Могу привезти"); expect(markup).not.toContain("Точно привезу"); expect(markup).not.toContain("Регистрация на кэмп");
     vi.unstubAllGlobals();
   });
