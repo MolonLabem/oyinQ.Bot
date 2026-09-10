@@ -13,6 +13,23 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class TelegramCommunityMembershipVerifierTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestrictedStatusRequiresCurrentMembership(bool isMember)
+    {
+        var response = "{\"ok\":true,\"result\":{\"status\":\"restricted\",\"user\":{\"id\":42,\"is_bot\":false,\"first_name\":\"User\"},\"is_member\":"
+            + isMember.ToString().ToLowerInvariant() + ",\"until_date\":0}}";
+        await using var fixture = new Fixture(HttpStatusCode.OK, response);
+        Assert.Equal(isMember, await fixture.Verifier.IsMemberAsync(-1001, 42, default));
+        fixture.Db.OyinQCommunities.Add(new() { Key = "club", Name = "Club", TelegramChatId = -1001,
+            TimeZoneId = "UTC", IsActive = true });
+        await fixture.Db.SaveChangesAsync();
+        var resolver = new CommunityContextResolver(new CommunityStore(fixture.Db), fixture.Verifier);
+        Assert.Equal(isMember, await resolver.ResolveAuthorizedAsync("club", 42, default) is not null);
+        Assert.Equal(isMember ? 1 : 0, (await resolver.ResolveAuthorizedAsync(42, default)).Count);
+    }
+
     [Fact]
     public async Task RecentlyUnavailableChat_IsRejectedWithoutCallingTelegram()
     {

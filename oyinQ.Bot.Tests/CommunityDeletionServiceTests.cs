@@ -15,6 +15,27 @@ public sealed class CommunityDeletionServiceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task UnavailableCommunityCanBeDiscoveredThenDeletedWithoutLosingHistory(bool campMode)
+    {
+        await using var fixture = new Fixture();
+        var community = fixture.AddCommunity(campMode);
+        fixture.Db.KnownTelegramChats.Add(new() { TelegramChatId = community.TelegramChatId,
+            IsBotPresent = false, FirstSeenAt = Now, UpdatedAt = Now });
+        await fixture.Db.SaveChangesAsync();
+        var target = Assert.Single(await fixture.Authorization.GetAdminPanelChatsAsync(Fixture.SuperAdminId, default));
+        Assert.Equal(community.Key, target.CommunityKey);
+        Assert.True(target.IsApproved);
+        Assert.True(target.IsBotUnavailable);
+        if (campMode) await fixture.Service.DeleteCampAsync(Fixture.SuperAdminId, community.Camp!.Id, default);
+        else await fixture.Service.DeleteClubAsync(Fixture.SuperAdminId, community.Club!.Id, default);
+        Assert.Empty(await fixture.Authorization.GetAdminPanelChatsAsync(Fixture.SuperAdminId, default));
+        Assert.NotNull(Assert.Single(fixture.Db.OyinQCommunities).DeletedAt);
+        Assert.Single(fixture.Db.KnownTelegramChats);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task SuperAdminDeletion_HidesBindingRevokesConfigurationAndPreservesHistory(bool campMode)
     {
         await using var fixture = new Fixture();

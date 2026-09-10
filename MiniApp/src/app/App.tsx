@@ -13,10 +13,14 @@ import { fullscreenLabel } from "../pages/camp/registrationLogic";
 import { collectionVisitFromGathering, positiveGameId } from "./collectionNavigation";
 import { CommunityPicker } from "../components/CommunityPicker";
 import { mainTab, miniAppLaunchContext } from "./launchContext";
+import { useAsync } from "../hooks/useAsync";
 
 export function App() {
   const [launchContext] = useState(() => miniAppLaunchContext(location.search, telegram.startParam));
-  const [bootstrap, setBootstrap] = useState<Bootstrap>(); const [capabilities, setCapabilities] = useState<Capabilities>(); const [error, setError] = useState<string>();
+  const discovery = useAsync(() => api<Bootstrap>("/communities"), []);
+  const capabilityState = useAsync(() => api<Capabilities>("/capabilities"), []);
+  const bootstrap = discovery.error || discovery.loading ? undefined : discovery.data;
+  const capabilities = capabilityState.data;
   const [communityKey, setCommunityKey] = useState(() => launchContext.communityKey ?? localStorage.getItem("oyinq-community") ?? ""); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
   const [initialGatheringId, setInitialGatheringId] = useState(() => launchContext.gatheringId);
@@ -25,12 +29,23 @@ export function App() {
   const [profileReturnCommunityKey, setProfileReturnCommunityKey] = useState<string>();
   const [registrationEditRequest, setRegistrationEditRequest] = useState(0);
   const [fullscreen, setFullscreen] = useState(telegram.isFullscreen);
-  useEffect(() => { Promise.all([api<Bootstrap>("/communities"), api<Capabilities>("/capabilities")]).then(([b, c]) => { setBootstrap(b); setCapabilities(c); if (!communityKey && b.communities.length === 1) setCommunityKey(b.communities[0].key); }).catch(e => setError(e instanceof Error ? e.message : String(e))); }, []);
+  useEffect(() => { if (!communityKey && bootstrap?.communities.length === 1) setCommunityKey(bootstrap.communities[0].key); }, [bootstrap]);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
   useEffect(() => telegram.onFullscreenChanged(setFullscreen), []);
   const community = useMemo(() => bootstrap?.communities.find(x => x.key === communityKey), [bootstrap, communityKey]);
-  if (error) return <Page title="OyinQ"><ErrorState message={error} retry={() => location.reload()} /></Page>;
-  if (!bootstrap || !capabilities) return <Page title="OyinQ"><Loading /></Page>;
+  if (capabilityState.error) return <Page title="OyinQ"><ErrorState message={capabilityState.error} retry={capabilityState.reload} /></Page>;
+  if (!capabilities) return <Page title="OyinQ"><Loading /></Page>;
+  if (!bootstrap) {
+    const unavailable = <Page title="Сообщества">{discovery.error
+      ? <><Notice kind="warning">Не удалось проверить доступ к сообществам. Личный профиль и коллекция доступны.</Notice><ErrorState message={discovery.error} retry={discovery.reload} /></>
+      : <Loading />}</Page>;
+    if (adminMode) return unavailable;
+    return <GlobalProfileShell profile={mainTab(tab) === "profile"} select={setTab} communities={unavailable}>
+      {discovery.error && <Notice kind="warning">Доступ к сообществам временно не проверен. <button className="ghost" onClick={discovery.reload}>Повторить проверку</button></Notice>}
+      <ProfilePage communities={[]} bggAvailable={capabilities.boardGameGeekAvailable}
+        openGathering={() => setTab("communities")} />
+    </GlobalProfileShell>;
+  }
   if (adminMode) return bootstrap.canOpenAdminPanel ? <AdminPage bggAvailable={capabilities.boardGameGeekAvailable} isSuperAdmin={bootstrap.isSuperAdmin} /> : <Page title="Нет доступа"><Notice kind="danger">Эта область доступна администраторам зарегистрированных чатов OyinQ.</Notice></Page>;
   if (!community) return <GlobalProfileShell profile={mainTab(tab) === "profile"}
     select={setTab} communities={<CommunityPickerPage communities={bootstrap.communities} choose={key => { setCommunityKey(key); setTab("gatherings"); }} admin={bootstrap.canOpenAdminPanel} />}>

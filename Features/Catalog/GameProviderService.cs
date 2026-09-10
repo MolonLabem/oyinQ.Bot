@@ -28,6 +28,9 @@ public sealed class GameProviderService(AppDbContext db, GameCatalogService cata
                     ? GameProviderState.AvailableParticipantProviders : GameProviderState.NoKnownProvider,
             inBase ? "Есть в клубе" : bringing.Length > 0
                 ? string.Join(", ", bringing.Select(x => x.DisplayName)) + " — привезут"
+                : providers.Any(x => x.IsCurrentUser)
+                    ? "Вы можете привезти свою коробку" + (providers.Any(x => !x.IsCurrentUser)
+                        ? "; можно попросить: " + string.Join(", ", providers.Where(x => !x.IsCurrentUser).Select(x => x.DisplayName)) : "")
                 : providers.Count > 0 ? "Можно попросить: " + string.Join(", ", providers.Select(x => x.DisplayName))
                 : "Никто пока не подтвердил коробку", providers);
     }

@@ -10,6 +10,7 @@ WORKDIR /src/MiniApp
 COPY ["MiniApp/package.json", "MiniApp/package-lock.json", "./"]
 RUN npm ci
 COPY MiniApp .
+COPY test-data /src/test-data
 RUN npm run build
 
 # Build image

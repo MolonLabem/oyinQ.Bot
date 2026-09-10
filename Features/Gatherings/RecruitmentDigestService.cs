@@ -52,6 +52,7 @@ public sealed class RecruitmentDigestService(AppDbContext db, TimeProvider clock
         var community = await CommunityMutationLock.AcquireAsync(db, key, ct);
         await RequireActiveAsync(community, ct);
         var now = clock.GetUtcNow();
+        var includeAllUpcoming = gatheringId is null && community.Mode == Common.Options.BotMode.Camp;
         if (gatheringId is { } id)
         {
             var g = await GatheringWriteStore.LockAsync(db, id, key, ct);
@@ -62,11 +63,11 @@ public sealed class RecruitmentDigestService(AppDbContext db, TimeProvider clock
         }
         else
         {
-            var candidates = await db.GameGatherings.AsNoTracking().Include(x => x.Participants).Include(x => x.Guests)
-                .Where(x => x.CommunityKey == key && x.StartsAtUtc > now && x.StartsAtUtc <= now.AddHours(36)
-                    && (x.Status == GatheringStatus.Recruiting || x.Status == GatheringStatus.Ready)).ToArrayAsync(ct);
-            if (GatheringRecruitment.Rank(candidates, now).Count == 0)
-                throw new InvalidOperationException("В ближайшие 36 часов нет открытых сборов со свободными местами.");
+            var candidates = await GatheringRecruitment.LoadCandidatesAsync(db, key, now, includeAllUpcoming, ct);
+            if (GatheringRecruitment.Rank(candidates, now, includeAllUpcoming).Count == 0)
+                throw new InvalidOperationException(includeAllUpcoming
+                    ? "На кэмпе нет предстоящих открытых сборов со свободными местами."
+                    : "В ближайшие 36 часов нет открытых сборов со свободными местами.");
         }
         if (AvailableAt(community) is { } available && available > now)
             return new(false, CooldownMessage(available, now), available);
@@ -75,7 +76,7 @@ public sealed class RecruitmentDigestService(AppDbContext db, TimeProvider clock
             return new(false, "Напоминание о сборах уже готовится.");
         community.LastRecruitmentDigestAt = now;
         Track(community);
-        db.RecruitmentDigests.Add(new() { CommunityKey = key, RequestedAt = now });
+        db.RecruitmentDigests.Add(new() { CommunityKey = key, RequestedAt = now, IncludeAllUpcoming = includeAllUpcoming });
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return new(true, "Напоминание о ближайших сборах поставлено в очередь.", AvailableAt(community));

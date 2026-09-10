@@ -1,3 +1,6 @@
+using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore;
+using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Features.Gatherings;
@@ -18,15 +21,23 @@ public static class GatheringRecruitment
             : new(3, "Состав набран", 0, false);
     }
 
-    public static bool IsRelevant(GameGathering g, DateTimeOffset now) =>
-        g.StartsAtUtc > now && g.StartsAtUtc <= now.AddHours(36)
-        && g.Status is GatheringStatus.Recruiting or GatheringStatus.Ready
-        && Describe(g).FreeSeats > 0;
+    // One expression supplies both SQL candidate selection and in-memory eligibility.
+    public static Expression<Func<GameGathering, bool>> CandidatePredicate(DateTimeOffset now, bool includeAllUpcoming = false) =>
+        g => g.StartsAtUtc > now && (includeAllUpcoming || g.StartsAtUtc <= now.AddHours(36))
+            && (g.Status == GatheringStatus.Recruiting || g.Status == GatheringStatus.Ready);
+
+    public static Task<GameGathering[]> LoadCandidatesAsync(AppDbContext db, string key, DateTimeOffset now,
+        bool includeAllUpcoming, CancellationToken ct) =>
+        db.GameGatherings.AsNoTracking().Include(x => x.Participants).Include(x => x.Guests)
+            .Where(x => x.CommunityKey == key).Where(CandidatePredicate(now, includeAllUpcoming)).ToArrayAsync(ct);
+
+    public static bool IsRelevant(GameGathering g, DateTimeOffset now, bool includeAllUpcoming = false) =>
+        CandidatePredicate(now, includeAllUpcoming).Compile()(g) && Describe(g).FreeSeats > 0;
 
     public static bool CanRequest(GameGathering g, long participantId, DateTimeOffset now) =>
         g.OrganizerParticipantId == participantId && IsRelevant(g, now) && Describe(g).BelowDesired;
 
-    public static IReadOnlyList<GameGathering> Rank(IEnumerable<GameGathering> values, DateTimeOffset now) =>
-        values.Where(g => IsRelevant(g, now)).OrderBy(g => Describe(g).Priority)
+    public static IReadOnlyList<GameGathering> Rank(IEnumerable<GameGathering> values, DateTimeOffset now, bool includeAllUpcoming = false) =>
+        values.Where(CandidatePredicate(now, includeAllUpcoming).Compile()).Where(g => Describe(g).FreeSeats > 0).OrderBy(g => Describe(g).Priority)
             .ThenBy(g => g.StartsAtUtc).ThenBy(g => g.Id).ToArray();
 }

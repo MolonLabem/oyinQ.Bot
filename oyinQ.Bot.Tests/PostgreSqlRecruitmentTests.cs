@@ -13,6 +13,85 @@ namespace oyinQ.Bot.Tests;
 public sealed partial class PostgreSqlStabilizationTests
 {
     [PostgreSqlFact]
+    public async Task RecruitmentDispatchUsesSqlPolicyAtTimeAndStatusBoundaries()
+    {
+        await using var database = await Database.CreateAsync();
+        var actor = await SeedAsync(database);
+        using var http = new HttpClient(new ReleaseBot());
+        var bot = new Telegram.Bot.TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO", http);
+        foreach (var (seconds, status, allUpcoming, eligible) in new[] {
+            (0, GatheringStatus.Recruiting, false, false),
+            (129600, GatheringStatus.Recruiting, false, true),
+            (129601, GatheringStatus.Ready, false, false),
+            (133200, GatheringStatus.Ready, true, true),
+            (3600, GatheringStatus.Closed, true, false) })
+        {
+            await using (var db = database.Open())
+            {
+                await db.RecruitmentDigests.ExecuteDeleteAsync();
+                await db.GameGatherings.ExecuteDeleteAsync();
+                db.GameGatherings.Add(new() { CommunityKey = "club", OrganizerParticipantId = actor.Id,
+                    PublicId = Guid.NewGuid(), StartsAtUtc = Now.AddSeconds(seconds), Status = status,
+                    MinimumPlayers = 1, DesiredPlayers = 3, MaximumPlayers = 4,
+                    GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(Snapshot()) });
+                db.RecruitmentDigests.Add(new() { CommunityKey = "club", RequestedAt = Now, IncludeAllUpcoming = allUpcoming });
+                await db.SaveChangesAsync();
+            }
+            var sender = new ReleaseSender();
+            await using var dispatch = database.Open();
+            Assert.True(await new RecruitmentDigestDispatcher(dispatch, Time, new(dispatch, Time), sender, bot,
+                NullLogger<RecruitmentDigestDispatcher>.Instance).ProcessOneAsync(default));
+            Assert.Equal(eligible ? 1 : 0, sender.Calls);
+            Assert.Equal(eligible ? RecruitmentDigestState.Delivered : RecruitmentDigestState.Expired,
+                (await dispatch.RecruitmentDigests.SingleAsync()).State);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task CampAdminScopeUpgradePreservesExistingQueuedRequests()
+    {
+        await using var database = await Database.CreateAsync("20260905020448_BggImportProgressStages");
+        await using var db = database.Open();
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "OyinQCommunities" ("Key","Name","TelegramChatId","Mode","TimeZoneId","IsActive","CreatedAt","UpdatedAt")
+            VALUES ('club','Клуб',-1001,0,'UTC',true,now(),now());
+            INSERT INTO "RecruitmentDigests" ("CommunityKey","RequestedAt","State") VALUES ('club',now(),0);
+            """);
+        await db.GetService<IMigrator>().MigrateAsync();
+        await db.GetService<IMigrator>().MigrateAsync();
+        var row = await db.RecruitmentDigests.SingleAsync();
+        Assert.False(row.IncludeAllUpcoming);
+        Assert.Equal(RecruitmentDigestState.Pending, row.State);
+        Assert.False(db.Database.HasPendingModelChanges());
+    }
+
+    [PostgreSqlFact]
+    public async Task PersistedCampAdminScopeIncludesDistantGatheringsDuringDispatch()
+    {
+        await using var database = await Database.CreateAsync();
+        var actor = await SeedAsync(database, camp: true);
+        await using (var db = database.Open())
+        {
+            var camp = await db.Camps.SingleAsync();
+            camp.EndsAtUtc = Now.AddDays(10);
+            db.GameGatherings.Add(new() { CommunityKey = "club", OrganizerParticipantId = actor.Id,
+                PublicId = Guid.NewGuid(), StartsAtUtc = Now.AddDays(7), Status = GatheringStatus.Recruiting,
+                MinimumPlayers = 1, DesiredPlayers = 3, MaximumPlayers = 4,
+                GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(Snapshot()) });
+            db.RecruitmentDigests.Add(new() { CommunityKey = "club", RequestedAt = Now, IncludeAllUpcoming = true });
+            await db.SaveChangesAsync();
+        }
+        using var http = new HttpClient(new ReleaseBot());
+        var bot = new Telegram.Bot.TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO", http);
+        var sender = new ReleaseSender();
+        await using var dispatch = database.Open();
+        Assert.True(await new RecruitmentDigestDispatcher(dispatch, Time, new(dispatch, Time), sender, bot,
+            NullLogger<RecruitmentDigestDispatcher>.Instance).ProcessOneAsync(default));
+        Assert.Equal(1, sender.Calls);
+        Assert.Equal(RecruitmentDigestState.Delivered, (await dispatch.RecruitmentDigests.SingleAsync()).State);
+    }
+
+    [PostgreSqlFact]
     public async Task WishlistUpgradePreservesPreferencesEnablesNewDefaultAndReplays()
     {
         await using var database = await Database.CreateAsync("20260904092743_PlayOutcomesReferencesAndReleases");

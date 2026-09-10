@@ -21,9 +21,10 @@ namespace oyinQ.Bot.Tests;
 public sealed class AdminOverviewPhotoTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task OverviewUsesSharedPhotosOnlyForManageableCommunities(bool superAdmin)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task OverviewUsesSharedPhotosOnlyForManageableCommunities(bool superAdmin, bool unavailable)
     {
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -42,7 +43,7 @@ public sealed class AdminOverviewPhotoTests
                     CommunityKey = key, TelegramUserId = 42, GrantedByTelegramUserId = 1 });
             }
             db.KnownTelegramChats.Add(new KnownTelegramChat { TelegramChatId = -1000 - index,
-                IsBotPresent = true, TelegramPhotoFileId = key, TelegramPhotoUpdatedAt = DateTimeOffset.UtcNow });
+                IsBotPresent = !unavailable, TelegramPhotoFileId = key, TelegramPhotoUpdatedAt = DateTimeOffset.UtcNow });
             // Locked/unconfigured photos intentionally aren't cached. Any attempt
             // to retrieve them would hit the recording HTTP handler below.
             if (index < 3 || (superAdmin && index == 3))
@@ -65,11 +66,13 @@ public sealed class AdminOverviewPhotoTests
         var result = await AdminEndpoints.OverviewAsync(request, db, authenticator, authorization, photos, default);
         var json = JsonSerializer.SerializeToElement(((IValueHttpResult)result).Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var club = json.GetProperty("clubs")[0];
-        Assert.Equal("data:image/jpeg;base64,AQ==", club.GetProperty("avatarUrl").GetString());
+        Assert.Equal(unavailable ? null : "data:image/jpeg;base64,AQ==", club.GetProperty("avatarUrl").GetString());
+        Assert.Equal(unavailable, club.GetProperty("isBotUnavailable").GetBoolean());
         Assert.Equal(superAdmin ? 2 : 1, json.GetProperty("clubs").GetArrayLength());
         var camp = Assert.Single(json.GetProperty("camps").EnumerateArray());
         Assert.Equal("Closed", camp.GetProperty("status").GetString());
-        Assert.Equal("data:image/jpeg;base64,Ag==", camp.GetProperty("avatarUrl").GetString());
+        Assert.Equal(unavailable ? null : "data:image/jpeg;base64,Ag==", camp.GetProperty("avatarUrl").GetString());
+        Assert.Equal(unavailable, camp.GetProperty("isBotUnavailable").GetBoolean());
         Assert.All(json.GetProperty("lockedCommunities").EnumerateArray(), item => Assert.False(item.TryGetProperty("avatarUrl", out _)));
         Assert.Equal(0, handler.Requests);
         if (superAdmin) Assert.Equal(0, verifier.Checks);

@@ -93,6 +93,16 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("persistent admin community context", () => {
+  it.each(["club", "camp"])("keeps unavailable %s management and deletion accessible", async kind => {
+    data.clubs[0].isBotUnavailable = true;
+    data.camps[0].isBotUnavailable = true;
+    await mount();
+    if (kind === "camp") await switchTo("camp-3");
+    expect(host.textContent).toContain("Бот недоступен в Telegram-группе");
+    await click("Удалить из OyinQ");
+    expect(writes()).toContainEqual([`/admin/${kind === "club" ? "clubs/1" : "camps/3"}`, expect.objectContaining({ method: "DELETE" })]);
+  });
+
   it("uses the shared photo cards and updates the selected chat photo", async () => {
     data.clubs[0].avatarUrl = "data:image/jpeg;base64,AQ==";
     data.camps[0].avatarUrl = "data:image/jpeg;base64,Ag==";

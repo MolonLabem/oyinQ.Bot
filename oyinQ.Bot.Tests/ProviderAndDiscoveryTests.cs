@@ -12,6 +12,16 @@ namespace oyinQ.Bot.Tests;
 public sealed class ProviderAndDiscoveryTests
 {
     [Fact]
+    public void OwnAvailableCopyDoesNotSuggestAskingYourselfOrConfirmBringing()
+    {
+        CampCatalogProvider own = new(7, "Владелец", null, CollectionItemSource.Manual, CampBringCommitment.Available, true, null);
+        var state = GameProviderService.Describe(false, [own]);
+        Assert.Equal("Вы можете привезти свою коробку", state.Summary);
+        Assert.False(state.IsConfirmed);
+        Assert.Contains("Можно попросить: Владелец", GameProviderService.Describe(false, [own with { IsCurrentUser = false }]).Summary);
+    }
+
+    [Fact]
     public void ProviderProjection_DeduplicatesPeopleAndKeepsTheirStrongestCommitment()
     {
         CampCatalogProvider possible = new(7, "Игрок", null, CollectionItemSource.Manual, CampBringCommitment.Available, false, null);

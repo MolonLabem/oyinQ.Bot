@@ -65,10 +65,10 @@ public sealed class RecruitmentDigestDispatcher(AppDbContext db, TimeProvider cl
         try
         {
             var community = await db.OyinQCommunities.AsNoTracking().SingleAsync(x => x.Key == row.CommunityKey, ct);
-            var games = await LoadGamesAsync(row.CommunityKey, now, ct);
+            var games = await LoadGamesAsync(row.CommunityKey, now, row.IncludeAllUpcoming, ct);
             var username = (await bot.GetMe(ct)).Username;
             if (string.IsNullOrWhiteSpace(username)) throw new InvalidOperationException("Bot username is unavailable.");
-            var message = RecruitmentDigestFormatter.Build(games, community.Key, community.TimeZoneId, clock.GetUtcNow(), username);
+            var message = RecruitmentDigestFormatter.Build(games, community.Key, community.TimeZoneId, clock.GetUtcNow(), username, row.IncludeAllUpcoming);
             if (message.Total == 0 || !await service.IsActiveAsync(community, ct))
             { await FinishAsync(row.Id, attempt, RecruitmentDigestState.Expired, null, ct); return true; }
             var send = await sender.PrepareMessageAsync(community.Key, message.Text, ParseMode.Html, message.Keyboard, ct);
@@ -78,8 +78,8 @@ public sealed class RecruitmentDigestDispatcher(AppDbContext db, TimeProvider cl
                 var current = await CommunityMutationLock.AcquireAsync(db, community.Key, ct);
                 var locked = await LockAsync(row.Id, ct);
                 if (locked.AttemptId != attempt || locked.State != RecruitmentDigestState.Preparing) return true;
-                var freshGames = await LoadGamesAsync(community.Key, clock.GetUtcNow(), ct);
-                var freshMessage = RecruitmentDigestFormatter.Build(freshGames, community.Key, current.TimeZoneId, clock.GetUtcNow(), username);
+                var freshGames = await LoadGamesAsync(community.Key, clock.GetUtcNow(), locked.IncludeAllUpcoming, ct);
+                var freshMessage = RecruitmentDigestFormatter.Build(freshGames, community.Key, current.TimeZoneId, clock.GetUtcNow(), username, locked.IncludeAllUpcoming);
                 if (!await service.IsActiveAsync(current, ct) || row.RequestedAt.AddHours(36) <= clock.GetUtcNow())
                 { locked.State = RecruitmentDigestState.Expired; }
                 else if (freshMessage.Text != message.Text || !freshGames.Select(x => x.PublicId).Order().SequenceEqual(games.Select(x => x.PublicId).Order()))
@@ -109,10 +109,8 @@ public sealed class RecruitmentDigestDispatcher(AppDbContext db, TimeProvider cl
         return true;
     }
 
-    private Task<GameGathering[]> LoadGamesAsync(string key, DateTimeOffset now, CancellationToken ct) =>
-        db.GameGatherings.AsNoTracking().Include(x => x.Participants).Include(x => x.Guests)
-            .Where(x => x.CommunityKey == key && x.StartsAtUtc > now && x.StartsAtUtc <= now.AddHours(36)
-                && (x.Status == GatheringStatus.Recruiting || x.Status == GatheringStatus.Ready)).ToArrayAsync(ct);
+    private Task<GameGathering[]> LoadGamesAsync(string key, DateTimeOffset now, bool includeAllUpcoming, CancellationToken ct) =>
+        GatheringRecruitment.LoadCandidatesAsync(db, key, now, includeAllUpcoming, ct);
 
     private async Task<RecruitmentDigest> LockAsync(long id, CancellationToken ct)
     {

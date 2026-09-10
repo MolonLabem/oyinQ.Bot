@@ -8,6 +8,7 @@ public sealed class RecruitmentDigest
     public string CommunityKey { get; set; } = "";
     public OyinQCommunity Community { get; set; } = null!;
     public DateTimeOffset RequestedAt { get; set; }
+    public bool IncludeAllUpcoming { get; set; }
     public RecruitmentDigestState State { get; set; }
     public Guid? AttemptId { get; set; }
     public DateTimeOffset? LeaseExpiresAt { get; set; }

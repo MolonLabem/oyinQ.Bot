@@ -5,14 +5,14 @@ import { Card, ErrorState, Field, Loading, Notice } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 
-export function RecruitmentSettings({ communityKey }: { communityKey: string }) {
+export function RecruitmentSettings({ communityKey, mode = "Club" }: { communityKey: string; mode?: "Club" | "Camp" }) {
   const api = useScreenRequest();
   const url = `/admin/communities/${encodeURIComponent(communityKey)}/recruitment`;
   const state = useAsync(() => api<{ hours: number }>(url), [url]);
   const [hours, setHours] = useState(4); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>();
   const [result, setResult] = useState<string>();
   async function send() {
-    if (busy || !await telegram.confirm("Отправить в группу этого сообщества список сборов, которым нужны игроки в ближайшие 36 часов?")) return;
+    if (busy || !await telegram.confirm(mode === "Camp" ? "Отправить в группу список всех предстоящих сборов кэмпа, которым нужны игроки?" : "Отправить в группу этого сообщества список сборов, которым нужны игроки в ближайшие 36 часов?")) return;
     setBusy(true); setError(undefined); setResult(undefined);
     try {
       const response = await api<{ queued: boolean; message: string }>(url, json("POST", {}));
@@ -31,7 +31,7 @@ export function RecruitmentSettings({ communityKey }: { communityKey: string }) 
   }
   return <Card><h2>Напоминания о сборах</h2>
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : <>
-      <p>Опубликуйте в группе сборы со свободными местами в ближайшие 36 часов.</p>
+      <p>{mode === "Camp" ? "Опубликуйте в группе предстоящие сборы кэмпа со свободными местами — без ограничения в 36 часов." : "Опубликуйте в группе сборы со свободными местами в ближайшие 36 часов."}</p>
       <button disabled={busy} onClick={() => void send()}>Отправить сборы, которым нужны игроки</button>
       {result && <Notice>{result}</Notice>}
       <Field label="Интервал между напоминаниями о сборах" hint="Общий для организаторов и администраторов этого сообщества. Сообщения отправляются только по явному запросу.">

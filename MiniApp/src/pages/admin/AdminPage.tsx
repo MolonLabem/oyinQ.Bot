@@ -221,6 +221,7 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                       <div>
                         <h3>{club.name}</h3>
                         <p className="muted">{club.telegramTitle}</p>
+                        {club.isBotUnavailable && <Notice kind="warning">Бот недоступен в Telegram-группе. Настройки и удаление из OyinQ доступны.</Notice>}
                         <p>{plural(club.gameCount, "игра", "игры", "игр")}</p>
                       </div>
                       <Badge tone={club.isActive ? "success" : "neutral"}>{club.isActive ? "Активен" : "Архив"}</Badge>
@@ -251,6 +252,7 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                   <div className="row">
                     <div>
                       <h3>{camp.name}</h3>
+                      {camp.isBotUnavailable && <Notice kind="warning">Бот недоступен в Telegram-группе. Настройки и удаление из OyinQ доступны.</Notice>}
                       <p>
                         {camp.startsAtUtc ? formatInstant(camp.startsAtUtc, camp.timeZoneId) : "Не указано"} — {camp.endsAtUtc ? formatInstant(camp.endsAtUtc, camp.timeZoneId) : "Не указано"}
                       </p>
@@ -514,7 +516,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
         </button>
       </Card>
       <PostingTopicSetting communityKey={camp.communityKey} />
-      <RecruitmentSettings communityKey={camp.communityKey} />
+      <RecruitmentSettings communityKey={camp.communityKey} mode="Camp" />
       <Card className="form-grid">
         <h2>Базовая коллекция</h2>
         {camp.status !== "Draft" ? (

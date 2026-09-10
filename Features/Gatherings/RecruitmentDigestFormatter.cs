@@ -12,9 +12,9 @@ public sealed record RecruitmentDigestMessage(string Text, InlineKeyboardMarkup 
 public static class RecruitmentDigestFormatter
 {
     public static RecruitmentDigestMessage Build(IEnumerable<GameGathering> gatherings, string communityKey,
-        string timeZoneId, DateTimeOffset now, string username)
+        string timeZoneId, DateTimeOffset now, string username, bool includeAllUpcoming = false)
     {
-        var ranked = GatheringRecruitment.Rank(gatherings, now);
+        var ranked = GatheringRecruitment.Rank(gatherings, now, includeAllUpcoming);
         var text = new StringBuilder("🎲 <b>Ищут игроков · ближайшие игры</b>\n");
         var today = CommunityTime.LocalDate(now, timeZoneId);
         var buttons = new List<InlineKeyboardButton[]>();

@@ -4,6 +4,7 @@ using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
 namespace oyinQ.Bot.Integrations.Telegram;
@@ -44,10 +45,9 @@ public sealed class TelegramCommunityMembershipVerifier(
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            return member.Status is ChatMemberStatus.Creator
+            return member is ChatMemberRestricted restricted ? restricted.IsMember : member.Status is ChatMemberStatus.Creator
                 or ChatMemberStatus.Administrator
-                or ChatMemberStatus.Member
-                or ChatMemberStatus.Restricted;
+                or ChatMemberStatus.Member;
         }
         catch (ApiRequestException exception) when (exception.ErrorCode == 400
             && exception.Message.Contains("PARTICIPANT_ID_INVALID", StringComparison.OrdinalIgnoreCase))

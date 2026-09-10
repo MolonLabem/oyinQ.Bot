@@ -186,7 +186,7 @@ public sealed class AdminAuthorizationServiceTests
     }
 
     [Fact]
-    public async Task RemovedBotChat_IsNotListedAsActiveAdminTarget()
+    public async Task SuperAdmin_CanDiscoverAndManageConfiguredChatAfterBotRemoval()
     {
         await using var fixture = CreateFixture(superAdmins: new HashSet<long> { 1 });
         fixture.Db.KnownTelegramChats.Add(new KnownTelegramChat
@@ -198,7 +198,9 @@ public sealed class AdminAuthorizationServiceTests
 
         var chats = await fixture.Service.GetAdminPanelChatsAsync(1, default);
 
-        Assert.DoesNotContain(chats, x => x.TelegramChatId == -1001);
+        Assert.Contains(chats, x => x.TelegramChatId == -1001 && x.IsApproved && x.IsBotUnavailable);
+        Assert.True(await fixture.Service.CanAdministerCommunityAsync(1, "club-a", default));
+        Assert.Empty(fixture.Telegram.VerificationCalls);
         Assert.Contains(chats, x => x.TelegramChatId == -1002);
     }
 

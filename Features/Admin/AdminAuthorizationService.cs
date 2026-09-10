@@ -13,7 +13,8 @@ public sealed record AdminChatAccess(
     BotMode Mode,
     bool IsActive,
     bool IsApproved,
-    bool IsSuperAdmin);
+    bool IsSuperAdmin,
+    bool IsBotUnavailable = false);
 
 public sealed record GroupAdministratorRecord(
     long TelegramUserId,
@@ -134,13 +135,13 @@ public sealed class AdminAuthorizationService(
         var knownPresence = await dbContext.KnownTelegramChats.AsNoTracking()
             .Where(x => configuredIds.Contains(x.TelegramChatId))
             .ToDictionaryAsync(x => x.TelegramChatId, x => x.IsBotPresent, cancellationToken);
-        foreach (var chat in chats.Where(chat => !knownPresence.TryGetValue(chat.TelegramChatId, out var present)
+        foreach (var chat in chats.Where(chat => superAdmin || !knownPresence.TryGetValue(chat.TelegramChatId, out var present)
                      || present))
         {
             if (superAdmin)
             {
                 result.Add(new(chat.Key, chat.Name, chat.TelegramChatId, chat.Mode, chat.IsActive,
-                    true, true));
+                    true, true, knownPresence.TryGetValue(chat.TelegramChatId, out var present) && !present));
                 continue;
             }
             if (!await telegramVerifier.IsAdministratorAsync(chat.TelegramChatId, telegramUserId,

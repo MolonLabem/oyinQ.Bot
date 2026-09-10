@@ -156,6 +156,7 @@ internal static class AdminEndpoints
         var access = await authorization.GetAdminPanelChatsAsync(identity.TelegramUserId, cancellationToken);
         var approvedKeys = access.Where(x => x.IsApproved && x.CommunityKey is not null)
             .Select(x => x.CommunityKey!).ToHashSet();
+        var unavailableKeys = access.Where(x => x.IsBotUnavailable).Select(x => x.CommunityKey).ToHashSet();
         var clubs = await dbContext.Clubs.AsNoTracking().Include(x => x.BotChat)
             .Where(x => approvedKeys.Contains(x.BotChatKey)).OrderBy(x => x.Name)
             .Select(x => new { x.Id, x.BotChatKey, x.Name, TelegramTitle = x.BotChat.Name, x.BotChat.TimeZoneId,
@@ -166,6 +167,7 @@ internal static class AdminEndpoints
         foreach (var club in clubs)
             clubViews.Add(new { club.Id, CommunityKey = club.BotChatKey,
                 club.Name, club.TelegramTitle, club.TelegramChatId, club.TimeZoneId, club.IsActive, IsApproved = true,
+                IsBotUnavailable = unavailableKeys.Contains(club.BotChatKey),
                 GameCount = ClubCollectionSerializer.Deserialize(club.GameCount).Games.Count,
                 club.CollectionRevision, club.UpdatedAt, club.Gatherings,
                 AvatarUrl = await photos.GetDataUrlAsync(club.TelegramChatId, cancellationToken) });
@@ -187,6 +189,7 @@ internal static class AdminEndpoints
         foreach (var camp in camps)
             campViews.Add(new { camp.Id, camp.CommunityKey, camp.Name, camp.TelegramTitle, camp.TelegramChatId,
                 camp.TimeZoneId, camp.IsApproved, camp.Status, camp.StartsAtUtc, camp.EndsAtUtc,
+                IsBotUnavailable = unavailableKeys.Contains(camp.CommunityKey),
                 camp.SourceClubId, camp.SourceClubName, camp.Registrations, camp.Contributions, camp.Gatherings,
                 AvatarUrl = await photos.GetDataUrlAsync(camp.TelegramChatId, cancellationToken) });
         var locked = access.Where(x => !x.IsApproved).Select(x => new

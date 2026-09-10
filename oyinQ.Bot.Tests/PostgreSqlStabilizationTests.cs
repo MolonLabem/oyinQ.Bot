@@ -24,7 +24,11 @@ public sealed class PostgreSqlFactAttribute : FactAttribute
     public PostgreSqlFactAttribute()
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OYINQ_TEST_POSTGRES")))
+        {
+            if (Environment.GetEnvironmentVariable("OYINQ_REQUIRE_POSTGRES_TESTS") == "true")
+                throw new InvalidOperationException("Required PostgreSQL tests need OYINQ_TEST_POSTGRES.");
             Skip = "Задайте OYINQ_TEST_POSTGRES для отдельного тестового PostgreSQL с правом CREATE DATABASE.";
+        }
     }
 }
 
