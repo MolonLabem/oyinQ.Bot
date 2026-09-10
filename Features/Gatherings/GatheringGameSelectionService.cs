@@ -16,6 +16,19 @@ public sealed class GatheringGameSelectionService(
     public async Task<GatheringGameSnapshot> EnrichExpansionMetadataAsync(GatheringGameSnapshot snapshot,
         CancellationToken ct, IReadOnlyCollection<long>? selected = null)
     {
+        if (snapshot.BggId is { } baseId)
+        {
+            try
+            {
+                var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(baseId,
+                    (selected ?? []).Except((snapshot.KnownExpansions ?? snapshot.SelectedExpansions)
+                        .Concat(snapshot.SelectedExpansions).Select(x => x.BggId)).ToArray(), ct);
+                snapshot = ApplyExpansionMetadata(snapshot,
+                    details.Expansions.Select(BggGameMapper.ToCollectionExpansion).ToArray());
+            }
+            catch (KeyNotFoundException) { /* Keep the saved, validated relationships. */ }
+            catch (HttpRequestException) when (!ct.IsCancellationRequested) { /* Saved selections remain editable. */ }
+        }
         var missing = (snapshot.KnownExpansions ?? snapshot.SelectedExpansions)
             .Where(item => (selected is null || selected.Contains(item.BggId))
                 && PlayerCountRange.Normalize(item.MinPlayers, item.MaxPlayers).WasDefaulted)
@@ -39,11 +52,29 @@ public sealed class GatheringGameSelectionService(
     public static GatheringGameSnapshot ApplyExpansionMetadata(GatheringGameSnapshot snapshot,
         IReadOnlyList<ClubCollectionExpansion> metadata)
     {
-        var known = (snapshot.KnownExpansions ?? snapshot.SelectedExpansions).Select(item =>
-            metadata.FirstOrDefault(value => value.BggId == item.BggId) is { } extra
-                ? item.WithMetadataFallback(extra) : item).ToArray();
+        var known = ClubCollectionExpansion.Merge(
+            (snapshot.KnownExpansions ?? snapshot.SelectedExpansions).Concat(snapshot.SelectedExpansions), metadata);
         return (snapshot with { KnownExpansions = known })
             .WithExpansions(snapshot.SelectedExpansions.Select(item => item.BggId).ToArray());
+    }
+
+    public async Task<IReadOnlyList<CampBggImportDraftItem>> ExpansionOwnershipAsync(
+        GatheringGameSnapshot snapshot, IReadOnlyCollection<long> selected,
+        IReadOnlyCollection<long> requested, CancellationToken ct)
+    {
+        if (requested.Except(selected).Any())
+            throw new ArgumentException("Можно добавить только выбранные для сбора дополнения.");
+        var items = GatheringExpansionSelection.Select(snapshot.KnownExpansions ?? snapshot.SelectedExpansions, requested);
+        if (items.Count == 0) return [];
+        if (snapshot.BggId is not { } baseId) throw new InvalidOperationException("У игры отсутствует BGG ID.");
+        IReadOnlyList<BggCollectionItem> metadata = [];
+        try { metadata = await bggClient.GetItemsByIdsAsync(requested.Distinct().ToArray(), ct); }
+        catch (HttpRequestException) when (!ct.IsCancellationRequested) { /* Validated saved metadata is sufficient. */ }
+        return items.Select(item =>
+        {
+            var full = metadata.SingleOrDefault(x => x.Game.BggId == item.BggId && x.IsExpansion && x.ParentBggIds.Contains(baseId));
+            return full is not null ? BggGameMapper.ToDraftItem(full) : BggGameMapper.ToExpansionOwnership(baseId, item);
+        }).ToArray();
     }
 
     public async Task<GatheringGameSnapshot> FromClubCollectionAsync(
@@ -88,8 +119,11 @@ public sealed class GatheringGameSelectionService(
     {
         try
         {
-            var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(savedGame.BggId, selectedExpansionIds, cancellationToken);
-            return FromCanonicalDetails(details, selectedExpansionIds, "catalog");
+            var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(savedGame.BggId,
+                selectedExpansionIds.Except(savedGame.Expansions.Select(x => x.BggId)).ToArray(), cancellationToken);
+            var game = BggGameMapper.ToCollectionGame(details);
+            return GatheringGameSnapshot.FromClubGame(game with
+            { Expansions = ClubCollectionExpansion.Merge(game.Expansions, savedGame.Expansions) }, selectedExpansionIds);
         }
         catch (KeyNotFoundException)
         {

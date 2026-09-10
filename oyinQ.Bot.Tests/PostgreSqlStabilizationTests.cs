@@ -41,6 +41,37 @@ public sealed partial class PostgreSqlStabilizationTests
         new(CollectionItemSnapshot.CurrentVersion, "Игра", null, null, 1, 4, null));
 
     [PostgreSqlFact]
+    public async Task EditingExpansionsRollsBackSelectionOwnershipAndBringingTogether()
+    {
+        await using var database = await Database.CreateAsync(); var actor = await SeedAsync(database, camp: true);
+        Guid gatheringId;
+        await using (var initial = database.Open())
+        {
+            var community = (await initial.OyinQCommunities.SingleAsync()).ToBotCommunity();
+            gatheringId = (await Management(initial, new Bgg()).CreateAsync(community,
+                new(actor.TelegramUserId), Command(), default)).PublicId;
+        }
+        var bgg = new Bgg { Expansions = [new(99, "Первое", MinPlayers: 1, MaxPlayers: 4), new(100, "Второе", MinPlayers: 1, MaxPlayers: 4)] };
+        var update = new UpdateGatheringCommand(Now.AddHours(1), 1, 2, 4, null, false, [99, 100],
+            AddExpansionToCollectionIds: [99], BringExpansionIds: [100]);
+        await using (var failing = database.Open(new RejectContribution()))
+            await Assert.ThrowsAsync<InvalidOperationException>(() => Management(failing, bgg)
+                .UpdateAsync(gatheringId, "club", actor.TelegramUserId, update, default));
+        await using (var verify = database.Open())
+        {
+            Assert.Empty(await verify.ParticipantCollectionItems.ToArrayAsync());
+            Assert.Empty(await verify.CampGameContributions.ToArrayAsync());
+            Assert.Empty(GatheringGameSnapshotSerializer.Deserialize((await verify.GameGatherings.SingleAsync()).GameSnapshotJson).SelectedExpansions);
+        }
+        await using (var success = database.Open())
+            await Management(success, bgg).UpdateAsync(gatheringId, "club", actor.TelegramUserId, update, default);
+        await using var final = database.Open();
+        Assert.Equal(2, await final.ParticipantCollectionItems.CountAsync());
+        Assert.Equal(100, (await final.CampGameContributions.SingleAsync()).BggId);
+        Assert.Equal(2, GatheringGameSnapshotSerializer.Deserialize((await final.GameGatherings.SingleAsync()).GameSnapshotJson).SelectedExpansions.Count);
+    }
+
+    [PostgreSqlFact]
     public async Task DeletionCommittedDuringBggLookupPreventsCreation()
     {
         await using var database = await Database.CreateAsync();
@@ -473,12 +504,13 @@ public sealed partial class PostgreSqlStabilizationTests
     }
     private sealed class Bgg(Func<Task>? lookup = null) : IBoardGameGeekClient
     {
+        public IReadOnlyList<BggExpansion> Expansions { get; init; } = [];
         public async Task<BggGameDetails?> GetGameDetailsAsync(long id, CancellationToken ct)
-        { if (lookup is not null) await lookup(); return new(new ExternalGame(42, "Игра", 1, 4, null, "https://boardgamegeek.com/boardgame/42"), []); }
+        { if (lookup is not null) await lookup(); return new(new ExternalGame(42, "Игра", 1, 4, null, "https://boardgamegeek.com/boardgame/42"), Expansions); }
         public Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(string q, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string u, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string u, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> ids, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> ids, CancellationToken ct) => Task.FromResult<IReadOnlyList<BggCollectionItem>>([]);
     }
     private sealed class Transport : INotificationTransport
     {

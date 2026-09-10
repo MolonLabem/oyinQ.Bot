@@ -57,7 +57,10 @@ export async function resolveGameSelection(
   try {
     const details = await loadDetails(candidate.bggId);
     return {
-      game: { ...details.game, expansions: uniqueByBggId(details.expansions) },
+      game: { ...details.game, expansions: uniqueByBggId([
+        ...(details.game.bggId === candidate.bggId ? candidate.localGame?.expansions ?? [] : []),
+        ...details.expansions,
+      ]) },
       source: details.game.bggId === candidate.bggId ? source : "bgg",
       selectedExpansionIds: details.selectedExpansionIds, baseGames: details.baseGames,
     };

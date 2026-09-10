@@ -45,14 +45,20 @@ public static class BggGameMapper
         foreach (var expansion in selected)
         {
             var provider = details.Expansions.First(x => x.BggId == expansion.BggId);
-            var snapshot = provider.Snapshot ?? new CollectionItemSnapshot(CollectionItemSnapshot.CurrentVersion,
-                expansion.Name, null, null, expansion.MinPlayers, expansion.MaxPlayers, null,
-                ParentBggIds: [game.BggId], OriginalName: expansion.OriginalName);
-            var parents = (snapshot.ParentBggIds ?? []).Append(game.BggId).Distinct().ToArray();
-            items.Add(new(expansion.BggId, CollectionItemType.Expansion, game.BggId,
-                snapshot with { ParentBggIds = parents }, ParentBggIds: parents));
+            items.Add(ToExpansionOwnership(game.BggId, expansion, provider.Snapshot));
         }
         return items;
+    }
+
+    public static CampBggImportDraftItem ToExpansionOwnership(long baseId, ClubCollectionExpansion expansion,
+        CollectionItemSnapshot? metadata = null)
+    {
+        var snapshot = metadata ?? new CollectionItemSnapshot(CollectionItemSnapshot.CurrentVersion,
+            expansion.Name, null, null, expansion.MinPlayers, expansion.MaxPlayers, null,
+            ParentBggIds: [baseId], OriginalName: expansion.OriginalName);
+        var parents = (snapshot.ParentBggIds ?? []).Append(baseId).Distinct().ToArray();
+        return new(expansion.BggId, CollectionItemType.Expansion, baseId,
+            snapshot with { ParentBggIds = parents }, ParentBggIds: parents);
     }
 
     public static CampImportSelectionItem ToImportSelection(ExternalGame game, CollectionItemType type,

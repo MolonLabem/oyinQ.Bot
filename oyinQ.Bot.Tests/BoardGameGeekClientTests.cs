@@ -11,6 +11,21 @@ namespace oyinQ.Bot.Tests;
 public sealed class BoardGameGeekClientTests
 {
     [Fact]
+    public async Task ExpansionMetadataFailureRetainsEveryOfficialExpansionLink()
+    {
+        var client = CreateClient(new StubHttpMessageHandler(request => request.RequestUri!.Query.Contains("id=42&")
+            ? XmlResponse(HttpStatusCode.OK, """
+                <items><item type="boardgame" id="42"><name type="primary" value="Base" />
+                <link type="boardgameexpansion" inbound="true" id="99" value="First" />
+                <link type="boardgameexpansion" inbound="true" id="100" value="Second" />
+                <link type="boardgameexpansion" inbound="false" id="101" value="Not an expansion" />
+                </item></items>
+                """)
+            : new HttpResponseMessage(HttpStatusCode.Forbidden)));
+        var details = await client.GetGameDetailsAsync(42, default);
+        Assert.Equal(new long[] { 99, 100 }, details!.Expansions.Select(x => x.BggId).Order().ToArray());
+    }
+    [Fact]
     public void SearchRanking_PrefersExactPrefixWholeWordAndContains()
     {
         var ranked = BoardGameGeekClient.RankSearchResults([

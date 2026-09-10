@@ -14,10 +14,12 @@ namespace oyinQ.Bot.Features.MiniApp;
 
 internal sealed record CreateGatheringRequest(string CommunityKey, string GameSource, long BggId,
     IReadOnlyCollection<long>? SelectedExpansionIds, string StartsAtLocal,
-    int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false);
+    int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false,
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
 internal sealed record UpdateGatheringRequest(string CommunityKey, string StartsAtLocal,
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description,
-    bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds, bool ConfirmScheduleConflict = false);
+    bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds, bool ConfirmScheduleConflict = false,
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
 internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null, bool ConfirmScheduleConflict = false);
 internal sealed record GatheringGuestRequest(string CommunityKey, string? DisplayName = null);
 internal sealed record GatheringListItemResponse(
@@ -195,7 +197,8 @@ internal static class GatheringEndpoints
             var gathering = await management.CreateAsync(access.Community, access.Identity,
                 new(body.CommunityKey, body.GameSource, body.BggId, body.SelectedExpansionIds ?? [], startsAt,
                     body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
-                    body.Description, body.CanTeachRules, body.ConfirmScheduleConflict, body.AddToCollection, body.BringToCamp), cancellationToken);
+                    body.Description, body.CanTeachRules, body.ConfirmScheduleConflict, body.AddToCollection, body.BringToCamp,
+                    body.AddExpansionToCollectionIds, body.BringExpansionIds), cancellationToken);
             var published = await publication.PublishAsync(gathering.PublicId, cancellationToken);
             return Results.Created($"/api/miniapp/gatherings/{gathering.PublicId}",
                 new { gathering.PublicId, AnnouncementPublished = published });
@@ -223,7 +226,8 @@ internal static class GatheringEndpoints
             var startsAt = ParseLocal(body.StartsAtLocal, access.Community.TimeZoneId);
             var result = await management.UpdateAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
                 new(startsAt, body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
-                    body.Description, body.CanTeachRules, body.SelectedExpansionIds ?? [], body.ConfirmScheduleConflict), cancellationToken);
+                    body.Description, body.CanTeachRules, body.SelectedExpansionIds ?? [], body.ConfirmScheduleConflict,
+                    body.AddExpansionToCollectionIds, body.BringExpansionIds), cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);
             return Results.NoContent();
         }

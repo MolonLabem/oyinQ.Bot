@@ -14,6 +14,32 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class GatheringGameSelectionServiceTests
 {
+    [Fact]
+    public async Task EditingDiscoversAllExpansionsWithoutReplacingBaseSnapshotOrLosingSavedSelections()
+    {
+        await using var f = await Fixture.CreateAsync(BotMode.Club, LocalGame([]),
+            CanonicalDetails(new BggExpansion(99, "Первое", MinPlayers: 2, MaxPlayers: 5), new BggExpansion(100, "Второе")));
+        var saved = GatheringGameSnapshot.FromClubGame(LocalGame([new(77, "Сохранённое", MinPlayers: 2, MaxPlayers: 4)]), [77]);
+        var enriched = await f.Selection.EnrichExpansionMetadataAsync(saved, default);
+        Assert.Equal(saved.Name, enriched.Name);
+        Assert.Equal(saved.BaseMaxPlayers, enriched.BaseMaxPlayers);
+        Assert.Equal(new long[] { 77, 99, 100 }, enriched.KnownExpansions!.Select(x => x.BggId).Order().ToArray());
+        Assert.Equal(77, Assert.Single(enriched.SelectedExpansions).BggId);
+        Assert.Equal(2, enriched.WithExpansions([99, 100]).SelectedExpansions.Count);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Selection.EnrichExpansionMetadataAsync(saved, default, [999]));
+    }
+
+    [Fact]
+    public async Task EditingAndExplicitOwnershipWorkWithSavedRelationshipsDuringBggOutage()
+    {
+        await using var f = await Fixture.CreateAsync(BotMode.Club, LocalGame([]), null, unavailable: true);
+        var saved = GatheringGameSnapshot.FromClubGame(LocalGame([new(77, "Сохранённое")]), [77]);
+        var enriched = await f.Selection.EnrichExpansionMetadataAsync(saved, default);
+        Assert.Equal(77, Assert.Single(enriched.KnownExpansions!).BggId);
+        var ownership = await f.Selection.ExpansionOwnershipAsync(enriched, [77], [77], default);
+        Assert.Equal(42, Assert.Single(ownership).ParentBggId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Selection.ExpansionOwnershipAsync(enriched, [999], [999], default));
+    }
     [Theory]
     [InlineData(BotMode.Club)]
     [InlineData(BotMode.Camp)]

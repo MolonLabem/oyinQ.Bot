@@ -12,7 +12,7 @@ vi.mock("../../api/client", async importOriginal => ({ ...await importOriginal<o
 vi.mock("../../components/GamePicker", () => ({
   GameMeta: () => null,
   GamePicker: ({ onSelect }: { onSelect: (game: ClubGame, source: string, selected: number[]) => void }) =>
-    <button onClick={() => onSelect({ bggId: 10, name: "Цивилизация", minPlayers: 2, maxPlayers: 4, expansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }] }, "bgg", [])}>Выбрать игру</button>,
+    <button onClick={() => onSelect({ bggId: 10, name: "Цивилизация", minPlayers: 2, maxPlayers: 4, expansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }, { bggId: 21, name: "Второе" }] }, "bgg", [])}>Выбрать игру</button>,
 }));
 import { gatheringMutation } from "../../api/client";
 import { CreateGathering, EditGathering } from "./GatheringsPage";
@@ -28,6 +28,38 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); });
+
+it.each(["create", "edit"])("%s separates multiple expansions, ownership and bringing, and clears deselected intentions", async screen => {
+  const community = { key: "camp", name: "Кэмп", mode: "Camp" as const, timeZoneId: "UTC", startsAtUtc: "2030-09-10T00:00:00Z", endsAtUtc: "2030-09-12T00:00:00Z" };
+  const value = { startsAtLocal: "2030-09-10T18:00", minimumPlayers: 2, desiredPlayers: 4, maximumPlayers: 4,
+    gameBaseMinimumPlayers: 2, gameBaseMaximumPlayers: 4, knownExpansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }, { bggId: 21, name: "Второе" }], selectedExpansionIds: [], canTeachRules: true } as unknown as GatheringDetail;
+  await act(async () => root.render(screen === "create"
+    ? <CreateGathering community={community} bggAvailable onDone={() => {}} editRegistration={() => {}} />
+    : <EditGathering community={community} id="g" value={value} done={() => {}} cancel={() => {}} />));
+  const button = (text: string) => [...host.querySelectorAll("button")].find(x => x.textContent === text)!;
+  if (screen === "create") await act(async () => button("Выбрать игру").click());
+  const selects = () => [...host.querySelectorAll<HTMLInputElement>('fieldset input[type="checkbox"]:not([aria-label])')];
+  await act(async () => selects()[0].click());
+  await act(async () => selects()[1].click());
+  await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Дополнение"]')!.click());
+  await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Я привезу: Второе"]')!.click());
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Второе"]')!.checked).toBe(true);
+  expect(gatheringMutation).not.toHaveBeenCalled();
+  await act(async () => {
+    const date = host.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(date, "2030-09-10T18:00");
+    date.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
+  const lastBody = () => JSON.parse(vi.mocked(gatheringMutation).mock.calls.at(-1)![1]!.body as string);
+  expect(lastBody()).toMatchObject({ selectedExpansionIds: [20, 21], addExpansionToCollectionIds: [20], bringExpansionIds: [21] });
+  await act(async () => selects()[1].click());
+  await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
+  expect(lastBody()).toMatchObject({ selectedExpansionIds: [20], addExpansionToCollectionIds: [20], bringExpansionIds: [] });
+  await act(async () => button("Только базовая игра").click());
+  await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
+  expect(lastBody()).toMatchObject({ selectedExpansionIds: [], addExpansionToCollectionIds: [], bringExpansionIds: [] });
+});
 
 it.each(["create", "edit"])("%s offers and submits five players only with the expansion", async screen => {
   const community = { key: "club", name: "Клуб", mode: "Club" as const, timeZoneId: "UTC" };

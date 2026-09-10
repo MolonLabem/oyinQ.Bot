@@ -133,8 +133,16 @@ public sealed class BoardGameGeekClient(
             .DistinctBy(value => value.BggId)
             .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        var enrichedExpansions = await GetItemsByIdsAsync(
-            linkedExpansions.Select(expansion => expansion.BggId).ToArray(), cancellationToken);
+        IReadOnlyList<BggCollectionItem> enrichedExpansions = [];
+        try
+        {
+            enrichedExpansions = await GetItemsByIdsAsync(
+                linkedExpansions.Select(expansion => expansion.BggId).ToArray(), cancellationToken);
+        }
+        catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Official links already identify all expansions. A metadata outage must not hide them.
+        }
         var expansionById = enrichedExpansions.Where(value => value.IsExpansion)
             .ToDictionary(value => value.Game.BggId!.Value);
         var expansions = linkedExpansions.Select(expansion =>

@@ -12,11 +12,13 @@ namespace oyinQ.Bot.Features.Gatherings;
 
 public sealed record CreateGatheringCommand(string CommunityKey, string GameSource, long BggId,
     IReadOnlyCollection<long> SelectedExpansionIds, DateTimeOffset StartsAt, int MinimumPlayers,
-    int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false);
+    int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false,
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
 
 public sealed record UpdateGatheringCommand(DateTimeOffset StartsAt, int MinimumPlayers,
     int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules,
-    IReadOnlyCollection<long> SelectedExpansionIds, bool ConfirmScheduleConflict = false);
+    IReadOnlyCollection<long> SelectedExpansionIds, bool ConfirmScheduleConflict = false,
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
 public sealed record GatheringUpdateResult(GameGathering Gathering,
     IReadOnlyList<GatheringPromotion> Promotions);
 
@@ -44,6 +46,9 @@ public sealed class GatheringManagementService(
                     command.SelectedExpansionIds, cancellationToken, identity.TelegramUserId)
                 : await gameSelection.FromCampCatalogAsync(community.Key, command.BggId,
                     command.SelectedExpansionIds, cancellationToken, identity.TelegramUserId);
+        var bringExpansions = command.BringExpansionIds ?? (command.BringToCamp ? command.SelectedExpansionIds : []);
+        var expansionOwnership = await PrepareExpansionOwnershipAsync(snapshot, command.SelectedExpansionIds,
+            command.AddExpansionToCollectionIds ?? [], bringExpansions, community.Mode, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var authoritative = await CommunityMutationLock.AcquireAsync(dbContext, community.Key, cancellationToken);
         if (!authoritative.IsActive || authoritative.DeletedAt is not null || authoritative.Mode != community.Mode)
@@ -61,16 +66,17 @@ public sealed class GatheringManagementService(
             command.StartsAt, command.MinimumPlayers, command.DesiredPlayers, command.MaximumPlayers,
             command.Description, command.CanTeachRules, now);
         if (command.AddToCollection)
-            await new ParticipantCollectionService(dbContext).UpsertAsync(participant.Id, selection.Ownership.ToArray(), CollectionItemSource.Manual, now, cancellationToken, preserveExisting: true);
+            await new ParticipantCollectionService(dbContext).UpsertAsync(participant.Id,
+                selection.Ownership.Where(x => command.AddExpansionToCollectionIds is null || x.ItemType == CollectionItemType.BaseGame).ToArray(),
+                CollectionItemSource.Manual, now, cancellationToken, preserveExisting: true);
         if (command.BringToCamp && campId is { } targetCampId)
         {
             var contributions = new CampContributionSelectionService(dbContext, participationPolicy, timeProvider);
             await contributions.SetCommitmentAsync(targetCampId, participant.Id, command.BggId, CollectionItemType.BaseGame,
                 CampBringCommitment.Bringing, cancellationToken, command.StartsAt);
-            foreach (var expansionId in command.SelectedExpansionIds.Distinct())
-                await contributions.SetCommitmentAsync(targetCampId, participant.Id, expansionId, CollectionItemType.Expansion,
-                    CampBringCommitment.Bringing, cancellationToken, command.StartsAt);
         }
+        await SaveExpansionOwnershipAsync(participant.Id, campId, command.StartsAt,
+            expansionOwnership, bringExpansions, now, cancellationToken);
         dbContext.GameGatherings.Add(gathering);
         await dbContext.SaveChangesAsync(cancellationToken);
         await notifications.NotifyWishlistAsync(gathering, cancellationToken);
@@ -90,12 +96,24 @@ public sealed class GatheringManagementService(
         GatheringAccessPolicy.RequireOrganizer(original, telegramUserId);
         var enriched = await gameSelection.EnrichExpansionMetadataAsync(
             GatheringGameSnapshotSerializer.Deserialize(original.GameSnapshotJson), cancellationToken, command.SelectedExpansionIds);
+        var targetCommunity = await dbContext.OyinQCommunities.AsNoTracking().SingleAsync(x => x.Key == communityKey, cancellationToken);
+        var expansionOwnership = await PrepareExpansionOwnershipAsync(enriched, command.SelectedExpansionIds,
+            command.AddExpansionToCollectionIds ?? [], command.BringExpansionIds ?? [], targetCommunity.Mode, cancellationToken);
         GameGathering gathering;
         IReadOnlyList<GameGatheringParticipant> promoted;
         bool timeChanged;
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken))
         {
+            var authoritative = await CommunityMutationLock.AcquireAsync(dbContext, communityKey, cancellationToken);
+            if (!authoritative.IsActive || authoritative.DeletedAt is not null)
+                throw new InvalidOperationException("Сообщество больше не принимает изменения сборов.");
+            var campId = authoritative.Mode == BotMode.Camp
+                ? await dbContext.Camps.Where(x => x.BotChatKey == communityKey).Select(x => (long?)x.Id).SingleAsync(cancellationToken) : null;
+            if (campId is { } lockedCampId && dbContext.Database.IsRelational())
+                await dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {lockedCampId} FOR UPDATE").SingleAsync(cancellationToken);
+            if (dbContext.Database.IsRelational())
+                await dbContext.Participants.FromSqlInterpolated($"SELECT * FROM \"Participants\" WHERE \"Id\" = {original.OrganizerParticipantId} FOR UPDATE").SingleAsync(cancellationToken);
             gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
             now = timeProvider.GetUtcNow();
             var currentSnapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
@@ -113,6 +131,8 @@ public sealed class GatheringManagementService(
             promoted = GatheringRules.Update(gathering, command.StartsAt, command.MinimumPlayers,
                 command.DesiredPlayers, command.MaximumPlayers, command.Description, command.CanTeachRules,
                 command.SelectedExpansionIds, now);
+            await SaveExpansionOwnershipAsync(gathering.OrganizerParticipantId, campId, command.StartsAt,
+                expansionOwnership, command.BringExpansionIds ?? [], now, cancellationToken);
             gathering.PublicationStatus = GatheringPublicationStatus.Pending;
             await dbContext.SaveChangesAsync(cancellationToken);
             if (timeChanged) await notifications.NotifyTimeChangedAsync(publicId, cancellationToken);
@@ -124,6 +144,28 @@ public sealed class GatheringManagementService(
             await transaction.CommitAsync(cancellationToken);
         }
         return new(gathering, promoted.Select(x => GatheringPromotion.Capture(x.Participant)).ToArray());
+    }
+
+    private Task<IReadOnlyList<CampBggImportDraftItem>> PrepareExpansionOwnershipAsync(
+        GatheringGameSnapshot snapshot, IReadOnlyCollection<long> selected, IReadOnlyCollection<long> add,
+        IReadOnlyCollection<long> bring, BotMode mode, CancellationToken ct)
+    {
+        if (bring.Count > 0 && mode != BotMode.Camp)
+            throw new ArgumentException("Отметка кэмпа доступна только в кэмпе.");
+        return gameSelection.ExpansionOwnershipAsync(snapshot, selected, add.Concat(bring).Distinct().ToArray(), ct);
+    }
+
+    private async Task SaveExpansionOwnershipAsync(long participantId, long? campId, DateTimeOffset starts,
+        IReadOnlyList<CampBggImportDraftItem> ownership, IReadOnlyCollection<long> bring, DateTimeOffset now, CancellationToken ct)
+    {
+        if (ownership.Count > 0)
+            await new ParticipantCollectionService(dbContext).UpsertAsync(participantId, ownership.ToArray(),
+                CollectionItemSource.Manual, now, ct, preserveExisting: true);
+        if (campId is { } id)
+            foreach (var expansionId in bring.Distinct())
+                await new CampContributionSelectionService(dbContext, participationPolicy, timeProvider)
+                    .SetCommitmentAsync(id, participantId, expansionId, CollectionItemType.Expansion,
+                        CampBringCommitment.Bringing, ct, starts);
     }
 
     public async Task<GameGathering> ChangeLifecycleAsync(Guid publicId, string communityKey,
