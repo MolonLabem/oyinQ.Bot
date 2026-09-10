@@ -29,8 +29,8 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); });
 
-it.each(["create", "edit"])("%s separates multiple expansions, ownership and bringing, and clears deselected intentions", async screen => {
-  const community = { key: "camp", name: "Кэмп", mode: "Camp" as const, timeZoneId: "UTC", startsAtUtc: "2030-09-10T00:00:00Z", endsAtUtc: "2030-09-12T00:00:00Z" };
+it.each((["Club", "Camp"] as const).flatMap(mode => ["create", "edit"].map(screen => ({ mode, screen }))))("$mode $screen supports multiple expansions and independent ownership", async ({ mode, screen }) => {
+  const community = { key: mode.toLowerCase(), name: mode, mode, timeZoneId: "UTC", startsAtUtc: "2030-09-10T00:00:00Z", endsAtUtc: "2030-09-12T00:00:00Z" };
   const value = { startsAtLocal: "2030-09-10T18:00", minimumPlayers: 2, desiredPlayers: 4, maximumPlayers: 4,
     gameBaseMinimumPlayers: 2, gameBaseMaximumPlayers: 4, knownExpansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }, { bggId: 21, name: "Второе" }], selectedExpansionIds: [], canTeachRules: true } as unknown as GatheringDetail;
   await act(async () => root.render(screen === "create"
@@ -42,8 +42,14 @@ it.each(["create", "edit"])("%s separates multiple expansions, ownership and bri
   await act(async () => selects()[0].click());
   await act(async () => selects()[1].click());
   await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Дополнение"]')!.click());
-  await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Я привезу: Второе"]')!.click());
-  expect(host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Второе"]')!.checked).toBe(true);
+  if (mode === "Camp") {
+    await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Я привезу: Второе"]')!.click());
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Второе"]')!.checked).toBe(true);
+  } else {
+    expect(host.querySelector('[aria-label^="Я привезу:"]')).toBeNull();
+    expect(host.textContent).not.toContain("кэмп");
+    expect(host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Второе"]')!.checked).toBe(false);
+  }
   expect(gatheringMutation).not.toHaveBeenCalled();
   await act(async () => {
     const date = host.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
@@ -52,7 +58,7 @@ it.each(["create", "edit"])("%s separates multiple expansions, ownership and bri
   });
   await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
   const lastBody = () => JSON.parse(vi.mocked(gatheringMutation).mock.calls.at(-1)![1]!.body as string);
-  expect(lastBody()).toMatchObject({ selectedExpansionIds: [20, 21], addExpansionToCollectionIds: [20], bringExpansionIds: [21] });
+  expect(lastBody()).toMatchObject({ selectedExpansionIds: [20, 21], addExpansionToCollectionIds: [20], bringExpansionIds: mode === "Camp" ? [21] : [] });
   await act(async () => selects()[1].click());
   await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
   expect(lastBody()).toMatchObject({ selectedExpansionIds: [20], addExpansionToCollectionIds: [20], bringExpansionIds: [] });

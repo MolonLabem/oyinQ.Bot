@@ -19,6 +19,6 @@ export function GatheringExpansionPicker({ expansions, selected, onChange, owner
       <label className="check"><input type="checkbox" aria-label={`Добавить в мою коллекцию: ${expansion.name}`} checked={ownership.add.includes(expansion.bggId) || ownership.bring.includes(expansion.bggId)} disabled={ownership.bring.includes(expansion.bggId)} onChange={e => toggle("add", expansion.bggId, e.target.checked)} />Есть у меня — добавить в мою коллекцию</label>
       {camp && <label className="check"><input type="checkbox" aria-label={`Я привезу: ${expansion.name}`} checked={ownership.bring.includes(expansion.bggId)} onChange={e => toggle("bring", expansion.bggId, e.target.checked)} />Я привезу на кэмп</label>}
     </div>} />
-    {expansions.length > 0 && <p className="muted">Отметьте дополнения для этой партии независимо от владельца. {camp && "«Я привезу» также добавит дополнение в вашу коллекцию, если его там ещё нет. "}Отметки сохранятся вместе со сбором. Удаление дополнения из сбора не удаляет его из коллекции и не отменяет обещание привезти на кэмп.</p>}
+    {expansions.length > 0 && <p className="muted">Отметьте дополнения для этой партии независимо от владельца. {camp && "«Я привезу» также добавит дополнение в вашу коллекцию, если его там ещё нет. "}Отметки сохранятся вместе со сбором. Удаление дополнения из сбора не удаляет его из коллекции{camp ? " и не отменяет обещание привезти на кэмп." : "."}</p>}
   </section>;
 }

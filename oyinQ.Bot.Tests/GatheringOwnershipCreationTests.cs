@@ -12,6 +12,42 @@ using oyinQ.Bot.Features.MiniApp;
 namespace oyinQ.Bot.Tests;
 public sealed class GatheringOwnershipCreationTests
 {
+    [Theory]
+    [InlineData("catalog")]
+    [InlineData("bgg")]
+    public async Task ClubMultipleExpansions_CreateEditAndRemove_KeepPersonalOwnershipSeparate(string source)
+    {
+        await using var f = new PlanningFixture();
+        var seed = f.Gathering("club", f.Clock.Now.AddDays(1));
+        await f.Db.SaveChangesAsync();
+        var club = await f.Db.Clubs.SingleAsync();
+        club.CollectionJson = ClubCollectionSerializer.Serialize(new(2,
+            [new(42, "Игра", null, null, 1, 4, null, [])]));
+        await f.Db.SaveChangesAsync();
+        var originalCatalog = club.CollectionJson;
+        var bgg = new Bgg { Expansions = [new(99, "Первое"), new(100, "Второе")] };
+        var service = CreateService(f, bgg);
+        var g = await service.CreateAsync(seed.Community.ToBotCommunity(), new(f.Me.TelegramUserId),
+            new("club", source, 42, [99, 100], f.Clock.Now.AddHours(1), 1, 3, 4, null, true,
+                AddExpansionToCollectionIds: [99], BringExpansionIds: []), default);
+        Assert.Equal(new long[] { 99, 100 }, GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson)
+            .SelectedExpansions.Select(x => x.BggId).Order().ToArray());
+        Assert.Equal(99, (await f.Db.ParticipantCollectionItems.SingleAsync()).BggId);
+
+        bgg.Expansions = [new(99, "Первое"), new(100, "Второе"), new(101, "Новое")];
+        await service.UpdateAsync(g.PublicId, "club", f.Me.TelegramUserId,
+            new(g.StartsAtUtc, 1, 3, 4, null, true, [100, 101], AddExpansionToCollectionIds: [101]), default);
+        Assert.Equal(new long[] { 100, 101 }, GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson)
+            .SelectedExpansions.Select(x => x.BggId).Order().ToArray());
+        Assert.Equal(new long[] { 99, 101 }, await f.Db.ParticipantCollectionItems.OrderBy(x => x.BggId).Select(x => x.BggId).ToArrayAsync());
+        await service.UpdateAsync(g.PublicId, "club", f.Me.TelegramUserId,
+            new(g.StartsAtUtc, 1, 3, 4, null, true, []), default);
+        Assert.Empty(GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson).SelectedExpansions);
+        Assert.Equal(2, await f.Db.ParticipantCollectionItems.CountAsync());
+        Assert.Equal(originalCatalog, club.CollectionJson);
+        Assert.Empty(f.Db.CampGameContributions);
+    }
+
     [Fact]
     public async Task MultipleExpansions_CreateEditAndRemove_PreserveOwnershipAndCampCommitments()
     {
