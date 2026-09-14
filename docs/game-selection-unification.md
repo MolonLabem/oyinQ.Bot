@@ -159,3 +159,13 @@ search не имеют сложности: Thing по-прежнему загр�
 ### Connected planning
 
 Creation from catalog details uses the same picker and server selection. Copying uses an organizer-owned, same-community immutable gathering snapshot; selecting another game drops the copy source. Aggregate demand may select a saved wish snapshot from the same community without merging other participants' wishes into the ordinary catalog. Both paths preserve official expansion membership and reuse player limits, mutation checks and transactional notification planning. Details: [Connected planning](connected-planning.md).
+
+### Лимиты игроков при выборе дополнений
+
+Когда выбранное дополнение увеличивает допустимый максимум, общий `fitPlayerLimits` выставляет «Максимум» и «Оптимально» на новый предел. Это применяется при создании (включая заранее выбранные дополнения) и редактировании Club/Camp. После выбора организатор может изменить значения вручную. Удаление дополнения ограничивает значения оставшимся диапазоном; сервер по-прежнему запрещает уменьшать вместимость ниже занятого состава. Сохранённые снимки и общий контракт `test-data/game-player-ranges.json` используют диапазоны официально выбранных дополнений, без суммирования их максимумов.
+
+### Сохранённый BGG-аккаунт профиля
+
+`CampBggImportCoordinator.GetProfileSourceAsync` возвращает аккаунт и дату последнего подтверждённого глобального импорта участника (`CampId = null`). Источником остаются существующие сохранённые задания; истечение черновика, неудачная попытка сменить аккаунт и очистка браузерного хранилища не сбрасывают подтверждённый аккаунт. Scoped Camp-импорты не заменяют глобальный источник.
+
+`GET /profile/collection/imports/source` доступен только владельцу через проверенную Telegram-идентичность и не требует выбранного сообщества. `POST /profile/collection/imports` без `bggInput` повторно использует этот аккаунт и обычную очередь; явный `bggInput` запускает импорт другого аккаунта. В профиле доступны «Обновить из BGG» и «Сменить аккаунт». Применение коллекции по-прежнему требует подтверждения выбранных игр и не удаляет ранее сохранённое владение. Новый аккаунт становится сохранённым после подтверждения. Автоматическое расписание обновлений не включено.

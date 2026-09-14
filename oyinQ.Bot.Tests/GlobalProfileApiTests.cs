@@ -61,11 +61,13 @@ public sealed class GlobalProfileApiTests
             using var client = new HttpClient { BaseAddress = new Uri(address) };
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp/profile")).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp/profile/changelog")).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp/profile/collection/imports/source")).StatusCode);
             client.DefaultRequestHeaders.Add("X-Telegram-Init-Data", SignedData());
             var changelog = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/changelog");
             Assert.Contains("# Изменения OyinQ", changelog.GetProperty("markdown").GetString());
             Assert.Contains("## 2026-09-04", changelog.GetProperty("markdown").GetString());
             var profile = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile");
+            Assert.Equal(JsonValueKind.Null, (await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/collection/imports/source")).GetProperty("source").ValueKind);
             Assert.True(profile.GetProperty("botStartRequired").GetBoolean());
             Assert.Contains("ActualBot?start=menu", profile.GetProperty("startUrl").GetString());
             Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync("/api/miniapp/profile", new { displayName = "Моё имя" })).StatusCode);
@@ -77,6 +79,9 @@ public sealed class GlobalProfileApiTests
                 await new ParticipantCollectionService(db).UpsertAsync(me.Id,
                     [new(42, CollectionItemType.BaseGame, null, new(1, "Моя игра", null, null, 1, 4, null))], CollectionItemSource.Manual, DateTimeOffset.UtcNow, default);
                 var other = await new ParticipantIdentityService(db, TimeProvider.System).GetOrCreateAsync(99, null, "Другой", null, default);
+                db.CampBggImports.AddRange(
+                    new() { ParticipantId = me.Id, BggUsername = "my-bgg-account", Status = CampBggImportStatus.Confirmed, UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1) },
+                    new() { ParticipantId = other.Id, BggUsername = "private-other-account", Status = CampBggImportStatus.Confirmed, UpdatedAt = DateTimeOffset.UtcNow });
                 await new ParticipantCollectionService(db).UpsertAsync(other.Id,
                     [new(43, CollectionItemType.BaseGame, null, new(1, "Чужая игра", null, null, 1, 4, null))], CollectionItemSource.Manual, DateTimeOffset.UtcNow, default);
                 db.OyinQCommunities.Add(new() { Key = "private", Mode = BotMode.Club, Name = "Закрытый клуб", TimeZoneId = "UTC", IsActive = true });
@@ -85,6 +90,10 @@ public sealed class GlobalProfileApiTests
                 await db.SaveChangesAsync();
             }
             var collection = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/collection/");
+            var sourceResponse = await client.GetAsync("/api/miniapp/profile/collection/imports/source?participantId=2&community=private");
+            Assert.True(sourceResponse.Headers.CacheControl?.NoStore);
+            var source = await sourceResponse.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("my-bgg-account", source.GetProperty("source").GetProperty("bggUsername").GetString());
             Assert.Equal(42, Assert.Single(collection.EnumerateArray()).GetProperty("bggId").GetInt64());
             Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/gatherings")).EnumerateArray());
             Assert.DoesNotContain("BEGIN:VEVENT", await client.GetStringAsync("/api/miniapp/profile/gatherings.ics"));

@@ -35,12 +35,34 @@ public sealed class ParticipantCollectionTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.ConfirmAsync(job.PublicId, null, 1, [999], [], default));
         Assert.Empty(await db.ParticipantCollectionItems.ToArrayAsync());
         var first = await coordinator.ConfirmAsync(job.PublicId, null, 1, [10], [], default);
+        Assert.Equal("owner", (await coordinator.GetProfileSourceAsync(1, default))?.BggUsername);
+        Assert.Null(await coordinator.GetProfileSourceAsync(2, default));
         var replay = await coordinator.ConfirmAsync(job.PublicId, null, 1, [10, 20], [], default);
         Assert.Equal(1, first.Added);
         Assert.Equal(first.Added, replay.Added);
         Assert.True(replay.WasAlreadyConfirmed);
         Assert.Equal(10, Assert.Single(await db.ParticipantCollectionItems.ToArrayAsync()).BggId);
         Assert.Empty(await db.CampGameContributions.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task SavedProfileImportAccountSurvivesExpiredDraftsAndFailedAccountChanges()
+    {
+        await using var db = CreateDb();
+        db.CampBggImports.AddRange(
+            new CampBggImport { ParticipantId = 1, BggUsername = "old", Status = CampBggImportStatus.Confirmed, UpdatedAt = Now.AddDays(-20) },
+            new CampBggImport { ParticipantId = 1, BggUsername = "saved", Status = CampBggImportStatus.Confirmed, UpdatedAt = Now.AddDays(-10), ExpiresAt = Now.AddDays(-3) },
+            new CampBggImport { ParticipantId = 1, BggUsername = "failed-change", Status = CampBggImportStatus.Failed, UpdatedAt = Now },
+            new CampBggImport { ParticipantId = 1, BggUsername = "unconfirmed", Status = CampBggImportStatus.Completed, UpdatedAt = Now },
+            new CampBggImport { ParticipantId = 1, CampId = 20, BggUsername = "camp", Status = CampBggImportStatus.Confirmed, UpdatedAt = Now },
+            new CampBggImport { ParticipantId = 2, BggUsername = "another-user", Status = CampBggImportStatus.Confirmed, UpdatedAt = Now });
+        await db.SaveChangesAsync();
+        var coordinator = new CampBggImportCoordinator(db, Contributions(db),
+            new CampParticipationPolicy(db, TimeProvider.System), TimeProvider.System);
+        var source = await coordinator.GetProfileSourceAsync(1, default);
+        Assert.Equal("saved", source?.BggUsername);
+        Assert.Equal(Now.AddDays(-10), source?.LastImportedAt);
+        Assert.Null(await coordinator.GetProfileSourceAsync(3, default));
     }
 
     [Theory]

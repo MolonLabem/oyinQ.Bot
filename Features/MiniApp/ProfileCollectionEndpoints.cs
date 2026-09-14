@@ -8,7 +8,7 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.MiniApp;
 
-internal sealed record ProfileImportRequest(string BggInput);
+internal sealed record ProfileImportRequest(string? BggInput);
 internal sealed record ProfileManualRequest(string BggInput, IReadOnlyCollection<long>? ExpansionBggIds);
 internal sealed record ProfileImportSelection(IReadOnlyCollection<long> SelectedBaseGameIds,
     IReadOnlyCollection<long> SelectedExpansionIds);
@@ -22,6 +22,7 @@ internal static class ProfileCollectionEndpoints
         profile.MapPost("/manual", AddAsync);
         profile.MapDelete("/{itemType}/{bggId:long}", RemoveAsync);
         profile.MapPost("/imports", QueueAsync);
+        profile.MapGet("/imports/source", GetImportSourceAsync);
         profile.MapGet("/imports/{publicId:guid}", GetImportAsync);
         profile.MapPost("/imports/{publicId:guid}/confirm", ConfirmAsync);
         profile.MapPost("/imports/{publicId:guid}/{action}", ImportActionAsync);
@@ -80,14 +81,25 @@ internal static class ProfileCollectionEndpoints
         TelegramMiniAppAuthenticator authenticator, AppDbContext db, CampBggImportCoordinator coordinator, IOptions<BggOptions> options, CancellationToken ct)
     {
         if (!options.Value.IsAvailable) return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно недоступен. Сохранённая коллекция доступна.", 503);
-        var username = BggUsernameParser.Parse(body.BggInput);
-        if (username is null) return MiniAppEndpointSupport.Problem("validation", "Не удалось распознать имя пользователя BGG.");
         try
         {
-            var job = await coordinator.QueueAsync(null, await OwnerAsync(request, authenticator, db, ct), username, ct);
+            var owner = await OwnerAsync(request, authenticator, db, ct);
+            var username = body.BggInput is null
+                ? (await coordinator.GetProfileSourceAsync(owner, ct))?.BggUsername
+                : BggUsernameParser.Parse(body.BggInput);
+            if (username is null) return MiniAppEndpointSupport.Problem("validation", "Укажите имя пользователя BGG или ссылку на профиль.");
+            var job = await coordinator.QueueAsync(null, owner, username, ct);
             return Results.Accepted($"/api/miniapp/profile/collection/imports/{job.PublicId}", new { job.PublicId });
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> GetImportSourceAsync(HttpRequest request,
+        TelegramMiniAppAuthenticator authenticator, AppDbContext db, CampBggImportCoordinator coordinator, CancellationToken ct)
+    {
+        var owner = await OwnerAsync(request, authenticator, db, ct);
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(new { Source = await coordinator.GetProfileSourceAsync(owner, ct) });
     }
 
     private static async Task<IResult> GetImportAsync(HttpRequest request, Guid publicId,

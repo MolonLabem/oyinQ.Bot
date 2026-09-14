@@ -77,12 +77,13 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
   }
   function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg", initialExpansions: number[] = []) {
     setCopySourceId(undefined); setExpansionOwnership(emptyExpansionOwnership()); setAddToCollection(false); setBringToCamp(false); setSource(nextSource); setChosen(game); setExpansions(initialExpansions); setError(undefined);
-    const players = resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, initialExpansions);
+    const players = resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, []);
     const nextMinimum = players.minimum;
     const nextMaximum = players.maximum;
     const suggested = Number.parseInt(game.bestPlayers?.match(/\d+/)?.[0] ?? "", 10);
     const nextDesired = Number.isFinite(suggested) ? Math.min(nextMaximum, Math.max(nextMinimum, suggested)) : nextMaximum;
-    setMinimum(nextMinimum); setDesired(nextDesired); setMaximum(nextMaximum);
+    changeLimits(fitPlayerLimits({ minimum: nextMinimum, desired: nextDesired, maximum: nextMaximum }, players,
+      resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, initialExpansions)));
   }
   const [copySourceId, setCopySourceId] = useState<string>();
   const [seeded, setSeeded] = useState(false);

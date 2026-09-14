@@ -1,4 +1,5 @@
 [
+  { "name": "Prophecy of Kings selected", "minimum": 3, "maximum": 6, "expansions": [{"bggId":315895,"name":"Prophecy of Kings","minPlayers":3,"maxPlayers":8}], "selected": [315895], "expectedMinimum":3,"expectedMaximum":8,"defaulted":false },
   { "name": "base only", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Fifth player","minPlayers":2,"maxPlayers":5}], "selected": [], "expectedMinimum":2,"expectedMaximum":4,"defaulted":false },
   { "name": "selected fifth player", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Fifth player","minPlayers":2,"maxPlayers":5}], "selected": [20], "expectedMinimum":2,"expectedMaximum":5,"defaulted":false },
   { "name": "unknown expansion range", "minimum": 2, "maximum": 4, "expansions": [{"bggId":20,"name":"Unknown"}], "selected": [20], "expectedMinimum":2,"expectedMaximum":4,"defaulted":false },
