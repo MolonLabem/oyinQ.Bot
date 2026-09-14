@@ -20,7 +20,7 @@ export function ProfileScheduleList({ items, communities, open }: {
     <div className="stack">{day.items.map(item => {
       const itemCommunity = communities.find(value => value.key === item.communityKey)
         ?? { key: item.communityKey, name: item.communityName, mode: item.communityMode, timeZoneId: "UTC" };
-      return <button className="card profile-schedule-item" key={item.publicId} onClick={() => open(item.communityKey, item.publicId)}><time className="schedule-time" dateTime={item.localTime}>{item.localTime}</time><CommunityAvatar community={itemCommunity} /><span><strong>{item.gameName}</strong><small>{item.communityName}</small></span>{item.isOrganizer && <span className="badge accent">Организатор</span>}</button>;
+      return <button className="card profile-schedule-item" key={item.publicId} onClick={() => open(item.communityKey, item.publicId)}><time className="schedule-time" dateTime={item.localTime}>{item.localTime}</time><CommunityAvatar community={itemCommunity} /><span><strong>{item.gameName}</strong><small>{item.communityName}</small>{item.waitlistPosition && <small>Лист ожидания · позиция {item.waitlistPosition}</small>}{item.progress === "started" && <small>Сбор начался</small>}{item.progress === "awaitingOutcome" && <small>Ожидается подтверждение исхода</small>}</span>{item.isOrganizer && <span className="badge accent">Организатор</span>}</button>;
     })}</div>
   </section>)}</div>;
 }

@@ -8,12 +8,17 @@ public static class GatheringPlayTiming
     public const int ConfirmationGraceMinutes = 30;
     public const int MaximumEstimateMinutes = 7 * 24 * 60;
     public static DateTimeOffset ConfirmationDueAt(GameGathering gathering)
-    {
-        var game = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
-        var minutes = game.MaxPlayTimeMinutes is > 0 and <= MaximumEstimateMinutes ? game.MaxPlayTimeMinutes.Value
+        => EstimatedEnd(gathering).AddMinutes(ConfirmationGraceMinutes);
+
+    public static int EstimateMinutes(GatheringGameSnapshot game) =>
+        game.MaxPlayTimeMinutes is > 0 and <= MaximumEstimateMinutes ? game.MaxPlayTimeMinutes.Value
             : game.MinPlayTimeMinutes is > 0 and <= MaximumEstimateMinutes ? game.MinPlayTimeMinutes.Value : FallbackMinutes;
-        return gathering.StartsAtUtc.AddMinutes(minutes + ConfirmationGraceMinutes);
-    }
+
+    public static DateTimeOffset EstimatedEnd(GameGathering gathering) => gathering.StartsAtUtc
+        .AddMinutes(EstimateMinutes(GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson)));
+
+    public static bool Overlaps(DateTimeOffset firstStart, DateTimeOffset firstEnd, DateTimeOffset secondStart, DateTimeOffset secondEnd)
+        => firstStart < secondEnd && secondStart < firstEnd;
 
     public static int DurationMinutes(DateTimeOffset start, DateTimeOffset end)
     {

@@ -147,7 +147,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             foreach (var gathering in future)
             {
                 GatheringRules.Cancel(gathering, "Кэмп отменён", now);
-                gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+                GatheringPublication.Request(gathering);
             }
         camp.Status = status;
         camp.BotChat.IsActive = status == CampStatus.Active;

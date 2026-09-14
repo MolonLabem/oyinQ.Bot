@@ -41,8 +41,9 @@ public sealed class GatheringNotificationReliabilityTests
         AssertGatheringButton(promoted, fixture.Gathering.PublicId, "club");
         var organizer = Assert.Single(fixture.Telegram.Requests, x =>
             x.ChatId == fixture.Organizer.TelegramUserId);
-        Assert.Contains("Его место занял Участник 2 из листа ожидания", organizer.Text);
-        Assert.DoesNotContain("Сейчас участников", organizer.Text);
+        Assert.Contains("Изменился состав сбора", organizer.Text);
+        Assert.Contains("Сейчас игроков: 2/2", organizer.Text);
+        Assert.DoesNotContain("Его место занял", organizer.Text);
     }
 
     [Fact]

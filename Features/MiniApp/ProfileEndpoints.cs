@@ -23,6 +23,7 @@ internal static class ProfileEndpoints
             return Results.Ok(new { markdown = reader.ReadToEnd() });
         });
         group.MapGet("/profile/gatherings", GetGatheringsAsync);
+        group.MapGet("/profile/gatherings.ics", ExportAgendaAsync);
         group.MapPut("/profile", SaveAsync);
         return group;
     }
@@ -35,18 +36,36 @@ internal static class ProfileEndpoints
         var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
         if (identity is null) return Results.Unauthorized();
         request.HttpContext.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(await ReadAgendaAsync(identity.TelegramUserId, dbContext, resolver, presentation, timeProvider, cancellationToken));
+    }
+
+    private static async Task<IResult> ExportAgendaAsync(HttpRequest request, AppDbContext dbContext,
+        TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver, GatheringPresentationService presentation,
+        TimeProvider timeProvider, MiniAppLinkBuilder links, CancellationToken cancellationToken)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        var agenda = await ReadAgendaAsync(identity.TelegramUserId, dbContext, resolver, presentation, timeProvider, cancellationToken);
+        return Results.File(GatheringCalendarExport.Build(agenda, timeProvider.GetUtcNow(), links), "text/calendar; charset=utf-8", "oyinq-agenda.ics");
+    }
+
+    private static async Task<IReadOnlyList<ProfileGatheringPresentation>> ReadAgendaAsync(long telegramUserId, AppDbContext dbContext,
+        CommunityContextResolver resolver, GatheringPresentationService presentation, TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
         var participantId = await dbContext.Participants.AsNoTracking()
-            .Where(x => x.TelegramUserId == identity.TelegramUserId)
+            .Where(x => x.TelegramUserId == telegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
-        if (participantId is null) return Results.Ok(Array.Empty<ProfileGatheringPresentation>());
-        var authorized = await resolver.ResolveAuthorizedAsync(identity.TelegramUserId, cancellationToken);
+        if (participantId is null) return [];
+        var authorized = await resolver.ResolveAuthorizedAsync(telegramUserId, cancellationToken);
         var keys = authorized.Select(x => x.Key).ToArray();
         var communities = authorized.ToDictionary(x => x.Key);
-        var gatherings = await ProfileGatheringQuery.Apply(dbContext.GameGatherings.AsNoTracking(),
+        var now = timeProvider.GetUtcNow();
+        var gatherings = await ProfileGatheringQuery.AgendaCandidates(dbContext.GameGatherings.AsNoTracking().Include(x => x.Participants),
                 participantId.Value, keys, timeProvider.GetUtcNow())
             .ToArrayAsync(cancellationToken);
-        return Results.Ok(gatherings.Select(x => presentation.BuildProfileSchedule(
-            x, communities[x.CommunityKey], participantId.Value)).ToArray());
+        return gatherings.Where(x => ProfileGatheringQuery.IsInAgenda(x, now)).Select(x => presentation.BuildProfileSchedule(
+            x, communities[x.CommunityKey], participantId.Value, now)).ToArray();
     }
 
     private static async Task<IResult> GetAsync(HttpRequest request,

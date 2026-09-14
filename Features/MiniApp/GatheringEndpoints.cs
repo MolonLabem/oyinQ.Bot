@@ -15,7 +15,7 @@ namespace oyinQ.Bot.Features.MiniApp;
 internal sealed record CreateGatheringRequest(string CommunityKey, string GameSource, long BggId,
     IReadOnlyCollection<long>? SelectedExpansionIds, string StartsAtLocal,
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false,
-    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null, Guid? OperationId = null, Guid? CopyFromPublicId = null);
 internal sealed record UpdateGatheringRequest(string CommunityKey, string StartsAtLocal,
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description,
     bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds, bool ConfirmScheduleConflict = false,
@@ -59,6 +59,7 @@ internal static class GatheringEndpoints
         [FromQuery(Name = "view")] string? view,
         [FromQuery(Name = "status")] string? status,
         [FromQuery(Name = "page")] int? page,
+        [FromQuery(Name = "bggId")] long? bggId,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
         TimeProvider timeProvider,
@@ -66,6 +67,7 @@ internal static class GatheringEndpoints
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
+        if (bggId is <= 0) return MiniAppEndpointSupport.Problem("validation", "Некорректный BGG ID.");
         if (!GatheringListQuery.TryParse(scope, view, status, out var parsedScope))
             return MiniAppEndpointSupport.Problem("invalid_gathering_scope",
                 "Поддерживаются scope=upcoming, history, completed или cancelled.", 400);
@@ -73,7 +75,7 @@ internal static class GatheringEndpoints
         if (pageNumber < 1 || pageNumber > int.MaxValue / GatheringPageSize)
             return MiniAppEndpointSupport.Problem("invalid_gathering_page", "Номер страницы должен быть больше нуля.", 400);
         request.HttpContext.Response.Headers.CacheControl = "no-store";
-        var query = dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == community)
+        var query = GatheringListQuery.ForGame(dbContext, community, bggId).AsNoTracking()
             .Include(x => x.Participants).Include(x => x.Guests).Include(x => x.OrganizerParticipant);
         var values = await GatheringListQuery.Apply(query, parsedScope, timeProvider.GetUtcNow())
             .Skip((pageNumber - 1) * GatheringPageSize)
@@ -143,6 +145,7 @@ internal static class GatheringEndpoints
             StartUrl = startUrl,
             CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
             CanEdit = canManage,
+            CanCopy = organizerControls && snapshot.BggId > 0,
             CanRequestRecruitment = hasMemberAccess && GatheringRecruitment.CanRequest(gathering, participant.Id, now),
             RecruitmentDelivery = organizerControls ? await recruitment.LatestStatusAsync(community, cancellationToken) : null,
             CanClose = GatheringAccessPolicy.CanClose(gathering, organizerControls, now),
@@ -198,7 +201,7 @@ internal static class GatheringEndpoints
                 new(body.CommunityKey, body.GameSource, body.BggId, body.SelectedExpansionIds ?? [], startsAt,
                     body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
                     body.Description, body.CanTeachRules, body.ConfirmScheduleConflict, body.AddToCollection, body.BringToCamp,
-                    body.AddExpansionToCollectionIds, body.BringExpansionIds), cancellationToken);
+                    body.AddExpansionToCollectionIds, body.BringExpansionIds, body.OperationId, body.CopyFromPublicId), cancellationToken);
             var published = await publication.PublishAsync(gathering.PublicId, cancellationToken);
             return Results.Created($"/api/miniapp/gatherings/{gathering.PublicId}",
                 new { gathering.PublicId, AnnouncementPublished = published });

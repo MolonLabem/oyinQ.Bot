@@ -155,3 +155,7 @@ build Mini App прошли; 553 серверных теста прошли бе
 search не имеют сложности: Thing по-прежнему загружается только после выбора.
 Компактный календарь профиля и Telegram-клавиатуры остаются без дополнительных
 тегов. Проверка браузером выполняется на фиктивных данных без live BGG/Telegram.
+
+### Connected planning
+
+Creation from catalog details uses the same picker and server selection. Copying uses an organizer-owned, same-community immutable gathering snapshot; selecting another game drops the copy source. Aggregate demand may select a saved wish snapshot from the same community without merging other participants' wishes into the ordinary catalog. Both paths preserve official expansion membership and reuse player limits, mutation checks and transactional notification planning. Details: [Connected planning](connected-planning.md).

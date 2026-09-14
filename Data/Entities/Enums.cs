@@ -125,5 +125,9 @@ public enum GatheringPublicationStatus
 {
     Pending = 0,
     Published = 1,
-    Failed = 2
+    Failed = 2,
+    Preparing = 3,
+    Delivering = 4,
+    DeliveryUnknown = 5,
+    NotRequired = 6
 }

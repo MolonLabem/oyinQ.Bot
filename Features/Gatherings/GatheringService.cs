@@ -39,7 +39,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             return new(gathering);
         }
 
-        await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(participant.Id, gathering.StartsAtUtc, gathering.PublicId, confirmScheduleConflict, now, cancellationToken);
+        await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(participant.Id, gathering.StartsAtUtc, gathering.PublicId, confirmScheduleConflict, now, cancellationToken, GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson));
         var status = GatheringCapacity.HasAvailableSeat(gathering)
             ? GatheringParticipationStatus.Confirmed
             : GatheringParticipationStatus.Waitlisted;
@@ -141,7 +141,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
             ?? throw new KeyNotFoundException("Гость не найден в этом сборе.");
         guest.DisplayName = GatheringRules.NormalizeGuestDisplayName(displayName);
         guest.UpdatedAt = now.ToUniversalTime();
-        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+        GatheringPublication.Request(gathering);
         gathering.UpdatedAt = now.ToUniversalTime();
         await dbContext.SaveChangesAsync(cancellationToken);
         await notifications.NotifyFullAsync(publicId, cancellationToken);
@@ -211,7 +211,7 @@ public sealed class GatheringService(AppDbContext dbContext, CampParticipationPo
     private static void UpdateStatus(GameGathering gathering, DateTimeOffset now)
     {
         GatheringCapacity.SynchronizeScheduledStatus(gathering);
-        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+        GatheringPublication.Request(gathering);
         gathering.UpdatedAt = now.ToUniversalTime();
     }
 }

@@ -376,6 +376,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Description).HasMaxLength(GatheringRules.DescriptionMaxLength);
             entity.Property(x => x.CancellationReason).HasMaxLength(GatheringRules.CancellationReasonMaxLength);
             entity.Property(x => x.PublicationError).HasMaxLength(2000);
+            entity.Property(x => x.CreationRequestHash).HasMaxLength(64);
+            entity.HasIndex(x => new { x.CommunityKey, x.OrganizerParticipantId, x.CreationOperationId })
+                .IsUnique().HasFilter("\"CreationOperationId\" IS NOT NULL");
 
             entity.HasOne(x => x.Community)
                 .WithMany(x => x.Gatherings)

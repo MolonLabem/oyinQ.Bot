@@ -47,7 +47,8 @@ public sealed record GatheringDetailPresentation(
 public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
 public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
     BotMode CommunityMode, string GameName, DateTimeOffset StartsAtUtc, string LocalDate,
-    string LocalTime, string LocalDateTime, bool IsOrganizer);
+    string LocalTime, string LocalDateTime, bool IsOrganizer, DateTimeOffset? EstimatedEndsAtUtc = null,
+    int? WaitlistPosition = null, string Progress = "upcoming");
 
 public sealed class GatheringPresentationService
 {
@@ -183,7 +184,7 @@ public sealed class GatheringPresentationService
     }
 
     public ProfileGatheringPresentation BuildProfileSchedule(GameGathering gathering, BotCommunity community,
-        long participantId)
+        long participantId, DateTimeOffset? now = null)
     {
         var game = ResolveSnapshot(gathering);
         var local = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
@@ -192,7 +193,11 @@ public sealed class GatheringPresentationService
             gathering.StartsAtUtc, local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             local.ToString("HH:mm", CultureInfo.InvariantCulture),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
-            gathering.OrganizerParticipantId == participantId);
+            gathering.OrganizerParticipantId == participantId, GatheringPlayTiming.EstimatedEnd(gathering),
+            gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted).OrderBy(x => x.JoinedAt).ThenBy(x => x.Id)
+                .Select((x, index) => new { x.ParticipantId, Position = index + 1 }).FirstOrDefault(x => x.ParticipantId == participantId)?.Position,
+            now is null || gathering.StartsAtUtc > now ? "upcoming"
+                : GatheringPlayTiming.EstimatedEnd(gathering) > now ? "started" : "awaitingOutcome");
     }
 
     private static GatheringGameSnapshot ResolveSnapshot(GameGathering gathering)

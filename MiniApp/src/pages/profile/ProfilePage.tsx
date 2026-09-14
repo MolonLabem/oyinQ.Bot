@@ -1,8 +1,9 @@
 import { PlayedHistory } from "./PlayedHistory";
+import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
 import { useEffect, useState } from "react";
-import { api, json } from "../../api/client";
+import { api, json, download } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
 import { Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
@@ -54,6 +55,10 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
     </section>
     {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}</>}
     {tab === "calendar" && <section className="profile-schedule"><h2>Моё расписание</h2>
+      <button disabled={busy} onClick={async () => { setBusy(true); setError(undefined); try { await download("/profile/gatherings.ics", "oyinq-agenda.ics"); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }}>Скачать календарь (.ics)</button>
+      <p className="muted">Файл текущего расписания. После изменений скачайте его заново; окончание игр оценочное.</p>
+      {error && <Notice kind="danger">{error}</Notice>}
+      <GatheringDashboard open={openGathering} />
       {schedule.loading ? <Loading /> : schedule.error ? <ErrorState message={schedule.error} retry={schedule.reload} /> : !schedule.data?.length ? <Empty>{profileScheduleEmptyText}</Empty> : <ProfileScheduleList items={schedule.data} communities={communities} open={openGathering} />}
       <PlayedHistory key={community?.key} communityKey={community?.key} open={openGathering} />
     </section>}

@@ -24,7 +24,7 @@ public sealed class AppDbContextMigrationTests
         using var dbContext = CreateDbContext();
 
         Assert.Equal([CleanBaselineMigration, ForumPostingTopicsMigration, CommunityDeletionMigration,
-            GatheringGuestsMigration, "20260904072034_PersistentParticipantCollection", "20260904080727_CampOperatingInstants", "20260904081750_NotificationDelivery", "20260904084352_GatheringPlayRecords", "20260904092743_PlayOutcomesReferencesAndReleases", "20260904131050_WishlistAndRecruitment", "20260904182048_BgStatsPlayResults", "20260905020448_BggImportProgressStages", "20260910160000_CampAdminRecruitmentScope"], dbContext.Database.GetMigrations());
+            GatheringGuestsMigration, "20260904072034_PersistentParticipantCollection", "20260904080727_CampOperatingInstants", "20260904081750_NotificationDelivery", "20260904084352_GatheringPlayRecords", "20260904092743_PlayOutcomesReferencesAndReleases", "20260904131050_WishlistAndRecruitment", "20260904182048_BgStatsPlayResults", "20260905020448_BggImportProgressStages", "20260910160000_CampAdminRecruitmentScope", "20260914164813_ReliableGatheringPublication"], dbContext.Database.GetMigrations());
     }
 
     [Fact]

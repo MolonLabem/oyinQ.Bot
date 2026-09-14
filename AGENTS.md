@@ -201,3 +201,9 @@ BG Stats — только документированная HTTPS-ссылка,
 
 - Complexity follows the five BGG poll answers. `BggComplexityParser` reads `averageweight` and an optional `boardgameweight` poll from the existing Thing enrichment response; never add a separate request. The plurality winner takes priority over the average. Ties use nearest average, then the lighter level; absent votes use nearest integer with midpoint rounding away from zero.
 - Persist only nullable `ComplexityWeight` and `Complexity` in the existing collection/import/gathering JSON snapshots. There is no global Game table and additive optional fields require no SQL migration. Preserve historical gathering snapshots. `GameComplexityPresentation` owns labels/classification/styles; HTTP projection adds `complexityInfo`, and Mini App uses `ComplexityBadge` without reclassifying numbers.
+
+## Connected planning
+
+- Creation replay is scoped by participant/community/operation ID and checked again under CommunityMutationLock. GatheringPublication.Request owns publication revisions; mutations must preserve Preparing, Delivering and DeliveryUnknown. Only the publication service/worker claim and finish send attempts. No automatic repost after an ambiguous new send.
+- GatheringPlayTiming owns estimated duration for conflict intervals, agenda, ICS and play-confirmation reminders. Profile agenda and ICS share the same independently authorized community selection. Copying a gathering goes through GatheringManagementService with a server-loaded original snapshot and an empty new roster; demand creation uses a scoped server-owned wish snapshot without changing ownership or enrolling interested participants.
+- Contracts, migration rollout and cross-module verification: docs/connected-planning.md.

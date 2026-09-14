@@ -10,7 +10,9 @@ namespace oyinQ.Bot.Features.Catalog;
 
 public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollection<GameType> Types,
     IReadOnlyCollection<long> CategoryIds, string? Sort, string? Ownership = null, string? Availability = null,
-    string? Planning = null, IReadOnlyCollection<long>? ProviderParticipantIds = null);
+    string? Planning = null, IReadOnlyCollection<long>? ProviderParticipantIds = null,
+    IReadOnlyCollection<GameComplexity>? ComplexityLevels = null, int? MaxDurationMinutes = null,
+    IReadOnlyCollection<long>? MechanicIds = null, DateOnly? AttendanceDate = null);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
 public sealed record CatalogProviderFilter(long ParticipantId, string DisplayName);
 public sealed record GameListItemResponse(long BggId, string Name, string? OriginalName, string? ThumbnailImageUrl,
@@ -28,8 +30,10 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true,
     int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
-    IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers);
+    IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers,
+    IReadOnlyList<LocalizedTaxonomyItem>? Mechanics = null, IReadOnlyList<ComplexityInfo>? Complexities = null);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
+public sealed record GameDemand(ClubCollectionGame Game, int InterestedParticipants, int ScheduledGatherings, string AvailabilitySummary);
 
 public sealed class GameNotInCollectionException(long bggId)
     : KeyNotFoundException($"Игра BGG {bggId} отсутствует в коллекции сообщества.")
@@ -39,10 +43,38 @@ public sealed class GameNotInCollectionException(long bggId)
 
 public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog, TimeProvider? timeProvider = null)
 {
+    public async Task<IReadOnlyList<GameDemand>> DemandAsync(string key, BotMode mode, long telegramUserId, CancellationToken ct)
+    {
+        var wishes = await dbContext.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key).OrderBy(x => x.CreatedAt).ThenBy(x => x.ParticipantId).ToArrayAsync(ct);
+        var effective = (await LoadAsync(key, mode, telegramUserId, ct)).Where(x => x.IsBaseGame).ToDictionary(x => x.Game.BggId);
+        var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var snapshots = await GatheringListQuery.Apply(dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == key), GatheringListScope.Upcoming, now)
+            .Select(x => x.GameSnapshotJson).ToArrayAsync(ct);
+        var planned = snapshots.Select(x => GatheringGameSnapshotSerializer.Deserialize(x).BggId).OfType<long>().GroupBy(x => x).ToDictionary(x => x.Key, x => x.Count());
+        return wishes.GroupBy(x => x.BggId).Select(group =>
+        {
+            var available = effective.GetValueOrDefault(group.Key);
+            var game = available?.Game ?? ClubCollectionSerializer.Deserialize(group.Last().SnapshotJson).Games.Single() with { Expansions = [] };
+            return new GameDemand(game, group.Select(x => x.ParticipantId).Distinct().Count(), planned.GetValueOrDefault(group.Key),
+                available is null ? "Коробка пока не подтверждена" : GameProviderService.Describe(available.IsInBaseCollection, available.Providers).Summary);
+        }).OrderBy(x => x.ScheduledGatherings > 0).ThenByDescending(x => x.InterestedParticipants).ThenBy(x => x.Game.Name).ThenBy(x => x.Game.BggId).ToArray();
+    }
+
+    public async Task<ClubCollectionGame> DemandGameAsync(string key, BotMode mode, long telegramUserId, long bggId, CancellationToken ct)
+    {
+        var available = (await LoadAsync(key, mode, telegramUserId, ct)).SingleOrDefault(x => x.Game.BggId == bggId && x.IsBaseGame);
+        if (available is not null) return available.Game;
+        var wish = await dbContext.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key && x.BggId == bggId)
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.ParticipantId).FirstOrDefaultAsync(ct)
+            ?? throw new KeyNotFoundException("Игра больше не представлена в спросе сообщества. Выберите игру заново.");
+        return ClubCollectionSerializer.Deserialize(wish.SnapshotJson).Games.Single() with { Expansions = [] };
+    }
+
     public async Task<GameCatalogResponse> ListAsync(string communityKey, BotMode mode, long telegramUserId,
         CatalogQuery query, CancellationToken cancellationToken)
     {
-        var effective = await LoadAsync(communityKey, mode, telegramUserId, cancellationToken);
+        if (query.MaxDurationMinutes is <= 0 or > 10080) throw new ArgumentException("Укажите длительность от 1 до 10080 минут.");
+        var effective = await LoadAsync(communityKey, mode, telegramUserId, cancellationToken, query.AttendanceDate);
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var plannedSnapshots = await dbContext.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == communityKey
             && x.StartsAtUtc > now && Features.Gatherings.GatheringLifecycle.ScheduledStatuses.Contains(x.Status))
@@ -108,13 +140,17 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             .ThenBy(value => value.ParticipantId)
             .Select(value => new CatalogProviderFilter(value.ParticipantId!.Value, value.DisplayName))
             .ToArray();
-        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters));
+        var mechanics = effective.SelectMany(x => x.Game.Mechanics ?? []).DistinctBy(x => x.BggId)
+            .Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeMechanic(x))).OrderBy(x => x.Name).ToArray();
+        var complexities = effective.Select(x => GameComplexityPresentation.Present(x.Game)).OfType<ComplexityInfo>()
+            .DistinctBy(x => x.Level).OrderBy(x => x.Level).ToArray();
+        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters, mechanics, complexities));
     }
 
     public async Task<GameDetailsResponse> DetailsAsync(string communityKey, BotMode mode, long telegramUserId,
-        long bggId, CancellationToken cancellationToken)
+        long bggId, CancellationToken cancellationToken, DateOnly? attendanceDate = null)
     {
-        var value = (await LoadAsync(communityKey, mode, telegramUserId, cancellationToken))
+        var value = (await LoadAsync(communityKey, mode, telegramUserId, cancellationToken, attendanceDate))
             .SingleOrDefault(x => x.Game.BggId == bggId) ?? throw new GameNotInCollectionException(bggId);
         var game = value.Game;
         var presentation = BggTaxonomyCatalog.Present(game);
@@ -140,17 +176,24 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
     }
 
     public async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, DateOnly? attendanceDate = null)
     {
         if (mode == BotMode.Club)
         {
             return await LoadClubAsync(key, telegramUserId, cancellationToken);
         }
 
+        if (attendanceDate is { } day)
+        {
+            var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == key, cancellationToken);
+            if (camp.StartDate is null || camp.EndDate is null || day < camp.StartDate || day > camp.EndDate)
+                throw new ArgumentException("Выберите день в пределах дат кэмпа.");
+        }
+
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == telegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
         var owned = await dbContext.ParticipantCollectionItems.Where(x => x.ParticipantId == participantId).Select(x => x.BggId).ToArrayAsync(cancellationToken);
-        var games = (await campCatalog.LoadAsync(key, participantId, cancellationToken))
+        var games = (await campCatalog.LoadAsync(key, participantId, cancellationToken, attendanceDate))
             .Select(x => new EffectiveGame(x.Game, x.IsInBaseCollection, x.Providers, owned.Contains(x.Game.BggId))).ToArray();
         return await WithWishesAsync(games, key, telegramUserId, cancellationToken);
     }
@@ -220,6 +263,14 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
 
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)
     {
+        if (query.ComplexityLevels is { Count: > 0 } levels
+            && (GameComplexityPresentation.Resolve(game.ComplexityWeight, game.Complexity) is not { } level || !levels.Contains(level))) return false;
+        if (query.MaxDurationMinutes is { } maximum)
+        {
+            var duration = game.MaxPlayTimeMinutes is > 0 ? game.MaxPlayTimeMinutes : game.MinPlayTimeMinutes;
+            if (duration is not > 0 || duration > maximum) return false;
+        }
+        if (query.MechanicIds is { Count: > 0 } mechanics && !mechanics.All(id => game.Mechanics?.Any(x => x.BggId == id) == true)) return false;
         if (query.Players is { } players)
         {
             var range = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers).WithExpansions(game.Expansions);

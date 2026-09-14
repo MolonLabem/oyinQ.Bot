@@ -15,43 +15,33 @@ public sealed class GatheringTelegramPublisher(
     GatheringPresentationService presentationService,
     ILogger<GatheringTelegramPublisher> logger)
 {
-    public async Task<Message> PublishAsync(
-        GameGathering gathering,
-        BotCommunity community,
-        CancellationToken cancellationToken)
+    public async Task<Message> PublishAsync(GameGathering gathering, BotCommunity community, CancellationToken ct) =>
+        await (await PrepareNewAsync(gathering, community, ct))(ct);
+
+    public async Task<Func<CancellationToken, Task<Message>>> PrepareNewAsync(GameGathering gathering, BotCommunity community, CancellationToken ct)
     {
         var announcement = presentationService.BuildTelegramAnnouncement(gathering, community);
-        var keyboard = await BuildKeyboardAsync(gathering, community, cancellationToken);
-
-        if (announcement.ImageUrl is not null)
+        var keyboard = await BuildKeyboardAsync(gathering, community, ct);
+        var text = await groupMessageSender.PrepareMessageAsync(community.Key, announcement.HtmlText, ParseMode.Html, keyboard, ct);
+        if (announcement.ImageUrl is null) return text;
+        var photo = await groupMessageSender.PreparePhotoAsync(community.Key, InputFile.FromUri(announcement.ImageUrl), announcement.HtmlText, ParseMode.Html, keyboard, ct);
+        return async token =>
         {
-            try
+            try { return await photo(token); }
+            catch (ApiRequestException exception) when (exception.ErrorCode == 400 && IsPhotoRejected(exception))
             {
-                return await groupMessageSender.SendPhotoAsync(
-                    community.Key,
-                    InputFile.FromUri(announcement.ImageUrl),
-                    announcement.HtmlText,
-                    ParseMode.Html,
-                    keyboard,
-                    cancellationToken);
+                logger.LogWarning(exception, "Gathering photo rejected; using text for {GatheringPublicId}.", gathering.PublicId);
+                return await text(token);
             }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogWarning(
-                    exception,
-                    "Could not publish gathering {GatheringPublicId} as a photo; falling back to text.",
-                    gathering.PublicId);
-            }
-        }
-
-        return await groupMessageSender.SendMessageAsync(
-            community.Key,
-            announcement.HtmlText,
-            ParseMode.Html,
-            keyboard,
-            cancellationToken);
+        };
     }
 
+    private static bool IsPhotoRejected(ApiRequestException e) =>
+        e.Message.Contains("failed to get HTTP URL content", StringComparison.OrdinalIgnoreCase)
+        || e.Message.Contains("wrong file identifier", StringComparison.OrdinalIgnoreCase)
+        || e.Message.Contains("IMAGE_PROCESS_FAILED", StringComparison.OrdinalIgnoreCase)
+        || e.Message.Contains("PHOTO_INVALID_DIMENSIONS", StringComparison.OrdinalIgnoreCase)
+        || e.Message.Contains("wrong type of the web page content", StringComparison.OrdinalIgnoreCase);
     public async Task UpdateAsync(
         GameGathering gathering,
         BotCommunity community,
@@ -63,14 +53,27 @@ public sealed class GatheringTelegramPublisher(
             return;
         }
 
+        await (await PrepareUpdateAsync(gathering, community, cancellationToken))(cancellationToken);
+    }
+
+    public async Task<Func<CancellationToken, Task>> PrepareUpdateAsync(GameGathering gathering, BotCommunity community, CancellationToken ct)
+    {
         var announcement = presentationService.BuildTelegramAnnouncement(gathering, community);
-        var keyboard = await BuildKeyboardAsync(gathering, community, cancellationToken);
+        var keyboard = await BuildKeyboardAsync(gathering, community, ct);
+        return token => UpdatePreparedAsync(gathering, announcement.HtmlText, keyboard, token);
+    }
+
+    private async Task UpdatePreparedAsync(GameGathering gathering, string htmlText, InlineKeyboardMarkup keyboard, CancellationToken cancellationToken)
+    {
+        var chatId = gathering.TelegramChatId!.Value;
+        var messageId = gathering.TelegramMessageId!.Value;
+
         try
         {
             await botClient.EditMessageCaption(
                 chatId,
                 messageId,
-                caption: announcement.HtmlText,
+                caption: htmlText,
                 parseMode: ParseMode.Html,
                 replyMarkup: keyboard,
                 cancellationToken: cancellationToken);
@@ -90,7 +93,7 @@ public sealed class GatheringTelegramPublisher(
                 await botClient.EditMessageText(
                     chatId,
                     messageId,
-                    announcement.HtmlText,
+                    htmlText,
                     parseMode: ParseMode.Html,
                     replyMarkup: keyboard,
                     cancellationToken: cancellationToken);

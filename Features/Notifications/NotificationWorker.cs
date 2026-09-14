@@ -12,18 +12,34 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, TimeProvider
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15), time);
         do
         {
-            try
-            {
-                await using var scope = scopes.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<GatheringReminderService>().EnqueueDueAsync(stoppingToken);
-                await scope.ServiceProvider.GetRequiredService<ProviderAttentionService>().EnqueueDueAsync(stoppingToken);
-                await scope.ServiceProvider.GetRequiredService<PlayConfirmationReminderService>().EnqueueDueAsync(stoppingToken);
-                var delivery = scope.ServiceProvider.GetRequiredService<NotificationDispatcher>();
-                for (var i = 0; i < 100 && await delivery.ProcessOneAsync(stoppingToken); i++) { }
-            }
+            try { await RunIterationAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
             catch (Exception e) { logger.LogError(e, "Notification worker iteration failed"); }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    internal async Task RunIterationAsync(CancellationToken ct)
+    {
+        await RunStageAsync<GatheringReminderService>((service, token) => service.EnqueueDueAsync(token), ct);
+        await RunStageAsync<ProviderAttentionService>((service, token) => service.EnqueueDueAsync(token), ct);
+        await RunStageAsync<PlayConfirmationReminderService>((service, token) => service.EnqueueDueAsync(token), ct);
+        await RunStageAsync<NotificationDispatcher>(async (delivery, token) =>
+        {
+            for (var i = 0; i < 100 && await delivery.ProcessOneAsync(token); i++) { }
+        }, ct);
+    }
+
+    private async Task RunStageAsync<T>(Func<T, CancellationToken, Task> run, CancellationToken ct) where T : notnull
+    {
+        // Each stage owns its context: a failed planner must neither block delivery nor leave tracked changes for it.
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            await using var scope = scopes.CreateAsyncScope();
+            await run(scope.ServiceProvider.GetRequiredService<T>(), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception e) { logger.LogError(e, "Notification stage {Stage} failed", typeof(T).Name); }
     }
 }
 

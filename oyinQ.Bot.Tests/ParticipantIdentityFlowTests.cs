@@ -194,7 +194,7 @@ public sealed class ParticipantIdentityFlowTests
         var gathering = new GameGathering { PublicId = Guid.NewGuid(), CommunityKey = community.Key,
             OrganizerParticipant = organizer, OrganizerParticipantId = organizer.Id, StartsAtUtc = Now.AddDays(1),
             MinimumPlayers = 2, DesiredPlayers = 4, MaximumPlayers = 4, Status = GatheringStatus.Recruiting,
-            GameSnapshotJson = "{}" };
+            GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(new(GatheringGameSnapshot.CurrentVersion, 42, "Игра", null, null, 1, 4, null, [], "catalog", [])) };
         db.Add(gathering); await db.SaveChangesAsync(); return gathering;
     }
 }

@@ -116,6 +116,7 @@ builder.Services.Configure<GatheringPlanningOptions>(builder.Configuration.GetSe
 builder.Services.AddScoped<GatheringScheduleConflictService>();
 builder.Services.AddScoped<GatheringManagementService>();
 builder.Services.AddScoped<GatheringPublicationService>();
+builder.Services.AddHostedService<GatheringPublicationWorker>();
 builder.Services.AddScoped<GatheringNotificationService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ProviderAttentionService>();

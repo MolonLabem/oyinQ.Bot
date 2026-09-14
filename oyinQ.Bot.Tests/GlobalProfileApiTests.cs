@@ -41,7 +41,7 @@ public sealed class GlobalProfileApiTests
         builder.Services.AddSingleton(Options.Create(new BotOptions { Token = "123:test" }));
         builder.Services.AddSingleton(Options.Create(new BggOptions()));
         builder.Services.AddScoped<TelegramMiniAppAuthenticator>(); builder.Services.AddScoped<ParticipantIdentityService>();
-        builder.Services.AddScoped<PrivateChatCapability>(); builder.Services.AddScoped<ParticipantCollectionService>();
+        builder.Services.AddScoped<MiniAppLinkBuilder>(); builder.Services.AddScoped<PrivateChatCapability>(); builder.Services.AddScoped<ParticipantCollectionService>();
         builder.Services.AddScoped<ICommunityStore, CommunityStore>(); builder.Services.AddScoped<CommunityContextResolver>();
         builder.Services.AddSingleton<IAdminAuthorizationService, NoAdministration>();
         builder.Services.AddSingleton<ICommunityMembershipVerifier, NoMembership>();
@@ -87,6 +87,7 @@ public sealed class GlobalProfileApiTests
             var collection = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/collection/");
             Assert.Equal(42, Assert.Single(collection.EnumerateArray()).GetProperty("bggId").GetInt64());
             Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/gatherings")).EnumerateArray());
+            Assert.DoesNotContain("BEGIN:VEVENT", await client.GetStringAsync("/api/miniapp/profile/gatherings.ics"));
             Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/plays")).GetProperty("items").EnumerateArray());
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/miniapp/profile/notifications")).StatusCode);
             Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync("/api/miniapp/profile/collection/BaseGame/42")).StatusCode);

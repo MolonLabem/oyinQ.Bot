@@ -52,6 +52,7 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             else if (row.Kind == NotificationKind.Reminder && !await PrepareReminderAsync(row, prefs, now, ct)) { }
             else if (row.Kind == NotificationKind.PlayConfirmationReminder && !await PreparePlayConfirmationAsync(row, now, ct)) { }
             else if (row.Kind == NotificationKind.OrganizerMissingProvider && !await ProviderStillNeeded(row, now, ct)) row.State = NotificationState.Expired;
+            else if (IsCurrentGatheringNotice(row.Kind) && !await PrepareCurrentGatheringAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Participant.PrivateChatStartedAt is null || row.Participant.TelegramDeliveryBlockedAt is not null)
             { row.State = NotificationState.CannotMessageUser; row.LastAttemptAt = now; row.LastErrorCategory = "private_chat_unavailable"; }
             else
@@ -73,6 +74,50 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             ? time.GetUtcNow().AddMinutes(Math.Pow(2, row.AttemptCount)) : DateTimeOffset.MaxValue; }
         // Keep the observed response durable even if the HTTP request that initiated work was cancelled.
         await db.SaveChangesAsync(CancellationToken.None);
+        return true;
+    }
+
+    private static bool IsCurrentGatheringNotice(NotificationKind kind) => kind is
+        NotificationKind.GatheringTimeChanged or NotificationKind.GatheringDetailsChanged or NotificationKind.GatheringFull
+        or NotificationKind.OrganizerBelowMinimum or NotificationKind.OrganizerParticipantLeft or NotificationKind.OrganizerReplacement;
+
+    private async Task<bool> PrepareCurrentGatheringAsync(Notification row, DateTimeOffset now, CancellationToken ct)
+    {
+        var g = await db.GameGatherings.AsNoTracking().Include(x => x.Community).Include(x => x.Participants).Include(x => x.Guests)
+            .SingleOrDefaultAsync(x => x.PublicId == row.GatheringPublicId && x.CommunityKey == row.CommunityKey, ct);
+        if (g is null || !g.Community.IsActive || g.Community.DeletedAt is not null || !GatheringLifecycle.IsUpcoming(g, now)) return false;
+        var organizerNotice = row.Kind is NotificationKind.OrganizerBelowMinimum or NotificationKind.OrganizerParticipantLeft or NotificationKind.OrganizerReplacement;
+        var signup = g.Participants.SingleOrDefault(x => x.ParticipantId == row.ParticipantId);
+        if (organizerNotice ? g.OrganizerParticipantId != row.ParticipantId
+            : g.OrganizerParticipantId != row.ParticipantId && (signup is null
+                || signup.Status == GatheringParticipationStatus.Withdrawn
+                || row.Kind == NotificationKind.GatheringFull && signup.Status != GatheringParticipationStatus.Confirmed)) return false;
+        // Collapse queued revisions, including an older revision whose retry was delayed past a newer delivery.
+        if (await db.Notifications.AnyAsync(x => x.ParticipantId == row.ParticipantId && x.GatheringPublicId == row.GatheringPublicId
+            && x.CommunityKey == row.CommunityKey && x.Kind == row.Kind && x.Id > row.Id, ct)) return false;
+        var name = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson).Name;
+        var occupied = GatheringCapacity.OccupiedSeats(g);
+        switch (row.Kind)
+        {
+            case NotificationKind.GatheringTimeChanged:
+                row.Text = $"Изменилось время сбора «{name}»: {GatheringPresentationService.FormatLocalDateTime(g.StartsAtUtc, g.Community.TimeZoneId)}.";
+                break;
+            case NotificationKind.GatheringDetailsChanged:
+                row.Text = $"Обновлены детали сбора «{name}». Проверьте описание и условия участия.";
+                break;
+            case NotificationKind.GatheringFull:
+                if (occupied < g.MaximumPlayers) return false;
+                row.Text = $"Сбор «{name}» полностью набран.";
+                break;
+            case NotificationKind.OrganizerBelowMinimum:
+                if (occupied >= g.MinimumPlayers) return false;
+                row.Text = $"В сборе «{name}» не хватает участников. Сейчас участников: {occupied}. Минимум для игры: {g.MinimumPlayers}. Нужно найти ещё {g.MinimumPlayers - occupied}.";
+                break;
+            default:
+                // The old departure/replacement is historical; describe the roster the organizer can act on now.
+                row.Text = $"Изменился состав сбора «{name}». Сейчас игроков: {occupied}/{g.MaximumPlayers}. Откройте сбор для проверки состава.";
+                break;
+        }
         return true;
     }
 
@@ -112,8 +157,10 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
 
     private async Task<bool> ProviderStillNeeded(Notification row, DateTimeOffset now, CancellationToken ct)
     {
-        var gathering = await db.GameGatherings.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == row.GatheringPublicId, ct);
-        return gathering is not null && GatheringLifecycle.IsUpcoming(gathering, now) && providers is not null
+        var gathering = await db.GameGatherings.AsNoTracking().Include(x => x.Community)
+            .SingleOrDefaultAsync(x => x.PublicId == row.GatheringPublicId && x.CommunityKey == row.CommunityKey, ct);
+        return gathering is not null && gathering.Community.IsActive && gathering.Community.DeletedAt is null
+            && gathering.OrganizerParticipantId == row.ParticipantId && GatheringLifecycle.IsUpcoming(gathering, now) && providers is not null
             && !(await providers.ForGatheringAsync(gathering, row.ParticipantId, ct)).IsConfirmed;
     }
 
@@ -132,8 +179,9 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
     private async Task<bool> PrepareReminderAsync(Notification row, NotificationPreferences prefs, DateTimeOffset now, CancellationToken ct)
     {
         var gathering = await db.GameGatherings.AsNoTracking().Include(x => x.Participants)
-            .Include(x => x.Community).SingleOrDefaultAsync(x => x.PublicId == row.GatheringPublicId, ct);
-        if (gathering is null || !GatheringLifecycle.ScheduledStatuses.Contains(gathering.Status) || gathering.StartsAtUtc <= now
+            .Include(x => x.Community).SingleOrDefaultAsync(x => x.PublicId == row.GatheringPublicId && x.CommunityKey == row.CommunityKey, ct);
+        if (gathering is null || !gathering.Community.IsActive || gathering.Community.DeletedAt is not null
+            || !GatheringLifecycle.ScheduledStatuses.Contains(gathering.Status) || gathering.StartsAtUtc <= now
             || (gathering.OrganizerParticipantId != row.ParticipantId && !gathering.Participants.Any(x => x.ParticipantId == row.ParticipantId
                 && x.Status == GatheringParticipationStatus.Confirmed)))
         { row.State = NotificationState.Expired; return false; }

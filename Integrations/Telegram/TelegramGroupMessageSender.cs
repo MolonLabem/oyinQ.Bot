@@ -14,6 +14,9 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public interface ITelegramGroupMessageSender
 {
+    Task<Func<CancellationToken, Task<Message>>> PreparePhotoAsync(string communityKey, InputFile photo, string caption, ParseMode parseMode,
+        ReplyMarkup? replyMarkup, CancellationToken cancellationToken) =>
+        Task.FromResult<Func<CancellationToken, Task<Message>>>(ct => SendPhotoAsync(communityKey, photo, caption, parseMode, replyMarkup, ct));
     Task<Func<CancellationToken, Task<Message>>> PrepareMessageAsync(string communityKey, string text, ParseMode parseMode,
         ReplyMarkup? replyMarkup, CancellationToken cancellationToken) =>
         Task.FromResult<Func<CancellationToken, Task<Message>>>(ct => SendMessageAsync(communityKey, text, parseMode, replyMarkup, ct));
@@ -31,6 +34,14 @@ public sealed class TelegramGroupMessageSender(
     TimeProvider timeProvider,
     ILogger<TelegramGroupMessageSender> logger) : ITelegramGroupMessageSender
 {
+    public async Task<Func<CancellationToken, Task<Message>>> PreparePhotoAsync(string communityKey, InputFile photo, string caption,
+        ParseMode parseMode, ReplyMarkup? replyMarkup, CancellationToken cancellationToken)
+    {
+        var destination = await ResolveAsync(communityKey, cancellationToken);
+        return ct => SendResolvedAsync(communityKey, destination,
+            (target, token) => botClient.SendPhoto(target.ChatId, photo, caption: caption, parseMode: parseMode, replyMarkup: replyMarkup,
+                messageThreadId: target.MessageThreadId, cancellationToken: token), ct);
+    }
     public async Task<Func<CancellationToken, Task<Message>>> PrepareMessageAsync(string communityKey, string text,
         ParseMode parseMode, ReplyMarkup? replyMarkup, CancellationToken cancellationToken)
     {

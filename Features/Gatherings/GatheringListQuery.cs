@@ -1,4 +1,6 @@
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
@@ -12,6 +14,21 @@ public enum GatheringListScope
 
 public static class GatheringListQuery
 {
+    public static IQueryable<GameGathering> ForGame(AppDbContext db, string communityKey, long? bggId)
+    {
+        if (bggId is null) return db.GameGatherings.Where(x => x.CommunityKey == communityKey);
+        if (db.Database.IsRelational())
+        {
+            var id = bggId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return db.GameGatherings.FromSqlInterpolated($"""
+                SELECT * FROM "GameGatherings" WHERE "CommunityKey" = {communityKey}
+                AND COALESCE("GameSnapshotJson"->>'bggId', "GameSnapshotJson"->>'BggId') = {id}
+                """);
+        }
+        var ids = db.GameGatherings.AsNoTracking().Where(x => x.CommunityKey == communityKey).AsEnumerable()
+            .Where(x => GatheringGameSnapshotSerializer.Deserialize(x.GameSnapshotJson).BggId == bggId).Select(x => x.Id).ToArray();
+        return db.GameGatherings.Where(x => x.CommunityKey == communityKey && ids.Contains(x.Id));
+    }
     public static bool TryParse(string? scope, string? legacyView, string? legacyStatus,
         out GatheringListScope parsedScope)
     {

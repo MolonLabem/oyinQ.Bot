@@ -185,7 +185,7 @@ public static class GatheringRules
         membership.AttendanceOutcome = AttendanceOutcome.CancelledInAdvance;
         var promoted = shouldPromote ? GatheringCapacity.PromoteFirstWaitlisted(gathering) : null;
         GatheringCapacity.SynchronizeScheduledStatus(gathering);
-        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+        GatheringPublication.Request(gathering);
         gathering.UpdatedAt = now.ToUniversalTime();
         return new(previousStatus, membership, promoted, GatheringCapacity.OccupiedSeats(gathering));
     }

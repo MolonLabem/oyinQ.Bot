@@ -98,7 +98,7 @@ public sealed class GatheringDashboardService(AppDbContext db, GameProviderServi
             position < 0 ? null : position + 1, GatheringRecruitment.Describe(g).Priority == 0,
             wait.Length > 0 && GatheringCapacity.OccupiedSeats(g) >= g.MaximumPlayers,
             GatheringLifecycle.IsUpcoming(g, now) && g.StartsAtUtc <= now.AddHours(2), g.Status == GatheringStatus.Cancelled,
-            g.PublicationStatus == GatheringPublicationStatus.Failed, deliveryProblems, provider,
+            g.PublicationStatus is GatheringPublicationStatus.Failed or GatheringPublicationStatus.DeliveryUnknown, deliveryProblems, provider,
             g.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed).Select(x => x.Participant)
                 .Prepend(g.OrganizerParticipant).DistinctBy(x => x.Id).Count(x => x.PrivateChatStartedAt is null || x.TelegramDeliveryBlockedAt is not null),
             g.Status == GatheringStatus.Completed && g.ConfirmedWasPlayed == null,

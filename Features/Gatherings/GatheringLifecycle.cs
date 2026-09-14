@@ -43,14 +43,14 @@ public static class GatheringLifecycle
             gathering.CancellationReason = InsufficientParticipantsReason;
             gathering.CancelledAt = now;
             gathering.UpdatedAt = now;
-            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            GatheringPublication.Request(gathering);
             return GatheringLifecycleOutcome.Cancelled;
         }
 
         gathering.Status = GatheringStatus.Completed;
         gathering.CompletedAt = now;
         gathering.UpdatedAt = now;
-        gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+        GatheringPublication.Request(gathering);
         return GatheringLifecycleOutcome.Completed;
     }
 

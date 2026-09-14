@@ -9,6 +9,8 @@ public sealed class GameGathering
 
     public long Id { get; set; }
     public Guid PublicId { get; set; }
+    public Guid? CreationOperationId { get; set; }
+    public string? CreationRequestHash { get; set; }
     public string CommunityKey { get; set; } = string.Empty;
     public string GameSnapshotJson { get; set; } = string.Empty;
     public long OrganizerParticipantId { get; set; }
@@ -24,6 +26,9 @@ public sealed class GameGathering
     public GatheringPublicationStatus PublicationStatus { get; set; }
     public string? PublicationError { get; set; }
     public int PublicationAttempts { get; set; }
+    public long PublicationRevision { get; set; }
+    public Guid? PublicationAttemptId { get; set; }
+    public DateTimeOffset? PublicationLeaseExpiresAt { get; set; }
     public DateTimeOffset? LastPublicationAttemptAt { get; set; }
     public string? CancellationReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

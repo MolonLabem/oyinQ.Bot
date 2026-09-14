@@ -13,7 +13,7 @@ namespace oyinQ.Bot.Features.Gatherings;
 public sealed record CreateGatheringCommand(string CommunityKey, string GameSource, long BggId,
     IReadOnlyCollection<long> SelectedExpansionIds, DateTimeOffset StartsAt, int MinimumPlayers,
     int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules, bool ConfirmScheduleConflict = false, bool AddToCollection = false, bool BringToCamp = false,
-    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null, Guid? OperationId = null, Guid? CopyFromPublicId = null);
 
 public sealed record UpdateGatheringCommand(DateTimeOffset StartsAt, int MinimumPlayers,
     int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules,
@@ -33,13 +33,24 @@ public sealed class GatheringManagementService(
         CreateGatheringCommand command, CancellationToken cancellationToken)
     {
         var participant = await GetOrCreateParticipantAsync(identity, community.Key, cancellationToken);
+        if (command.CommunityKey != community.Key) throw new ArgumentException("Сообщество запроса не совпадает с выбранным.");
+        if (command.OperationId == Guid.Empty) throw new ArgumentException("Некорректный идентификатор операции.");
+        var requestHash = GatheringCreationIdentity.Hash(command);
+        var replay = await FindCreationAsync(participant.Id, command, requestHash, cancellationToken);
+        if (replay is not null) return replay;
         // Reject an invalid Camp selection cheaply; the same policy is authoritative again under the lock below.
         await EnsureCommunityMutationAllowedAsync(community, identity.TelegramUserId, command.StartsAt, cancellationToken);
         var external = string.Equals(command.GameSource, "bgg", StringComparison.OrdinalIgnoreCase);
+        if (command.CopyFromPublicId is not null && (external || command.AddToCollection))
+            throw new ArgumentException("Повтор сбора использует сохранённый снимок игры.");
         if (command.AddToCollection && !external) throw new ArgumentException("Добавление при создании доступно для выбранной игры BGG.");
         if (command.BringToCamp && community.Mode != BotMode.Camp) throw new ArgumentException("Отметка кэмпа доступна только в кэмпе.");
         var selection = external ? await gameSelection.ExternalSelectionAsync(command.BggId, command.SelectedExpansionIds, cancellationToken) : default;
-        var snapshot = external
+        var snapshot = command.CopyFromPublicId is { } copyId
+            ? await CopySnapshotAsync(copyId, community.Key, participant.Id, command.BggId, command.SelectedExpansionIds, cancellationToken)
+            : command.GameSource == "demand"
+                ? await gameSelection.FromDemandAsync(community.Key, community.Mode, identity.TelegramUserId, command.BggId, command.SelectedExpansionIds, cancellationToken)
+            : external
             ? selection.Snapshot
             : community.Mode == BotMode.Club
                 ? await gameSelection.FromClubCollectionAsync(community.Key, command.BggId,
@@ -51,6 +62,8 @@ public sealed class GatheringManagementService(
             command.AddExpansionToCollectionIds ?? [], bringExpansions, community.Mode, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var authoritative = await CommunityMutationLock.AcquireAsync(dbContext, community.Key, cancellationToken);
+        replay = await FindCreationAsync(participant.Id, command, requestHash, cancellationToken);
+        if (replay is not null) { await transaction.CommitAsync(cancellationToken); return replay; }
         if (!authoritative.IsActive || authoritative.DeletedAt is not null || authoritative.Mode != community.Mode)
             throw new InvalidOperationException("Сообщество больше не принимает новые сборы.");
         community = authoritative.ToBotCommunity();
@@ -60,11 +73,13 @@ public sealed class GatheringManagementService(
             await dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {lockedCampId} FOR UPDATE").SingleAsync(cancellationToken);
         await EnsureCommunityMutationAllowedAsync(community, identity.TelegramUserId, command.StartsAt, cancellationToken);
         await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(participant.Id, command.StartsAt, null,
-            command.ConfirmScheduleConflict, timeProvider.GetUtcNow(), cancellationToken);
+            command.ConfirmScheduleConflict, timeProvider.GetUtcNow(), cancellationToken, snapshot);
         var now = timeProvider.GetUtcNow();
         var gathering = GatheringRules.Create(community.Key, snapshot, participant.Id,
             command.StartsAt, command.MinimumPlayers, command.DesiredPlayers, command.MaximumPlayers,
             command.Description, command.CanTeachRules, now);
+        gathering.CreationOperationId = command.OperationId;
+        gathering.CreationRequestHash = command.OperationId is null ? null : requestHash;
         if (command.AddToCollection)
             await new ParticipantCollectionService(dbContext).UpsertAsync(participant.Id,
                 selection.Ownership.Where(x => command.AddExpansionToCollectionIds is null || x.ItemType == CollectionItemType.BaseGame).ToArray(),
@@ -83,6 +98,27 @@ public sealed class GatheringManagementService(
         await notifications.NotifyFullAsync(gathering.PublicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return gathering;
+    }
+
+    private async Task<GameGathering?> FindCreationAsync(long participantId, CreateGatheringCommand command, string hash, CancellationToken ct)
+    {
+        if (command.OperationId is null) return null;
+        var saved = await dbContext.GameGatherings.SingleOrDefaultAsync(x => x.CommunityKey == command.CommunityKey
+            && x.OrganizerParticipantId == participantId && x.CreationOperationId == command.OperationId, ct);
+        if (saved is not null && saved.CreationRequestHash != hash)
+            throw new InvalidOperationException("Эта операция уже создала сбор с другими параметрами. Откройте сохранённый сбор.");
+        return saved;
+    }
+
+    private async Task<GatheringGameSnapshot> CopySnapshotAsync(Guid id, string key, long participantId, long bggId,
+        IReadOnlyCollection<long> expansions, CancellationToken ct)
+    {
+        var original = await dbContext.GameGatherings.AsNoTracking().SingleOrDefaultAsync(x => x.PublicId == id && x.CommunityKey == key, ct)
+            ?? throw new KeyNotFoundException("Исходный сбор не найден.");
+        if (original.OrganizerParticipantId != participantId) throw new UnauthorizedAccessException("Повторить можно свой сбор.");
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(original.GameSnapshotJson);
+        if (snapshot.BggId != bggId || bggId <= 0) throw new ArgumentException("Игра не совпадает с исходным сбором.");
+        return snapshot.WithExpansions(expansions);
     }
 
     public async Task<GatheringUpdateResult> UpdateAsync(Guid publicId, string communityKey, long telegramUserId,
@@ -121,7 +157,7 @@ public sealed class GatheringManagementService(
                 gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(
                     GatheringGameSelectionService.ApplyExpansionMetadata(currentSnapshot, enriched.KnownExpansions ?? []));
             timeChanged = gathering.StartsAtUtc != command.StartsAt.ToUniversalTime();
-            if (timeChanged) await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(gathering.OrganizerParticipantId, command.StartsAt, publicId, command.ConfirmScheduleConflict, now, cancellationToken);
+            if (timeChanged) await (conflicts ?? new GatheringScheduleConflictService(dbContext)).WarnAsync(gathering.OrganizerParticipantId, command.StartsAt, publicId, command.ConfirmScheduleConflict, now, cancellationToken, currentSnapshot);
             var community = await dbContext.OyinQCommunities.AsNoTracking()
                 .SingleAsync(x => x.Key == communityKey, cancellationToken);
             await EnsureCommunityMutationAllowedAsync(community.ToBotCommunity(), telegramUserId,
@@ -133,7 +169,7 @@ public sealed class GatheringManagementService(
                 command.SelectedExpansionIds, now);
             await SaveExpansionOwnershipAsync(gathering.OrganizerParticipantId, campId, command.StartsAt,
                 expansionOwnership, command.BringExpansionIds ?? [], now, cancellationToken);
-            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            GatheringPublication.Request(gathering);
             await dbContext.SaveChangesAsync(cancellationToken);
             if (timeChanged) await notifications.NotifyTimeChangedAsync(publicId, cancellationToken);
             else if (beforeDetails != (gathering.MinimumPlayers, gathering.DesiredPlayers, gathering.MaximumPlayers,
@@ -185,7 +221,7 @@ public sealed class GatheringManagementService(
                 case "cancel": GatheringRules.Cancel(gathering, reason, now); cancelled = true; break;
                 default: throw new InvalidOperationException("Неизвестное действие со сбором.");
             }
-            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            GatheringPublication.Request(gathering);
             await dbContext.SaveChangesAsync(cancellationToken);
             if (cancelled) await notifications.NotifyCancellationAsync(publicId, cancellationToken);
             await notifications.NotifyFullAsync(publicId, cancellationToken);
