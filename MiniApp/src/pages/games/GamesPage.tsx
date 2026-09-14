@@ -89,7 +89,7 @@ function GameCard({ game, open, club }: { game: GameListItem; club: boolean; ope
 }
 
 function GameDetail({ community, bggId, attendanceDate, back, createGathering, openGathering }: { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggId: number; attendanceDate?: string; back: () => void }) {
-  const state = useAsync(() => api<GameDetails>(`/catalog/${bggId}?community=${encodeURIComponent(community.key)}&attendanceDate=${attendanceDate ?? ""}`), [community.key, bggId, attendanceDate]);
+  const state = useAsync(() => api<GameDetails>(`/catalog/${bggId}?community=${encodeURIComponent(community.key)}${attendanceDate ? `&attendanceDate=${encodeURIComponent(attendanceDate)}` : ""}`), [community.key, bggId, attendanceDate]);
   useEffect(() => telegram.back(true, back), [back]);
   if (state.loading) return <Page title="Игра"><Loading /></Page>;
   if (state.failure instanceof ApiError && state.failure.code === "game_not_in_collection") return <Page title="Игра" subtitle={community.name} actions={<BackButton onClick={back} />}><Notice kind="warning">{collectionMissingMessage(community)}</Notice></Page>;
