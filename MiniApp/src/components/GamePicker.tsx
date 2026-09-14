@@ -1,3 +1,4 @@
+import { ComplexityBadge } from "./ComplexityBadge";
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api } from "../api/client";
 import type { BggBaseGameSearchResult, BggDetails, ClubGame } from "../api/types";
@@ -220,7 +221,7 @@ export function GamePicker({
         {candidate.localGame?.thumbnailImageUrl
           ? <Cover src={candidate.localGame.thumbnailImageUrl} name={candidate.name} />
           : <span className="result-icon" aria-hidden>BGG</span>}
-        <span><strong>{candidate.name}</strong><SearchResultMeta candidate={candidate} /></span><span aria-hidden>›</span>
+        <span><strong>{candidate.name}</strong><SearchResultMeta candidate={candidate} /><ComplexityBadge info={candidate.localGame?.complexityInfo} /></span><span aria-hidden>›</span>
       </button>)}
       {searching && <p className="picker-status">Ищем в BGG…</p>}
       {!searching && !hasResults && normalized.length < 2 && <p className="picker-status">Введите хотя бы два символа.</p>}
@@ -250,9 +251,10 @@ export function localGameSourceLabel(game: Pick<ClubGame, "isInBaseCollection" |
 export function GameMeta({ game, compact = false }: { game: ClubGame; compact?: boolean }) {
   const players = game.minPlayers && game.maxPlayers ? `${game.minPlayers}–${game.maxPlayers} игроков` : undefined;
   const tags = (game.typeNames?.length ? game.typeNames : [game.typeName]).filter((value): value is string => Boolean(value));
-  if (!players && !tags.length) return compact ? <small>Метаданные появятся после выбора</small> : null;
+  if (!players && !tags.length && !game.complexityInfo) return compact ? <small>Метаданные появятся после выбора</small> : null;
   return <span className={`game-meta ${compact ? "compact" : ""}`}>
     {players && <small>{players}{game.bestPlayers ? ` · лучше: ${game.bestPlayers}` : ""}</small>}
+    <ComplexityBadge info={game.complexityInfo} />
     {tags.length > 0 && <span className="tag-list">{tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}</span>}
   </span>;
 }

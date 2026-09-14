@@ -27,7 +27,7 @@ internal sealed record CampCatalogResponse(long BggId, string ItemType, long? Pa
     IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames, int CopyCount,
     IReadOnlyList<CampCatalogProvider> Providers, IReadOnlyList<ClubCollectionExpansion> Expansions,
-    bool IsInBaseCollection, bool HasCommittedProvider, bool NeedsProviderCoordination);
+    bool IsInBaseCollection, bool HasCommittedProvider, bool NeedsProviderCoordination, ComplexityInfo? ComplexityInfo = null);
 
 internal static class CampEndpoints
 {
@@ -337,7 +337,7 @@ internal static class CampEndpoints
             (x.IsInBaseCollection ? 1 : 0) + x.Providers.Count, x.Providers,
             x.Game.Expansions, x.IsInBaseCollection,
             GameProviderService.Describe(false, x.Providers).IsConfirmed,
-            !GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed); }));
+            !GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed, GameComplexityPresentation.Present(x.Game)); }));
     }
 
     private static async Task<(long CampId, long ParticipantId, IResult? Error)> OwnedCampAsync(

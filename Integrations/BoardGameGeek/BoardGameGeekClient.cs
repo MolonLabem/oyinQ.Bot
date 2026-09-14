@@ -382,6 +382,7 @@ public sealed class BoardGameGeekClient(
             return null;
         }
 
+        var complexity = BggComplexityParser.Parse(item);
         var subdomains = ReadSubdomains(item);
         var categories = ReadTaxonomy(item, "boardgamecategory");
         var mechanics = ReadTaxonomy(item, "boardgamemechanic");
@@ -405,7 +406,7 @@ public sealed class BoardGameGeekClient(
             categories,
             mechanics,
             BggTaxonomyCatalog.MapGameType(subdomains),
-            resolvedName.OriginalName);
+            resolvedName.OriginalName, complexity.Weight, complexity.Level);
     }
 
     private static IReadOnlyList<string> ReadTags(XElement item, string linkType,

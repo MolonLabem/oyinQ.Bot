@@ -184,7 +184,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
     {
         var additions = imported.Where(x => existing.All(current => current.BggId != x.BggId)).ToArray();
         added += additions.Length;
-        return ClubCollectionExpansion.Merge(existing, imported)
+        return BggGameMapper.MergeEnrichedExpansions(existing, imported)
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

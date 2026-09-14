@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace oyinQ.Bot.Features.Catalog;
 
 public sealed record EffectiveCampExpansion(long BggId, string Name, string? OriginalName,
-    IReadOnlyList<CampCatalogProvider> Providers, int? MinPlayers = null, int? MaxPlayers = null);
+    IReadOnlyList<CampCatalogProvider> Providers, int? MinPlayers = null, int? MaxPlayers = null, decimal? ComplexityWeight = null, GameComplexity? Complexity = null);
 
 public sealed record EffectiveCampGame(ClubCollectionGame Game, bool IsInBaseCollection,
     IReadOnlyList<CampCatalogProvider> Providers, IReadOnlyList<EffectiveCampExpansion> Expansions);
@@ -47,22 +47,24 @@ public sealed class EffectiveCampCatalogService(
         {
             var expansionMap = value.Game.Expansions
                 .Select(x => new EffectiveCampExpansion(x.BggId, x.Name, x.OriginalName,
-                    contributedExpansions.SingleOrDefault(c => c.BggId == x.BggId)?.Providers ?? [], x.MinPlayers, x.MaxPlayers))
+                    contributedExpansions.SingleOrDefault(c => c.BggId == x.BggId)?.Providers ?? [], x.MinPlayers, x.MaxPlayers, x.ComplexityWeight, x.Complexity))
                 .Concat(contributedExpansions.Where(x => x.ParentBggIds.Contains(value.Game.BggId))
                     .Select(x => new EffectiveCampExpansion(x.BggId, x.Name,
-                        x.Snapshot.OriginalName, x.Providers, x.Snapshot.MinPlayers, x.Snapshot.MaxPlayers)))
+                        x.Snapshot.OriginalName, x.Providers, x.Snapshot.MinPlayers, x.Snapshot.MaxPlayers, x.Snapshot.ComplexityWeight, x.Snapshot.Complexity)))
                 .GroupBy(x => x.BggId)
                 .Select(group => new EffectiveCampExpansion(group.Key,
                     group.Select(x => x.Name).First(x => !string.IsNullOrWhiteSpace(x)),
                     group.Select(x => x.OriginalName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
                     group.SelectMany(x => x.Providers).DistinctBy(x => x.ParticipantId).ToArray(),
                     group.Select(x => x.MinPlayers).FirstOrDefault(x => x.HasValue),
-                    group.Select(x => x.MaxPlayers).FirstOrDefault(x => x.HasValue)))
+                    group.Select(x => x.MaxPlayers).FirstOrDefault(x => x.HasValue),
+                    group.Select(x => x.ComplexityWeight).FirstOrDefault(x => x.HasValue),
+                    group.Select(x => x.Complexity).FirstOrDefault(x => x.HasValue)))
                 .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             var game = value.Game with
             {
                 Expansions = expansionMap.Select(x => new ClubCollectionExpansion(x.BggId, x.Name,
-                    x.OriginalName, x.MinPlayers, x.MaxPlayers)).ToArray()
+                    x.OriginalName, x.MinPlayers, x.MaxPlayers, x.ComplexityWeight, x.Complexity)).ToArray()
             };
             return new EffectiveCampGame(game, value.InBase, value.Providers, expansionMap);
         }).OrderBy(x => x.Game.Name, StringComparer.OrdinalIgnoreCase).ToArray();

@@ -17,7 +17,7 @@ public sealed record GameListItemResponse(long BggId, string Name, string? Origi
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     string AvailabilitySummary, bool IsDefinitelyAvailable,
-    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null, PlayerCountRange? ExpansionPlayerRange = null);
+    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider, bool IsOwned = false);
 public sealed record GameDetailsResponse(long BggId, string Name, string? OriginalName, string? ImageUrl, string? Description,
@@ -26,7 +26,7 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     int? MinPlayTimeMinutes, int? MaxPlayTimeMinutes, int? MinAge,
     IReadOnlyList<LocalizedTaxonomyItem> Categories, IReadOnlyList<LocalizedTaxonomyItem> Mechanics,
     IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true,
-    int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null);
+    int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
     IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters);
@@ -136,7 +136,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             game.Expansions, BggGameUrl.FromId(game.BggId)!,
             new GameAvailabilityResponse(value.IsInBaseCollection, value.Providers,
                 GameProviderService.Describe(false, value.Providers).IsConfirmed, value.IsOwned), value.IsWished, value.IsBaseGame,
-            scheduledGatherings, recordedPlays, ExpansionRange(game));
+            scheduledGatherings, recordedPlays, ExpansionRange(game), GameComplexityPresentation.Present(game));
     }
 
     public async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
@@ -208,7 +208,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             value.Game.ThumbnailImageUrl,
             value.Game.Type, presentation.TypeName, presentation.TypeNames, value.Game.MinPlayers,
             value.Game.MaxPlayers, value.Game.BestPlayers, summary,
-            value.IsInBaseCollection || committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions, ExpansionPlayerRange: ExpansionRange(value.Game));
+            value.IsInBaseCollection || committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions, ExpansionPlayerRange: ExpansionRange(value.Game), ComplexityInfo: GameComplexityPresentation.Present(value.Game));
     }
 
     public static PlayerCountRange? ExpansionRange(ClubCollectionGame game)

@@ -348,6 +348,29 @@ public sealed class BoardGameGeekClientTests
         Assert.Equal(2, calls);
     }
 
+    [Fact]
+    public async Task ExistingThingEnrichmentCarriesComplexityWithoutExtraRequests()
+    {
+        var calls = new List<string>();
+        var client = CreateClient(new StubHttpMessageHandler(request =>
+        {
+            calls.Add(request.RequestUri!.PathAndQuery);
+            Assert.Contains("stats=1", request.RequestUri.Query);
+            return XmlResponse(HttpStatusCode.OK, """
+                <items><item type="boardgame" id="42"><name type="primary" value="Game" />
+                <statistics page="1"><ratings><averageweight value="2.1234" /></ratings></statistics>
+                </item></items>
+                """);
+        }));
+        var details = await client.GetGameDetailsAsync(42, default);
+        Assert.Equal(2.1234m, details!.Game.ComplexityWeight);
+        Assert.Equal(GameComplexity.MediumLight, details.Game.Complexity);
+        Assert.Single(calls);
+        var imported = await client.GetItemsByIdsAsync([42], default);
+        Assert.Equal(2.1234m, Assert.Single(imported).Game.ComplexityWeight);
+        Assert.Equal(2, calls.Count);
+    }
+
     private static BoardGameGeekClient CreateClient(HttpMessageHandler handler)
     {
         var httpClient = new HttpClient(handler)

@@ -52,7 +52,11 @@ builder.Services.AddSingleton(Options.Create(administrationOptions));
 builder.Services.AddSingleton(Options.Create(bggOptions));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.ConfigureHttpJsonOptions(options =>
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.SerializerOptions.TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver
+    { Modifiers = { oyinQ.Bot.Features.MiniApp.ComplexityJsonPresentation.Add } };
+});
 builder.Services.AddSingleton<TelegramWebhookUpdateParser>();
 
 builder.Services.AddDbContext<AppDbContext>(

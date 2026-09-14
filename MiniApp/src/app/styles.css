@@ -398,3 +398,24 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 
 .contribution-row .media > .cover { flex: none; }
 .collection-expansion .cover { width: 48px; height: 64px; }
+
+/* Complexity uses paired foreground/background tokens in both Telegram themes. */
+:root {
+  --complexity-light-bg: #b9f48b; --complexity-light-fg: #21410e;
+  --complexity-medium-light-bg: #d3edda; --complexity-medium-light-fg: #18522c;
+  --complexity-medium-bg: #fff0b3; --complexity-medium-fg: #654d00;
+  --complexity-medium-heavy-bg: #ffe0df; --complexity-medium-heavy-fg: #a02125;
+  --complexity-heavy-bg: #781d30; --complexity-heavy-fg: #fff0f3;
+}
+:root[data-theme="dark"] {
+  --complexity-light-bg: #385922; --complexity-light-fg: #c4ff92;
+  --complexity-medium-light-bg: #1e4930; --complexity-medium-light-fg: #a0e5b9;
+  --complexity-medium-bg: #4c4117; --complexity-medium-fg: #ffe38a;
+  --complexity-medium-heavy-bg: #63292b; --complexity-medium-heavy-fg: #ffc2bd;
+  --complexity-heavy-bg: #681a31; --complexity-heavy-fg: #ffd6e1;
+}
+.badge.complexity-very-easy { background: var(--complexity-light-bg); color: var(--complexity-light-fg); }
+.badge.complexity-easy { background: var(--complexity-medium-light-bg); color: var(--complexity-medium-light-fg); }
+.badge.complexity-medium { background: var(--complexity-medium-bg); color: var(--complexity-medium-fg); }
+.badge.complexity-hard { background: var(--complexity-medium-heavy-bg); color: var(--complexity-medium-heavy-fg); }
+.badge.complexity-very-hard { background: var(--complexity-heavy-bg); color: var(--complexity-heavy-fg); }

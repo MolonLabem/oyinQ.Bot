@@ -19,7 +19,7 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
 export function Cover({ src, name }: { src?: string; name: string }) { return src ? <img className="cover" src={src} alt={`Обложка игры ${name}`} /> : <div className="cover placeholder" aria-hidden>🎲</div>; }
 export function Field({ label, children, hint, error }: { label: string; children: ReactNode; hint?: string; error?: string }) { return <label className={`field${error ? " invalid" : ""}`}><span>{label}</span>{children}{hint && <small>{hint}</small>}{error && <small className="field-error" role="alert">{error}</small>}</label>; }
 export function Notice({ children, kind = "info" }: { children: ReactNode; kind?: "info" | "warning" | "danger" | "success" }) { return <div className={`notice ${kind}`} role="status">{children}</div>; }
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: BadgeTone }) { return <span className={`badge ${tone}`}>{children}</span>; }
+export function Badge({ children, tone = "neutral", className = "" }: { children: ReactNode; tone?: BadgeTone; className?: string }) { return <span className={`badge ${tone} ${className}`}>{children}</span>; }
 export type TabItem = { id: string; label: string };
 export function Tabs({ items, active, onChange, label, className = "" }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string }) {
   const activeButton = useRef<HTMLButtonElement>(null);

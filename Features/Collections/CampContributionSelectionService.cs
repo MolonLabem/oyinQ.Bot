@@ -16,7 +16,8 @@ public sealed record CampImportSelectionItem(long BggId, CollectionItemType Item
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     IReadOnlyList<long>? ParentBggIds = null,
-    string? OriginalName = null)
+    string? OriginalName = null,
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity
 {
     public CollectionItemSnapshot ToSnapshot() =>
         Integrations.BoardGameGeek.BggGameMapper.ToCollectionSnapshot(this);

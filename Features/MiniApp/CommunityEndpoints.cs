@@ -79,6 +79,6 @@ internal static class CommunityEndpoints
             PlayerRangeDefaulted = players.WasDefaulted, game.BestPlayers,
             game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
             metadata.TypeName, metadata.TypeNames, metadata.CategoryNames, metadata.MechanicNames,
-            game.CategoryItems, game.Mechanics, game.Expansions, value.IsInBaseCollection, value.IsOwned };
+            ComplexityInfo = GameComplexityPresentation.Present(game), game.CategoryItems, game.Mechanics, game.Expansions, value.IsInBaseCollection, value.IsOwned };
     }
 }

@@ -14,7 +14,8 @@ public static class BggGameMapper
     }
 
     public static ClubCollectionExpansion ToCollectionExpansion(BggExpansion expansion) =>
-        new(expansion.BggId, expansion.Name, expansion.OriginalName, expansion.MinPlayers, expansion.MaxPlayers);
+        new(expansion.BggId, expansion.Name, expansion.OriginalName, expansion.MinPlayers, expansion.MaxPlayers,
+            expansion.Snapshot?.ComplexityWeight, expansion.Snapshot?.Complexity);
 
     public static ClubCollectionGame ToCollectionGame(BggGameDetails details) =>
         ToCollectionGame(details.Game, details.Expansions.Select(ToCollectionExpansion).DistinctBy(x => x.BggId).ToArray());
@@ -28,8 +29,20 @@ public static class BggGameMapper
         if (existing.BggId != game.BggId) throw new InvalidOperationException("BGG вернул данные другой игры.");
         return existing.WithMetadataFallback(ToCollectionSnapshot(details.Game)) with
         {
-            Expansions = ClubCollectionExpansion.Merge(existing.Expansions, selected)
+            ComplexityWeight = game.ComplexityWeight,
+            Complexity = game.Complexity,
+            Expansions = MergeEnrichedExpansions(existing.Expansions, selected)
         };
+    }
+
+    public static IReadOnlyList<ClubCollectionExpansion> MergeEnrichedExpansions(
+        IReadOnlyList<ClubCollectionExpansion> existing, IEnumerable<ClubCollectionExpansion> enriched)
+    {
+        var current = enriched.DistinctBy(x => x.BggId).ToDictionary(x => x.BggId);
+        return ClubCollectionExpansion.Merge(existing, current.Values).Select(expansion =>
+            current.TryGetValue(expansion.BggId, out var fresh)
+                ? expansion with { ComplexityWeight = fresh.ComplexityWeight, Complexity = fresh.Complexity }
+                : expansion).ToArray();
     }
 
     public static CampBggImportDraftItem ToDraftItem(BggCollectionItem item) => new(item.Game.BggId!.Value,
@@ -55,7 +68,8 @@ public static class BggGameMapper
     {
         var snapshot = metadata ?? new CollectionItemSnapshot(CollectionItemSnapshot.CurrentVersion,
             expansion.Name, null, null, expansion.MinPlayers, expansion.MaxPlayers, null,
-            ParentBggIds: [baseId], OriginalName: expansion.OriginalName);
+            ParentBggIds: [baseId], OriginalName: expansion.OriginalName,
+            ComplexityWeight: expansion.ComplexityWeight, Complexity: expansion.Complexity);
         var parents = (snapshot.ParentBggIds ?? []).Append(baseId).Distinct().ToArray();
         return new(expansion.BggId, CollectionItemType.Expansion, baseId,
             snapshot with { ParentBggIds = parents }, ParentBggIds: parents);
@@ -70,7 +84,7 @@ public static class BggGameMapper
             snapshot.BestPlayers, snapshot.Types, snapshot.Categories, snapshot.Description,
             snapshot.YearPublished, snapshot.MinPlayTimeMinutes, snapshot.MaxPlayTimeMinutes,
             snapshot.MinAge, snapshot.Type, snapshot.Subdomains, snapshot.CategoryItems,
-            snapshot.Mechanics, snapshot.ParentBggIds, snapshot.OriginalName);
+            snapshot.Mechanics, snapshot.ParentBggIds, snapshot.OriginalName, snapshot.ComplexityWeight, snapshot.Complexity);
     }
 
     public static ClubCollectionGame ToCollectionGame(ExternalGame game,
@@ -83,7 +97,7 @@ public static class BggGameMapper
         return new ClubCollectionGame(game.BggId.Value, game.Name, game.ThumbnailImageUrl, game.ImageUrl,
             game.MinPlayers, game.MaxPlayers, game.BestPlayers, expansions ?? [], game.Types, game.Categories,
             game.Description, game.YearPublished, game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge,
-            game.Type, game.Subdomains, game.CategoryItems, game.Mechanics, game.OriginalName);
+            game.Type, game.Subdomains, game.CategoryItems, game.Mechanics, game.OriginalName, game.ComplexityWeight, game.Complexity);
     }
 
     public static CollectionItemSnapshot ToCollectionSnapshot(CampImportSelectionItem item) =>
@@ -91,7 +105,7 @@ public static class BggGameMapper
             item.BestPlayers, BggGameUrl.FromId(item.BggId), item.ThumbnailImageUrl, item.ImageUrl,
             item.Types, item.Categories, item.Description, item.YearPublished, item.MinPlayTimeMinutes,
             item.MaxPlayTimeMinutes, item.MinAge, item.Subdomains, item.CategoryItems, item.Mechanics,
-            item.Type, item.OriginalName), item.ParentBggIds);
+            item.Type, item.OriginalName, item.ComplexityWeight, item.Complexity), item.ParentBggIds);
 
     public static CollectionItemSnapshot ToCollectionSnapshot(ExternalGame game,
         IReadOnlyList<long>? parentBggIds = null)
@@ -102,7 +116,7 @@ public static class BggGameMapper
             players.WasDefaulted ? null : players.Minimum, players.WasDefaulted ? null : players.Maximum,
             game.BestPlayers, game.Types, game.Categories, game.Description,
             game.YearPublished, game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes, game.MinAge, game.Type,
-            game.Subdomains, game.CategoryItems, game.Mechanics, parentBggIds, game.OriginalName);
+            game.Subdomains, game.CategoryItems, game.Mechanics, parentBggIds, game.OriginalName, game.ComplexityWeight, game.Complexity);
     }
 
     private static ExternalGame NormalizeMetadata(ExternalGame game)
@@ -119,6 +133,8 @@ public static class BggGameMapper
         return game with
         {
             Description = description,
+            ComplexityWeight = GameComplexityPresentation.ValidWeight(game.ComplexityWeight),
+            Complexity = GameComplexityPresentation.Resolve(game.ComplexityWeight, game.Complexity),
             YearPublished = game.YearPublished is >= 1000 and <= 3000 ? game.YearPublished : null,
             MinPlayTimeMinutes = minimum,
             MaxPlayTimeMinutes = maximum,

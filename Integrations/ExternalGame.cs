@@ -22,4 +22,5 @@ public sealed record ExternalGame(
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     GameType Type = GameType.Other,
-    string? OriginalName = null);
+    string? OriginalName = null,
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity;

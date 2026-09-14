@@ -29,13 +29,16 @@ public sealed record ClubCollectionGame(
     IReadOnlyList<GameTaxonomyItem>? Subdomains = null,
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
-    string? OriginalName = null)
+    string? OriginalName = null,
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity
 {
     [JsonIgnore]
     public bool HasExpansions => Expansions is { Count: > 0 };
 
     public ClubCollectionGame WithMetadataFallback(CollectionItemSnapshot fallback) => this with
     {
+        ComplexityWeight = this.ComplexityWeight ?? fallback.ComplexityWeight,
+        Complexity = this.Complexity ?? fallback.Complexity,
         ThumbnailImageUrl = this.ThumbnailImageUrl ?? fallback.ThumbnailImageUrl,
         ImageUrl = this.ImageUrl ?? fallback.ImageUrl,
         Description = this.Description ?? fallback.Description,
@@ -62,7 +65,8 @@ public sealed record ClubCollectionGame(
 }
 
 public sealed record ClubCollectionExpansion(long BggId, string Name, string? OriginalName = null,
-    int? MinPlayers = null, int? MaxPlayers = null)
+    int? MinPlayers = null, int? MaxPlayers = null,
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity
 {
     public static IReadOnlyList<ClubCollectionExpansion> Merge(IEnumerable<ClubCollectionExpansion> existing,
         IEnumerable<ClubCollectionExpansion> additions) => existing.Concat(additions).GroupBy(item => item.BggId)
@@ -70,6 +74,8 @@ public sealed record ClubCollectionExpansion(long BggId, string Name, string? Or
 
     public ClubCollectionExpansion WithMetadataFallback(ClubCollectionExpansion fallback) => this with
     {
+        ComplexityWeight = ComplexityWeight ?? fallback.ComplexityWeight,
+        Complexity = Complexity ?? fallback.Complexity,
         OriginalName = OriginalName ?? fallback.OriginalName,
         MinPlayers = MinPlayers ?? fallback.MinPlayers,
         MaxPlayers = MaxPlayers ?? fallback.MaxPlayers

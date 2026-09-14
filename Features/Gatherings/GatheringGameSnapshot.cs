@@ -26,7 +26,8 @@ public sealed record GatheringGameSnapshot(
     bool PlayerRangeDefaulted = false,
     string? OriginalName = null,
     int? BaseMinPlayers = null,
-    int? BaseMaxPlayers = null)
+    int? BaseMaxPlayers = null,
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity
 {
     public const int CurrentVersion = 4;
 
@@ -66,7 +67,7 @@ public sealed record GatheringGameSnapshot(
             game.CategoryItems,
             game.Mechanics,
             players.WasDefaulted,
-            game.OriginalName, basePlayers.Minimum, basePlayers.Maximum);
+            game.OriginalName, basePlayers.Minimum, basePlayers.Maximum, game.ComplexityWeight, game.Complexity);
     }
 }
 

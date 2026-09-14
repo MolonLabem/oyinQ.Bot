@@ -1,3 +1,4 @@
+import { ComplexityBadge } from "./ComplexityBadge";
 import { useEffect, useRef, useState } from "react";
 import { api, json } from "../api/client";
 import type { CatalogResponse, ClubGame, Community } from "../api/types";
@@ -43,10 +44,10 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
     <p className="muted">Игры, в которые хочется сыграть в этом сообществе. Коробку иметь не обязательно. Запись в сбор и обещание привезти игру оформляются отдельно.</p>
     <GamePicker selectionMode="wish" catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
       selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label="Добавить в вишлист" />
-    {selected && <div className="row"><strong>{selected.name}</strong><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}
+    {selected && <div className="row"><strong>{selected.name}</strong><ComplexityBadge info={selected.complexityInfo} /><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length
       ? <Empty>Вишлист пока пуст. Найдите игру выше.</Empty>
-      : <ul className="provider-list">{state.data.items.map(game => <li key={game.bggId}><span>{game.name}</span>
+      : <ul className="provider-list">{state.data.items.map(game => <li key={game.bggId}><span>{game.name} <ComplexityBadge info={game.complexityInfo} /></span>
         <WishButton communityKey={community.key} bggId={game.bggId} initial={game.isWished} changed={state.reload} /></li>)}</ul>}
   </section>;
 }

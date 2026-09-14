@@ -22,15 +22,16 @@ public sealed record CollectionItemSnapshot(
     IReadOnlyList<GameTaxonomyItem>? CategoryItems = null,
     IReadOnlyList<GameTaxonomyItem>? Mechanics = null,
     IReadOnlyList<long>? ParentBggIds = null,
-    string? OriginalName = null)
+    string? OriginalName = null,
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity
 {
     public const int CurrentVersion = 3;
-    public ClubCollectionExpansion ToExpansion(long bggId) => new(bggId, Name, OriginalName, MinPlayers, MaxPlayers);
+    public ClubCollectionExpansion ToExpansion(long bggId) => new(bggId, Name, OriginalName, MinPlayers, MaxPlayers, ComplexityWeight, Complexity);
     public ClubCollectionGame ToCollectionGame(long bggId) => new(bggId, Name, ThumbnailImageUrl, ImageUrl,
         MinPlayers, MaxPlayers, BestPlayers, [], Types, Categories, Description, YearPublished,
         MinPlayTimeMinutes, MaxPlayTimeMinutes, MinAge,
         BggTaxonomyCatalog.ResolveType(Type, Subdomains, Types, CategoryItems, Categories),
-        Subdomains, CategoryItems, Mechanics, OriginalName);
+        Subdomains, CategoryItems, Mechanics, OriginalName, ComplexityWeight, Complexity);
 }
 
 public static class CollectionItemSnapshotSerializer

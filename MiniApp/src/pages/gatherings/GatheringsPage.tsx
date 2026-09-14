@@ -1,3 +1,4 @@
+import { ComplexityBadge, ComplexityDetails } from "../../components/ComplexityBadge";
 import { WishButton } from "../../components/Wishlist";
 import { GuestRow } from "./GuestRow";
 import { PlayPanel } from "./PlayPanel";
@@ -47,7 +48,7 @@ function GatheringList({ community, listState, setListState, open, create }: { c
     {view === "history" && <SegmentedControl className="history-filters" label="Фильтр истории" active={historyFilter} onChange={id => selectHistoryFilter(id as GatheringHistoryFilter)} items={[{ id: "all", label: "Все" }, { id: "completed", label: "Завершены" }, { id: "cancelled", label: "Отменены" }]} />}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? view === "upcoming" ? <><Empty>Пока нет запланированных сборов.</Empty><button className="primary" onClick={create}>Создать сбор</button></> : <Empty>{historyFilter === "completed" ? "Завершённых сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
       <><div className="stack">{state.data.items.map(item => { const statusTone = gatheringStatusTone(item.status); return <div className={`gathering-card-shell${item.card.bggUrl ? " has-bgg" : ""}`} key={item.card.publicId}><button className="card gathering-card" onClick={() => open(item.card.publicId)}>
-        <Cover src={item.card.imageUrl} name={item.card.gameName} /><div className="gathering-card-body"><div className="row gathering-card-title"><h2>{item.card.gameName}</h2>{item.isOrganizer && <Badge tone="accent">Вы организатор</Badge>}</div><div className="gathering-card-facts"><span><span aria-hidden>📅</span> {item.card.localDateTime}</span><span><span aria-hidden>👥</span> {item.card.occupiedSeats} / {item.card.maximumPlayers}</span></div>{item.card.recruitment?.text && <p className="gathering-card-activity attention">{item.card.recruitment.text}</p>}<Badge tone={statusTone}>{item.card.statusText}</Badge>{item.card.cancellationReason && <p className="muted">Причина: {item.card.cancellationReason}</p>}</div>
+        <Cover src={item.card.imageUrl} name={item.card.gameName} /><div className="gathering-card-body"><div className="row gathering-card-title"><h2>{item.card.gameName}</h2><ComplexityBadge info={item.card.complexityInfo} />{item.isOrganizer && <Badge tone="accent">Вы организатор</Badge>}</div><div className="gathering-card-facts"><span><span aria-hidden>📅</span> {item.card.localDateTime}</span><span><span aria-hidden>👥</span> {item.card.occupiedSeats} / {item.card.maximumPlayers}</span></div>{item.card.recruitment?.text && <p className="gathering-card-activity attention">{item.card.recruitment.text}</p>}<Badge tone={statusTone}>{item.card.statusText}</Badge>{item.card.cancellationReason && <p className="muted">Причина: {item.card.cancellationReason}</p>}</div>
       </button>{item.card.bggUrl && <span className="gathering-card-bgg"><GatheringBggLink bggUrl={item.card.bggUrl} compact /></span>}</div>; })}</div>{(state.data.hasPrevious || state.data.hasNext) && <div className="row"><button disabled={!state.data.hasPrevious} onClick={() => setListState({ ...listState, page: page - 1 })}>Назад</button><span className="muted">Страница {page}</span><button disabled={!state.data.hasNext} onClick={() => setListState({ ...listState, page: page + 1 })}>Дальше</button></div>}</>}
   </Page>;
 }
@@ -127,7 +128,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
     <Card className="gathering-overview">
       <header className="gathering-overview-header">
         <h1>{value.gathering.bggUrl ? <a className="page-title-link" href={value.gathering.bggUrl} target="_blank" rel="noreferrer">{value.gathering.gameName}</a> : value.gathering.gameName}</h1>
-        <div className="gathering-status-row"><Badge tone={statusTone}>{value.gathering.statusText}</Badge><GatheringTypeTag typeName={value.gathering.typeName} /></div>
+        <div className="gathering-status-row"><Badge tone={statusTone}>{value.gathering.statusText}</Badge><GatheringTypeTag typeName={value.gathering.typeName} /><ComplexityBadge info={value.gathering.complexityInfo} /></div>
       </header>
       <div className="gathering-detail-hero">
         <Cover src={value.gathering.imageUrl} name={value.gathering.gameName} />
@@ -195,6 +196,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
     <Card className="gathering-game-info">
       <details>
         <summary>Об игре</summary>
+        <ComplexityDetails info={value.gathering.complexityInfo} />
         <GameTaxonomy className="gathering-taxonomy" typeNames={typeNames} categoryNames={value.gathering.categoryNames} mechanicNames={value.gathering.mechanicNames} />
       </details>
       {!readOnly && value.gathering.bggId && <div className="gathering-game-actions">

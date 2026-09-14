@@ -1,4 +1,5 @@
 using System.Globalization;
+using oyinQ.Bot.Features.Collections;
 using System.Net;
 using System.Text;
 using oyinQ.Bot.Common.Options;
@@ -22,7 +23,7 @@ public sealed record GatheringCardPresentation(
     string StatusText,
     string? TypeName,
     long? BggId,
-    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null);
+    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null, ComplexityInfo? ComplexityInfo = null);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -41,7 +42,7 @@ public sealed record GatheringDetailPresentation(
     IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames,
     long? BggId,
-    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null);
+    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null, ComplexityInfo? ComplexityInfo = null);
 
 public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
 public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
@@ -73,7 +74,7 @@ public sealed class GatheringPresentationService
             metadata.TypeNames.FirstOrDefault(),
             game.BggId,
             BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering),
-            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null);
+            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null, GameComplexityPresentation.Present(game));
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
@@ -98,7 +99,7 @@ public sealed class GatheringPresentationService
             metadata.MechanicNames,
             game.BggId,
             BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering),
-            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null);
+            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null, GameComplexityPresentation.Present(game));
     }
 
     public GatheringAnnouncement BuildTelegramAnnouncement(
@@ -120,6 +121,8 @@ public sealed class GatheringPresentationService
         text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(compact ? Truncate(game.Name, 160) : game.Name)}</b>");
         if (metadata.TypeNames.FirstOrDefault() is { } typeName)
             text.AppendLine($"🏷 {WebUtility.HtmlEncode(compact ? Truncate(typeName, 80) : typeName)}");
+        if (GameComplexityPresentation.Present(game) is { } complexity)
+            text.AppendLine($"⚖️ {complexity.DisplayName}");
         text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
         text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
         text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null)}");

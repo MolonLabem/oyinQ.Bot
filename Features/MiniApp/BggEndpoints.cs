@@ -62,7 +62,7 @@ internal static class BggEndpoints
                     collectionGame.BestPlayers, collectionGame.Description, collectionGame.YearPublished,
                     collectionGame.MinPlayTimeMinutes, collectionGame.MaxPlayTimeMinutes, collectionGame.MinAge,
                     collectionGame.Type, metadata.TypeName, metadata.TypeNames, metadata.CategoryNames,
-                    metadata.MechanicNames, collectionGame.CategoryItems, collectionGame.Mechanics },
+                    ComplexityInfo = GameComplexityPresentation.Present(collectionGame), metadata.MechanicNames, collectionGame.CategoryItems, collectionGame.Mechanics },
                 Expansions = collectionGame.Expansions, preview.SelectedExpansionIds, preview.BaseGames
             });
         }

@@ -127,6 +127,30 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal("https://images.example/large.jpg", announcement.ImageUrl);
     }
 
+    [Fact]
+    public void ComplexityUsesSnapshotAndSamePresentationInCardsDetailsAndTelegram()
+    {
+        var gathering = CreateGathering(true);
+        var service = new GatheringPresentationService();
+        Assert.Null(service.BuildCard(gathering, Community).ComplexityInfo);
+        Assert.DoesNotContain("⚖️", service.BuildTelegramAnnouncement(gathering, Community).HtmlText);
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
+        { ComplexityWeight = 2.1234m, Complexity = GameComplexity.MediumHeavy });
+        var card = service.BuildCard(gathering, Community);
+        Assert.Equal("Сложная", card.ComplexityInfo!.DisplayName);
+        Assert.Equal(2.1234m, card.ComplexityInfo.Weight);
+        Assert.Equal(card.ComplexityInfo, service.BuildDetails(gathering, Community).ComplexityInfo);
+        Assert.Contains("⚖️ Сложная", service.BuildTelegramAnnouncement(gathering, Community).HtmlText);
+        gathering.Description = new string('x', 220);
+        for (var index = 0; index < 30; index++)
+            gathering.Guests.Add(new GameGatheringGuest { DisplayName = new string('я', 100) });
+        var html = service.BuildTelegramAnnouncement(gathering, Community).HtmlText;
+        Assert.Contains("⚖️ Сложная", html);
+        var visible = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", ""));
+        Assert.True(visible.Length <= 1024);
+    }
+
     private static GameGathering CreateGathering(bool canTeachRules) => new()
     {
         PublicId = Guid.NewGuid(),
