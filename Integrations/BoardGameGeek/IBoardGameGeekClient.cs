@@ -14,7 +14,8 @@ public sealed record BggExpansion(long BggId, string Name, string? OriginalName 
 
 public sealed record BggGameDetails(
     ExternalGame Game,
-    IReadOnlyList<BggExpansion> Expansions);
+    IReadOnlyList<BggExpansion> Expansions,
+    bool ExpansionLookupIncomplete = false);
 
 public sealed record BggOwnedExpansion(
     ExternalGame Expansion,

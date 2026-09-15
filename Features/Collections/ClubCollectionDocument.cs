@@ -66,7 +66,8 @@ public sealed record ClubCollectionGame(
 
 public sealed record ClubCollectionExpansion(long BggId, string Name, string? OriginalName = null,
     int? MinPlayers = null, int? MaxPlayers = null,
-    decimal? ComplexityWeight = null, GameComplexity? Complexity = null) : IGameComplexity
+    decimal? ComplexityWeight = null, GameComplexity? Complexity = null,
+    string? ThumbnailImageUrl = null, string? ImageUrl = null) : IGameComplexity
 {
     public static IReadOnlyList<ClubCollectionExpansion> Merge(IEnumerable<ClubCollectionExpansion> existing,
         IEnumerable<ClubCollectionExpansion> additions) => existing.Concat(additions).GroupBy(item => item.BggId)
@@ -78,7 +79,9 @@ public sealed record ClubCollectionExpansion(long BggId, string Name, string? Or
         Complexity = Complexity ?? fallback.Complexity,
         OriginalName = OriginalName ?? fallback.OriginalName,
         MinPlayers = MinPlayers ?? fallback.MinPlayers,
-        MaxPlayers = MaxPlayers ?? fallback.MaxPlayers
+        MaxPlayers = MaxPlayers ?? fallback.MaxPlayers,
+        ThumbnailImageUrl = ThumbnailImageUrl ?? fallback.ThumbnailImageUrl,
+        ImageUrl = ImageUrl ?? fallback.ImageUrl
     };
 }
 public sealed record GameTaxonomyItem(long BggId, string Name);

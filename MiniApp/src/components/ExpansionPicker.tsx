@@ -1,3 +1,4 @@
+import { Cover } from "./Ui";
 import { ComplexityBadge } from "./ComplexityBadge";
 import type { Expansion } from "../api/types";
 import { useState, type ReactNode } from "react";
@@ -13,5 +14,5 @@ export function ExpansionPicker({ expansions, selected, onChange, label = "До�
     <input type="checkbox" checked={selected.includes(expansion.bggId)} onChange={() => onChange(selected.includes(expansion.bggId)
       ? selected.filter(id => id !== expansion.bggId) : [...selected, expansion.bggId])} />{expansion.name}<ComplexityBadge info={expansion.complexityInfo} />
     {expansion.minPlayers && expansion.maxPlayers ? <small> · {expansion.minPlayers}–{expansion.maxPlayers} игроков</small> : null}
-  </label>{selected.includes(expansion.bggId) && actions?.(expansion)}</div>)}{searchable && visible.length === 0 && <p>Дополнения не найдены.</p>}</fieldset>;
+  </label>{searchable && <div className="row">{expansion.thumbnailImageUrl && <Cover src={expansion.thumbnailImageUrl} name={expansion.name} />}<a href={`https://boardgamegeek.com/boardgame/${expansion.bggId}`} target="_blank" rel="noopener noreferrer">BGG · {expansion.bggId}</a></div>}{selected.includes(expansion.bggId) && actions?.(expansion)}</div>)}{searchable && visible.length === 0 && <p>Дополнения не найдены.</p>}</fieldset>;
 }

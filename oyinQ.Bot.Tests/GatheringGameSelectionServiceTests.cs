@@ -55,6 +55,15 @@ public sealed class GatheringGameSelectionServiceTests
         Assert.Equal(99, Assert.Single(snapshot.SelectedExpansions).BggId);
         Assert.Equal(99, Assert.Single(snapshot.KnownExpansions!).BggId);
         Assert.Equal(1, fixture.Bgg.DetailRequests);
+        Assert.Empty(fixture.Db.ParticipantCollectionItems);
+        Assert.Empty(fixture.Db.CampGameContributions);
+        var stored = mode == BotMode.Club
+            ? (await fixture.Db.Clubs.SingleAsync()).CollectionJson
+            : (await fixture.Db.Camps.SingleAsync()).BaseCollectionJson;
+        Assert.Empty(ClubCollectionSerializer.Deserialize(stored).Games.Single().Expansions);
+        var restored = GatheringGameSnapshotSerializer.Deserialize(GatheringGameSnapshotSerializer.Serialize(snapshot));
+        Assert.Equal(99, Assert.Single(restored.SelectedExpansions).BggId);
+
     }
 
     [Fact]

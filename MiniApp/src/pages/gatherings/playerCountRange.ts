@@ -31,6 +31,9 @@ export type PlayerLimits = { minimum: number; desired: number; maximum: number }
 export function fitPlayerLimits(limits: PlayerLimits, before: PlayerCountRange, after: PlayerCountRange): PlayerLimits {
   const clamp = (value: number) => Math.max(after.minimum, Math.min(after.maximum, value));
   const minimum = clamp(limits.minimum);
+  // Selecting an expansion with more seats also updates the organizer's target.
+  if (after.maximum > before.maximum)
+    return { minimum, desired: after.maximum, maximum: after.maximum };
   const maximum = limits.maximum === before.maximum ? after.maximum : clamp(limits.maximum);
   return { minimum, maximum, desired: Math.max(minimum, Math.min(maximum, limits.desired)) };
 }

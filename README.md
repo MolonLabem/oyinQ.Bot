@@ -44,6 +44,8 @@ dotnet restore oyinQ.Bot.slnx
 dotnet run --project oyinQ.Bot.csproj
 ```
 
+Для отладки в Visual Studio выберите профиль `http`/`https` или `Container (Dockerfile)`. Для контейнерного профиля нужен запущенный Docker Desktop в режиме Linux containers; проект подключает Microsoft Visual Studio Container Tools как зависимость сборки. При ошибке запуска сначала проверьте `docker version`: должны отображаться Client и Server. PostgreSQL и секреты приложения настраиваются отдельно.
+
 Запуск Mini App в отдельном терминале:
 
 ```powershell

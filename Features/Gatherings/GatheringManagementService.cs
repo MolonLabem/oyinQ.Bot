@@ -118,6 +118,8 @@ public sealed class GatheringManagementService(
         if (original.OrganizerParticipantId != participantId) throw new UnauthorizedAccessException("Повторить можно свой сбор.");
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(original.GameSnapshotJson);
         if (snapshot.BggId != bggId || bggId <= 0) throw new ArgumentException("Игра не совпадает с исходным сбором.");
+        if (expansions.Except((snapshot.KnownExpansions ?? snapshot.SelectedExpansions).Select(x => x.BggId)).Any())
+            snapshot = await gameSelection.EnrichExpansionMetadataAsync(snapshot, ct, expansions);
         return snapshot.WithExpansions(expansions);
     }
 

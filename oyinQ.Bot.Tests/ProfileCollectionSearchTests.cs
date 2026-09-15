@@ -162,7 +162,7 @@ public sealed class ProfileCollectionSearchTests
             if (ids.Contains("110327")) items.Add("""
                 <item type="boardgame" id="110327"><name type="primary" value="Lords of Waterdeep" />
                 <minplayers value="2" /><maxplayers value="5" />
-                <link type="boardgameexpansion" id="134342" value="Scoundrels of Skullport" inbound="true" /></item>
+                <link type="boardgameexpansion" id="134342" value="Scoundrels of Skullport" /></item>
                 """);
             if (ids.Contains("134342") && (!query.TryGetValue("type", out var type) || type != "boardgame")) items.Add("""
                 <item type="boardgameexpansion" id="134342"><name type="primary" value="Lords of Waterdeep: Scoundrels of Skullport" />

@@ -111,6 +111,32 @@ public sealed class ConnectedPlanningTests
         Assert.Contains("\\nEND:VEVENT", unfolded); Assert.Equal(1, text.Split("\r\nEND:VEVENT\r\n").Length - 1);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CopyAndDemandSaveNewProviderExpansionsWithoutCreatingOwnership(bool copy)
+    {
+        await using var f = new PlanningFixture();
+        var original = f.Gathering("club", f.Clock.Now.AddDays(-1));
+        original.Status = GatheringStatus.Completed;
+        f.Db.GameWishes.Add(new() { CommunityKey = "club", Participant = f.Other, BggId = 42,
+            SnapshotJson = ClubCollectionSerializer.Serialize(new(2, [Game()])) });
+        await f.Db.SaveChangesAsync();
+        var client = new NoBgg(new(new ExternalGame(42, "Игра", 1, 4, null, null),
+            [new(99, "Дополнение", MinPlayers: 1, MaxPlayers: 4)]));
+        var service = Management(f, client);
+        var created = await service.CreateAsync(original.Community.ToBotCommunity(), new(f.Me.TelegramUserId),
+            new("club", copy ? "catalog" : "demand", 42, [99], f.Clock.Now.AddHours(2), 1, 2, 4, null, true,
+                CopyFromPublicId: copy ? original.PublicId : null), default);
+        f.Db.ChangeTracker.Clear();
+        var saved = await f.Db.GameGatherings.SingleAsync(x => x.PublicId == created.PublicId);
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(saved.GameSnapshotJson);
+        Assert.Equal(99, Assert.Single(snapshot.SelectedExpansions).BggId);
+        Assert.Empty(f.Db.ParticipantCollectionItems);
+        Assert.Empty(f.Db.CampGameContributions);
+        Assert.Single(f.Db.GameWishes);
+    }
+
     private static ClubCollectionGame Game() => new(42, "Игра", null, null, 1, 4, null, []);
     [Fact]
     public async Task CampCatalogAndDetailsUseTheSelectedAttendanceDay()
@@ -136,10 +162,11 @@ public sealed class ConnectedPlanningTests
         await Assert.ThrowsAsync<ArgumentException>(() => catalog.ListAsync("camp", BotMode.Camp, f.Me.TelegramUserId, query with { AttendanceDate = day.AddDays(5) }, default));
     }
 
-    private static GatheringManagementService Management(PlanningFixture f) => new(f.Db, new(f.Db, new NoBgg()), new(f.Db, f.Clock), new(f.Db, new(f.Db, f.Clock)), f.Clock);
-    private sealed class NoBgg : IBoardGameGeekClient
+    private static GatheringManagementService Management(PlanningFixture f, IBoardGameGeekClient? client = null) => new(f.Db, new(f.Db, client ?? new NoBgg()), new(f.Db, f.Clock), new(f.Db, new(f.Db, f.Clock)), f.Clock);
+    private sealed class NoBgg(BggGameDetails? details = null) : IBoardGameGeekClient
     {
-        public Task<BggGameDetails?> GetGameDetailsAsync(long id, CancellationToken ct) => throw new InvalidOperationException("No provider call expected");
+        public Task<BggGameDetails?> GetGameDetailsAsync(long id, CancellationToken ct) => details is not null
+            ? Task.FromResult<BggGameDetails?>(details) : throw new InvalidOperationException("No provider call expected");
         public Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(string q, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string u, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string u, CancellationToken ct) => throw new NotSupportedException();

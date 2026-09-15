@@ -1,4 +1,6 @@
 using System.Net;
+using System.Xml;
+using Microsoft.Extensions.Caching.Memory;
 using System.Net.Http.Headers;
 using System.Xml.Linq;
 using System.Text.RegularExpressions;
@@ -11,7 +13,9 @@ namespace oyinQ.Bot.Integrations.BoardGameGeek;
 
 public sealed class BoardGameGeekClient(
     HttpClient httpClient,
-    IOptions<BggOptions> options)
+    IOptions<BggOptions> options,
+    IMemoryCache? cache = null,
+    ILogger<BoardGameGeekClient>? logger = null)
     : IBoardGameGeekClient
 {
     private const int CollectionAcceptedAttempts = 5;
@@ -105,6 +109,9 @@ public sealed class BoardGameGeekClient(
             return null;
         }
 
+        var cacheKey = ("bgg-game-details", bggId);
+        if (options.Value.IsAvailable && cache?.TryGetValue<BggGameDetails>(cacheKey, out var cached) == true) return cached;
+
         var document = await GetXmlAsync(
             $"/xmlapi2/thing?id={bggId}&type=boardgame&stats=1&versions=1",
             cancellationToken,
@@ -112,47 +119,64 @@ public sealed class BoardGameGeekClient(
             transientAttempts: ThingAttempts);
         var item = document.Root?.Elements("item").SingleOrDefault();
         var game = item is null ? null : ParseThing(item);
-        if (game is null)
+        if (game is null || game.BggId != bggId)
         {
             return null;
         }
 
+        // Thing links on a base point OUT to expansions (inbound absent/false).
+        // On an expansion, inbound=true points back to its parent base game.
         var linkedExpansions = item!.Elements("link")
             .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion", StringComparison.OrdinalIgnoreCase)
-                && string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
-            .Select(link =>
+                && ((string?)link.Attribute("inbound") is null
+                    || string.Equals((string?)link.Attribute("inbound"), "false", StringComparison.OrdinalIgnoreCase)))
+            .Select(link => new { Id = ReadLongAttribute(link, "id"), Name = ((string?)link.Attribute("value"))?.Trim() })
+            .Where(link => link.Id is > 0 && link.Id != bggId)
+            .Select(link => new BggExpansion(link.Id!.Value,
+                string.IsNullOrWhiteSpace(link.Name) ? $"Дополнение BGG {link.Id}" : link.Name, link.Name))
+            .DistinctBy(value => value.BggId).ToArray();
+        var rejectedIds = new HashSet<long>();
+        var enrichedExpansions = new List<BggCollectionItem>();
+        var incomplete = false;
+        var firstBatch = true;
+        foreach (var batch in linkedExpansions.Chunk(ThingBatchSize))
+        {
+            if (!firstBatch) await Task.Delay(ThingBatchDelay, cancellationToken);
+            firstBatch = false;
+            try
             {
-                var id = ReadLongAttribute(link, "id");
-                var name = ((string?)link.Attribute("value"))?.Trim();
-                return id is null || string.IsNullOrWhiteSpace(name)
-                    ? null
-                    : new BggExpansion(id.Value, name, name);
-            })
-            .Where(value => value is not null)
-            .Cast<BggExpansion>()
-            .DistinctBy(value => value.BggId)
-            .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        IReadOnlyList<BggCollectionItem> enrichedExpansions = [];
-        try
-        {
-            enrichedExpansions = await GetItemsByIdsAsync(
-                linkedExpansions.Select(expansion => expansion.BggId).ToArray(), cancellationToken);
+                enrichedExpansions.AddRange(await GetItemsByIdsCoreAsync(
+                    batch.Select(expansion => expansion.BggId).ToArray(), cancellationToken, rejectedIds));
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested
+                && exception is HttpRequestException or OperationCanceledException or XmlException)
+            {
+                incomplete = true;
+                logger?.LogWarning(exception, "BGG expansion enrichment failed for base game {BggId}.", bggId);
+            }
         }
-        catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Official links already identify all expansions. A metadata outage must not hide them.
-        }
-        var expansionById = enrichedExpansions.Where(value => value.IsExpansion)
+        var expansionById = enrichedExpansions.DistinctBy(value => value.Game.BggId)
             .ToDictionary(value => value.Game.BggId!.Value);
-        var expansions = linkedExpansions.Select(expansion =>
-            expansionById.TryGetValue(expansion.BggId, out var enriched)
-                ? BggGameMapper.ToBggExpansion(enriched)
-                : expansion)
-            .OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return new BggGameDetails(game, expansions);
+        var expansions = new List<BggExpansion>();
+        foreach (var expansion in linkedExpansions)
+        {
+            if (rejectedIds.Contains(expansion.BggId)) continue;
+            if (expansionById.TryGetValue(expansion.BggId, out var enriched))
+            {
+                // A resolved wrong type or contradictory parent list must never become selectable.
+                if (enriched.IsExpansion && (enriched.ParentBggIds.Count == 0 || enriched.ParentBggIds.Contains(bggId)))
+                    expansions.Add(BggGameMapper.ToBggExpansion(enriched));
+            }
+            else
+            {
+                incomplete = true;
+                expansions.Add(expansion); // The base's official link survives missing metadata.
+            }
+        }
+        var details = new BggGameDetails(game,
+            expansions.OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase).ToArray(), incomplete);
+        if (!incomplete) cache?.Set(cacheKey, details, TimeSpan.FromMinutes(30));
+        return details;
     }
 
     public async Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(
@@ -197,14 +221,7 @@ public sealed class BoardGameGeekClient(
             {
                 var expansion = ParseThing(item, "boardgameexpansion");
                 if (expansion is null) continue;
-                var parentIds = item.Elements("link")
-                    .Where(link => string.Equals((string?)link.Attribute("type"), "boardgameexpansion", StringComparison.OrdinalIgnoreCase)
-                        && string.Equals((string?)link.Attribute("inbound"), "true", StringComparison.OrdinalIgnoreCase))
-                    .Select(link => ReadLongAttribute(link, "id"))
-                    .Where(value => value is > 0)
-                    .Select(value => value!.Value)
-                    .Distinct()
-                    .ToArray();
+                var parentIds = ReadExpansionParentIds(item);
                 result.Add(new BggOwnedExpansion(expansion, parentIds));
             }
         }
@@ -212,9 +229,12 @@ public sealed class BoardGameGeekClient(
         return result;
     }
 
-    public async Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(
-        IReadOnlyCollection<long> bggIds,
-        CancellationToken cancellationToken)
+    public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(
+        IReadOnlyCollection<long> bggIds, CancellationToken cancellationToken) =>
+        GetItemsByIdsCoreAsync(bggIds, cancellationToken);
+
+    private async Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsCoreAsync(
+        IReadOnlyCollection<long> bggIds, CancellationToken cancellationToken, HashSet<long>? rejectedIds = null)
     {
         ArgumentNullException.ThrowIfNull(bggIds);
         var ids = bggIds.Where(id => id > 0).Distinct().ToArray();
@@ -234,7 +254,10 @@ public sealed class BoardGameGeekClient(
                 var isExpansion = string.Equals(type, "boardgameexpansion",
                     StringComparison.OrdinalIgnoreCase);
                 if (!isExpansion && !string.Equals(type, "boardgame", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (ReadLongAttribute(item, "id") is { } rejectedId) rejectedIds?.Add(rejectedId);
                     continue;
+                }
                 var game = ParseThing(item, isExpansion ? "boardgameexpansion" : "boardgame");
                 if (game is not null)
                     result.Add(new BggCollectionItem(game, isExpansion,
@@ -303,7 +326,18 @@ public sealed class BoardGameGeekClient(
         return result;
     }
 
-    private async Task<XDocument> GetXmlAsync(
+    private async Task<XDocument> GetXmlAsync(string relativeUrl, CancellationToken cancellationToken,
+        int acceptedAttempts = TransientAttempts, int transientAttempts = TransientAttempts)
+    {
+        try { return await GetXmlCoreAsync(relativeUrl, cancellationToken, acceptedAttempts, transientAttempts); }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested
+            && exception is OperationCanceledException or XmlException)
+        {
+            throw new HttpRequestException("Не удалось загрузить данные BGG. Попробуйте ещё раз.", exception);
+        }
+    }
+
+    private async Task<XDocument> GetXmlCoreAsync(
         string relativeUrl,
         CancellationToken cancellationToken,
         int acceptedAttempts = TransientAttempts,

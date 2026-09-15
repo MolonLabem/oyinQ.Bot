@@ -22,6 +22,7 @@ public sealed record CampBggImportView(
     bool HasSelectedOverridableItems);
 public sealed record CampImportConfirmationResult(int Added, IReadOnlyDictionary<CampImportSkipReason, int> Skipped,
     bool HasOverridableItems, bool WasAlreadyConfirmed = false);
+public sealed record ProfileBggImportSource(string BggUsername, DateTimeOffset LastImportedAt);
 
 public sealed class CampBggImportCoordinator(
     AppDbContext dbContext,
@@ -29,6 +30,14 @@ public sealed class CampBggImportCoordinator(
     CampParticipationPolicy participationPolicy,
     TimeProvider timeProvider)
 {
+    public Task<ProfileBggImportSource?> GetProfileSourceAsync(long participantId, CancellationToken cancellationToken) =>
+        dbContext.CampBggImports.AsNoTracking()
+            .Where(x => x.ParticipantId == participantId && x.CampId == null
+                && x.Status == CampBggImportStatus.Confirmed)
+            .OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id)
+            .Select(x => new ProfileBggImportSource(x.BggUsername, x.UpdatedAt))
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task<CampBggImport> QueueAsync(long? campId, long participantId, string username,
         CancellationToken cancellationToken)
     {

@@ -14,8 +14,14 @@ public sealed class GatheringGameSelectionService(
     ILogger<GatheringGameSelectionService>? logger = null)
 {
     public async Task<GatheringGameSnapshot> FromDemandAsync(string key, Common.Options.BotMode mode, long telegramUserId, long bggId,
-        IReadOnlyCollection<long> expansions, CancellationToken ct) => GatheringGameSnapshot.FromClubGame(
-            await new GameCatalogService(dbContext, campCatalog!).DemandGameAsync(key, mode, telegramUserId, bggId, ct), expansions, "demand");
+        IReadOnlyCollection<long> expansions, CancellationToken ct)
+    {
+        var game = await new GameCatalogService(dbContext, campCatalog!).DemandGameAsync(key, mode, telegramUserId, bggId, ct);
+        var snapshot = GatheringGameSnapshot.FromClubGame(game, [], "demand");
+        if (expansions.Except(game.Expansions.Select(x => x.BggId)).Any())
+            snapshot = await EnrichExpansionMetadataAsync(snapshot, ct, expansions);
+        return snapshot.WithExpansions(expansions);
+    }
 
     public async Task<GatheringGameSnapshot> EnrichExpansionMetadataAsync(GatheringGameSnapshot snapshot,
         CancellationToken ct, IReadOnlyCollection<long>? selected = null)

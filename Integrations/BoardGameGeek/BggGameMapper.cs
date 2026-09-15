@@ -15,7 +15,8 @@ public static class BggGameMapper
 
     public static ClubCollectionExpansion ToCollectionExpansion(BggExpansion expansion) =>
         new(expansion.BggId, expansion.Name, expansion.OriginalName, expansion.MinPlayers, expansion.MaxPlayers,
-            expansion.Snapshot?.ComplexityWeight, expansion.Snapshot?.Complexity);
+            expansion.Snapshot?.ComplexityWeight, expansion.Snapshot?.Complexity,
+            expansion.Snapshot?.ThumbnailImageUrl, expansion.Snapshot?.ImageUrl);
 
     public static ClubCollectionGame ToCollectionGame(BggGameDetails details) =>
         ToCollectionGame(details.Game, details.Expansions.Select(ToCollectionExpansion).DistinctBy(x => x.BggId).ToArray());
