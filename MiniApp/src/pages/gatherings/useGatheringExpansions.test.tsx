@@ -45,3 +45,24 @@ it("allows a failed lookup to retry to an empty expansion list", async () => {
     expect(host.textContent).toBe("У игры нет дополнений.");
   } finally { await act(async () => root.unmount()); vi.resetAllMocks(); }
 });
+
+
+it("does not retry a failed picker lookup until requested and resets retry scope on game change", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const failed = { status: "failed" as const };
+  const complete = { status: "complete" as const };
+  vi.mocked(api).mockResolvedValue({ game: { bggId: 42 }, expansions: [] });
+  function Form({ id, initial }: { id: number; initial: import("../../components/gamePickerModel").ExpansionLookup }) {
+    return useGatheringExpansions(id, [], initial).notice;
+  }
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Form id={42} initial={failed} />));
+    expect(api).not.toHaveBeenCalled();
+    await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
+    expect(api).toHaveBeenCalledTimes(1);
+    await act(async () => root.render(<Form id={43} initial={complete} />));
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toBe("У игры нет дополнений.");
+  } finally { await act(async () => root.unmount()); vi.resetAllMocks(); }
+});

@@ -90,7 +90,6 @@ internal static class GatheringEndpoints
     }
 
     private static async Task<IResult> DetailAsync(HttpRequest request, Guid publicId, string community, bool? forEdit,
-        GatheringGameSelectionService gameSelection,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, ICommunityStore communityStore,
         IAdminAuthorizationService authorization, GatheringPresentationService presentation,
@@ -129,11 +128,7 @@ internal static class GatheringEndpoints
         var localStart = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
             TimeZoneInfo.FindSystemTimeZoneById(resolvedCommunity.TimeZoneId));
         var canManage = GatheringAccessPolicy.CanManage(gathering, organizerControls, now);
-        if (forEdit == true)
-        {
-            if (!canManage) return Results.Forbid();
-            snapshot = await gameSelection.EnrichExpansionMetadataAsync(snapshot, cancellationToken);
-        }
+        if (forEdit == true && !canManage) return Results.Forbid();
         return Results.Ok(new
         {
             Gathering = presentation.BuildDetails(gathering, resolvedCommunity),

@@ -8,7 +8,8 @@ import {
   dismissGamePickerSearch,
   mergeGameSearchCandidates,
   resolveGameSelection,
-  uniqueByBggId,
+  mergeExpansions,
+  type ExpansionLookup,
   type GameSearchCandidate,
   type GameSource,
 } from "./gamePickerModel";
@@ -25,7 +26,7 @@ export function GamePicker({
   bggAvailable: boolean;
   selectionMode?: "base" | "item" | "wish";
   selected?: ClubGame;
-  onSelect: (game: ClubGame, source: GameSource, selectedExpansionIds: number[]) => void;
+  onSelect: (game: ClubGame, source: GameSource, selectedExpansionIds: number[], expansionLookup?: ExpansionLookup) => void;
   onClear?: () => void;
   label?: string;
   hint?: string;
@@ -126,7 +127,7 @@ export function GamePicker({
       setInput(resolved.game.name);
       setResults([]);
       setError(resolved.fallbackWarning);
-      onSelect(resolved.game, resolved.source, resolved.selectedExpansionIds ?? []);
+      onSelect(resolved.game, resolved.source, resolved.selectedExpansionIds ?? [], resolved.expansionLookup);
     } catch (reason) {
       setOpen(true);
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -147,10 +148,10 @@ export function GamePicker({
       const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}&mode=${selectionMode}${baseGameId ? `&baseGameId=${baseGameId}` : ""}`);
       if (details.baseGames?.length) { setParentChoice({ input: value, games: details.baseGames }); return; }
       setParentChoice(undefined);
-      const game = { ...details.game, expansions: uniqueByBggId(details.expansions) };
+      const game = { ...details.game, expansions: mergeExpansions([], details.expansions) };
       setInput(game.name);
       setResults([]);
-      onSelect(game, "bgg", details.selectedExpansionIds ?? []);
+      onSelect(game, "bgg", details.selectedExpansionIds ?? [], { status: details.expansionLookupIncomplete ? "incomplete" : "complete" });
     } catch (reason) {
       setOpen(true);
       setError(reason instanceof Error ? reason.message : String(reason));

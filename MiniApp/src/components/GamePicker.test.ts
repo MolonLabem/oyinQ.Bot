@@ -95,3 +95,14 @@ describe("searchGames", () => {
     expect(localGameSourceLabel({})).toBe("В доступной коллекции");
   });
 });
+
+it("keeps saved expansion metadata when the provider returns only a relationship", async () => {
+  const expansion = { bggId: 99, name: "Saved", originalName: "Original", minPlayers: 2, maxPlayers: 5,
+    thumbnailImageUrl: "https://example.com/thumb.jpg", imageUrl: "https://example.com/image.jpg" };
+  const game: ClubGame = { bggId: 42, name: "Base", expansions: [expansion] };
+  const result = await resolveGameSelection({ bggId: 42, name: "Base", localGame: game }, true,
+    async () => ({ game, expansions: [{ bggId: 99, name: "Link" }, { bggId: 99, name: "Duplicate" }],
+      expansionLookupIncomplete: true }));
+  expect(result.game.expansions).toEqual([{ ...expansion, name: "Duplicate" }]);
+  expect(result.expansionLookup.status).toBe("incomplete");
+});

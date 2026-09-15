@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { BggDetails } from "../api/types";
@@ -60,10 +60,37 @@ it.each([
     await act(async () => find.click());
   }
   if (selectionMode === "item") {
-    expect(selected).toHaveBeenCalledWith(details.game, "bgg", []);
+    expect(selected).toHaveBeenCalledWith(details.game, "bgg", [], { status: "complete" });
     expect(host.textContent).not.toContain("Запрошенные данные не найдены.");
   } else {
-    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ bggId: 110327, itemType: "BaseGame", expansions: [expect.objectContaining({ bggId: 134342, maxPlayers: 6 })] }), "bgg", [134342]);
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({ bggId: 110327, itemType: "BaseGame", expansions: [expect.objectContaining({ bggId: 134342, maxPlayers: 6 })] }), "bgg", [134342], { status: "complete" });
     expect(host.textContent).not.toContain("Запрошенные данные не найдены.");
+  }
+});
+
+
+it.each([false, true])("hands the first response to the expansion form without a second lookup (partial=%s)", async incomplete => {
+  const { useGatheringExpansions } = await import("../pages/gatherings/useGatheringExpansions");
+  const result = { game: { bggId: 42, name: "Base", expansions: [] },
+    expansions: [{ bggId: 99, name: "Expansion" }], expansionLookupIncomplete: incomplete };
+  vi.mocked(api).mockResolvedValue(result);
+  function Form() {
+    const [selection, setSelection] = useState<{ game: import("../api/types").ClubGame; lookup?: import("./gamePickerModel").ExpansionLookup }>();
+    const lookup = useGatheringExpansions(selection?.game.bggId, selection?.game.expansions ?? [], selection?.lookup);
+    return <><GamePicker bggAvailable selected={selection?.game}
+      onSelect={(game, _source, _ids, lookup) => setSelection({ game, lookup })} />{lookup.notice}</>;
+  }
+  await act(async () => root.render(<Form />));
+  await act(async () => {
+    const input = host.querySelector("input")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "42");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => [...host.querySelectorAll("button")].find(x => x.textContent === "Найти")!.click());
+  expect(api).toHaveBeenCalledTimes(1);
+  expect(host.textContent?.includes("Повторить загрузку дополнений")).toBe(incomplete);
+  if (incomplete) {
+    await act(async () => [...host.querySelectorAll("button")].find(x => x.textContent === "Повторить загрузку дополнений")!.click());
+    expect(api).toHaveBeenCalledTimes(2);
   }
 });

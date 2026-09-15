@@ -1,3 +1,4 @@
+import type { ExpansionLookup } from "../../components/gamePickerModel";
 import { useGatheringExpansions } from "./useGatheringExpansions";
 import { creationOperation, completeCreation } from "./gatheringCreationOperation";
 import { ComplexityBadge, ComplexityDetails } from "../../components/ComplexityBadge";
@@ -62,6 +63,7 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
   const [expansionOwnership, setExpansionOwnership] = useState(emptyExpansionOwnership);
   const [addToCollection, setAddToCollection] = useState(false); const [bringToCamp, setBringToCamp] = useState(false);
   const [source, setSource] = useState<"catalog" | "bgg" | "demand">("catalog"); const [chosen, setChosen] = useState<ClubGame>();
+  const [initialExpansionLookup, setInitialExpansionLookup] = useState<ExpansionLookup>();
   const [expansions, setExpansions] = useState<number[]>([]); const [starts, setStarts] = useState("");
   const [minimum, setMinimum] = useState(2); const [desired, setDesired] = useState(4); const [maximum, setMaximum] = useState(4);
   const [description, setDescription] = useState(""); const [teach, setTeach] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [attendanceRequired, setAttendanceRequired] = useState(false);
@@ -69,7 +71,7 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
   useEffect(() => {
     setStarts(current => revalidateGatheringStart(current, community, dateBounds));
   }, [community.key, community.startDate, community.endDate, dateBounds.min, dateBounds.max]);
-  const expansionLookup = useGatheringExpansions(chosen?.bggId, chosen?.expansions ?? []);
+  const expansionLookup = useGatheringExpansions(chosen?.bggId, chosen?.expansions ?? [], initialExpansionLookup);
   const chosenPlayers = resolvePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers, expansionLookup.expansions, expansions);
   function changeLimits(value: PlayerLimits) { setMinimum(value.minimum); setDesired(value.desired); setMaximum(value.maximum); }
   function changeExpansions(ids: number[]) {
@@ -77,7 +79,8 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
       resolvePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers, expansionLookup.expansions, ids)));
     setExpansions(ids);
   }
-  function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg", initialExpansions: number[] = []) {
+  function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg", initialExpansions: number[] = [], expansionLookup?: ExpansionLookup) {
+    setInitialExpansionLookup(expansionLookup);
     setCopySourceId(undefined); setExpansionOwnership(emptyExpansionOwnership()); setAddToCollection(false); setBringToCamp(false); setSource(nextSource); setChosen(game); setExpansions(initialExpansions); setError(undefined);
     const players = resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, []);
     const nextMinimum = players.minimum;
@@ -129,7 +132,7 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
     {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Создать сбор по игре из каталога по-прежнему можно.</Notice>}
     <section className="content-section gathering-create-section"><GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error}
       bggAvailable={bggAvailable} selected={chosen} onSelect={chooseGame}
-      onClear={() => { setCopySourceId(undefined); setChosen(undefined); setExpansions([]); }}
+      onClear={() => { setCopySourceId(undefined); setChosen(undefined); setInitialExpansionLookup(undefined); setExpansions([]); }}
       hint="Игры из коллекции найдутся сразу, а поиск в BGG может занять несколько секунд. Можно вставить ссылку или ID." /></section>
     {chosen && <section className="content-section gathering-create-section"><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><GameProviderNotice mode={community.mode} communityKey={community.key} bggId={chosen.bggId} startsAtLocal={starts} ownership={source === "bgg" || community.mode === "Camp" ? { gameName: chosen.name, canAdd: source === "bgg", add: addToCollection, bring: bringToCamp, camp: community.mode === "Camp", setAdd: value => { setAddToCollection(value); if (!value) setBringToCamp(false); }, setBring: setBringToCamp } : undefined} /><WishButton key={chosen.bggId} communityKey={community.key} bggId={chosen.bggId} /><GameMeta game={chosen} /></div></div>{expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={expansions} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} />{(chosen.playerRangeDefaulted || chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков. Мы поставили 1–12 — проверьте значения перед созданием сбора.</Notice>}</section>}
     <section className="content-section gathering-create-section form-grid"><h2>Параметры сбора</h2><Field label="Дата и время" hint={community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}><input type="datetime-local" min={dateBounds.min} max={dateBounds.max} value={starts} onChange={e => setStarts(e.target.value)} /></Field><GatheringPlayerLimits range={chosenPlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} disabled={!chosen} /><Field label="Описание" hint="Например: играем со всеми дополнениями, новичкам помогу разобраться."><textarea value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
