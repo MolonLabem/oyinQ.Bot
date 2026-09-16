@@ -48,7 +48,7 @@ public sealed class BggSelectionService(IBoardGameGeekClient client)
             .SingleOrDefault(item => item.Game.BggId == id && item.IsExpansion);
         if (expansion is null) return null;
         if (purpose == BggSelectionPurpose.Wish)
-            throw new InvalidOperationException("В вишлист можно добавить только базовую игру. Выберите её в поиске.");
+            throw new InvalidOperationException("В хотелки можно добавить только базовую игру. Выберите её в поиске.");
         if (purpose == BggSelectionPurpose.Ownership)
             return new(new(expansion.Game, []), CollectionItemType.Expansion, [], []);
         var parentIds = expansion.ParentBggIds.Where(value => value > 0).Distinct().ToArray();

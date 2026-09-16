@@ -24,7 +24,7 @@ describe("complexity presentation", () => {
     expect(renderToStaticMarkup(<GameMeta compact game={{ bggId: 42, name: "Game", expansions: [], complexityInfo: info }} />)).toContain("complexity-hard");
   });
   it("shows complexity while browsing catalog and nested expansions", () => {
-    const markup = renderToStaticMarkup(<CatalogGameList club open={() => {}} items={[{
+    const markup = renderToStaticMarkup(<CatalogGameList open={() => {}} items={[{
       bggId: 42, name: "Game", type: "Other", typeName: "", typeNames: [],
       availabilitySummary: "", isDefinitelyAvailable: false, needsProviderCoordination: false,
       complexityInfo: info, expansions: [{ bggId: 43, name: "Expansion", complexityInfo: info }]

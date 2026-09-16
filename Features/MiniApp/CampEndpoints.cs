@@ -75,7 +75,7 @@ internal static class CampEndpoints
         var suggestedDates = registration is null ? availableDates
             : selectedDates.Length == 0 && registration.Row.DaysStaying == availableDates.Length
                 ? availableDates : [];
-        var baseGameIds = camp.ReadBaseCollection().Games.Select(x => x.BggId).Order().ToArray();
+        var baseGameIds = (await new SharedCollectionReader(dbContext).ForCampAsync(camp, cancellationToken)).Games.Select(x => x.BggId).Order().ToArray();
         return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate, camp.StartsAtUtc, camp.EndsAtUtc,
             DateLabels = CampOperatingWindow.AttendanceLabels(camp),
             AvailableDates = availableDates, BaseGameIds = baseGameIds, DisplayName = participantDisplayName,
@@ -337,7 +337,7 @@ internal static class CampEndpoints
             (x.IsInBaseCollection ? 1 : 0) + x.Providers.Count, x.Providers,
             x.Game.Expansions, x.IsInBaseCollection,
             GameProviderService.Describe(false, x.Providers).IsConfirmed,
-            !GameProviderService.Describe(x.IsInBaseCollection, x.Providers).IsConfirmed, GameComplexityPresentation.Present(x.Game)); }));
+            !GameProviderService.Describe(false, x.Providers).IsConfirmed, GameComplexityPresentation.Present(x.Game)); }));
     }
 
     private static async Task<(long CampId, long ParticipantId, IResult? Error)> OwnedCampAsync(

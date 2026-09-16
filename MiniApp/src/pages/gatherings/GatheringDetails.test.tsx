@@ -70,7 +70,7 @@ describe("gathering detail action hierarchy", () => {
     Object.assign(state.data, { canJoin: false, canLeave: true, currentUserStatus: "Waitlisted", waitlistPosition: 2 });
     state.loading = true;
     const markup = render();
-    expect(markup).toContain("Ваша позиция в очереди: 2");
+    expect(markup).toContain("Ваше место в очереди: 2");
     expect(markup).toContain('disabled="">Выйти из листа ожидания');
     expect(markup).not.toContain("Загрузка…");
   });

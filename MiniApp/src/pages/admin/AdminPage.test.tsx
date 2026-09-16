@@ -195,7 +195,7 @@ describe("persistent admin community context", () => {
 
   it("keeps collection and participant screens for compatible communities and falls back for a different mode", async () => {
     await mount(); await click("Коллекция"); await switchTo("club-2");
-    expect(title()).toBe("Коллекция клуба");
+    expect(title()).toBe("Коллекция");
     expect(api).toHaveBeenCalledWith("/admin/clubs/2/collection", undefined);
     await click("Скачать JSON");
     expect(download).toHaveBeenCalledWith("/admin/clubs/2/collection/export", "club-2.json");

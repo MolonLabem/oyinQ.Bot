@@ -290,6 +290,8 @@ node_modules/
 /.pnpm-store/
 /wwwroot/app/
 /MiniApp/*.tsbuildinfo
+/output/
+/.playwright-cli/
 
 # Visual Studio 6 build log
 *.plg

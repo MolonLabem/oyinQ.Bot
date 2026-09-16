@@ -6,6 +6,9 @@ public sealed class TelegramUpdateRoutingTests
 {
     [Theory]
     [InlineData("/start", "/start")]
+    [InlineData("/help", "/help")]
+    [InlineData("/HELP@OyinQBot", "/help")]
+    [InlineData("/menu", "/menu")]
     [InlineData("/START@OyinQBot community-club", "/start")]
     [InlineData("plain text", null)]
     public void GetCommand_NormalizesTelegramCommands(string text, string? expected) =>

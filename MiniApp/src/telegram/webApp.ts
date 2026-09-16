@@ -1,3 +1,4 @@
+import { backButtonStack } from "./backButtonStack";
 const browserWindow = typeof window === "undefined" ? undefined : window;
 const telegramApp = browserWindow?.Telegram?.WebApp;
 // The Telegram script also exposes a WebApp-shaped object in an ordinary browser.
@@ -48,11 +49,7 @@ export const telegram = {
     else if (url.startsWith("tg://")) window.location.href = url;
     else this.openLink(url);
   },
-  back(show: boolean, handler: () => void) {
-    if (!app?.BackButton) return () => undefined;
-    if (show) { app.BackButton.show(); app.BackButton.onClick(handler); } else app.BackButton.hide();
-    return () => { app.BackButton.offClick(handler); if (show) app.BackButton.hide(); };
-  },
+  back: backButtonStack(app?.BackButton),
   success(message = "Готово") { app?.HapticFeedback?.notificationOccurred("success"); window.dispatchEvent(new CustomEvent(successEventName, { detail: message })); },
   warning() { app?.HapticFeedback?.notificationOccurred("warning"); },
   confirm(message: string): Promise<boolean> {

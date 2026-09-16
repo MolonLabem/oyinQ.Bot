@@ -14,8 +14,11 @@ public sealed class HttpRetryHelperTests
             _ => Task.FromResult(new HttpResponseMessage(++calls < 3
                 ? HttpStatusCode.Accepted
                 : HttpStatusCode.OK)),
-            maxAttempts: 3,
-            retryDelay: TimeSpan.Zero,
+            maxTransientAttempts: 3,
+            maxAcceptedAttempts: 3,
+            acceptedRetryDelay: TimeSpan.Zero,
+            transientRetryDelay: TimeSpan.Zero,
+            maxJitter: TimeSpan.Zero,
             CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -33,8 +36,11 @@ public sealed class HttpRetryHelperTests
                 calls++;
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
             },
-            maxAttempts: 3,
-            retryDelay: TimeSpan.Zero,
+            maxTransientAttempts: 3,
+            maxAcceptedAttempts: 3,
+            acceptedRetryDelay: TimeSpan.Zero,
+            transientRetryDelay: TimeSpan.Zero,
+            maxJitter: TimeSpan.Zero,
             CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);

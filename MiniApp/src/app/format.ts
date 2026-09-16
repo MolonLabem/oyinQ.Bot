@@ -1,9 +1,4 @@
 const dateFormatter = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
-const localInputFormatter = new Intl.DateTimeFormat("ru-RU", {
-  weekday: "short", day: "numeric", month: "long", year: "numeric",
-  hour: "2-digit", minute: "2-digit", timeZone: "UTC"
-});
-
 export function formatDate(value?: string) {
   if (!value) return "Дата не указана";
   const [year, month, day] = value.split("-").map(Number);
@@ -28,13 +23,6 @@ export function currentLocalMinute(timeZoneId: string, now = new Date()) {
 export function isFutureLocalDateTime(value: string, timeZoneId: string, now = new Date()) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
     && value > currentLocalMinute(timeZoneId, now);
-}
-
-export function formatLocalDateTimeInput(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return value;
-  const [, year, month, day, hour, minute] = match;
-  return localInputFormatter.format(new Date(Date.UTC(+year, +month - 1, +day, +hour, +minute)));
 }
 
 export function formatInstant(value: string, timeZoneId: string) {

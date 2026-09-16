@@ -43,7 +43,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
     <ProfileTabs active={tab} select={setTab} />
     {tab === "collection" && <ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} />}
     {tab === "settings" && <>
-    {!profile.data.botStartRequired && <Notice kind="success">Уведомления Telegram: доступны</Notice>}
+    {!profile.data.botStartRequired && <Notice kind="success">Личный чат с ботом открыт</Notice>}
     <NotificationSettings />
     <section className="content-section form-grid">
       <Field label="Имя" hint="Так вас будут видеть в сборах, уведомлениях и других сообществах. Если оставить поле пустым, возьмём имя из Telegram.">

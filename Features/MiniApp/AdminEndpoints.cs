@@ -168,7 +168,7 @@ internal static class AdminEndpoints
             clubViews.Add(new { club.Id, CommunityKey = club.BotChatKey,
                 club.Name, club.TelegramTitle, club.TelegramChatId, club.TimeZoneId, club.IsActive, IsApproved = true,
                 IsBotUnavailable = unavailableKeys.Contains(club.BotChatKey),
-                GameCount = ClubCollectionSerializer.Deserialize(club.GameCount).Games.Count,
+                GameCount = (await new SharedCollectionReader(dbContext).SourceAsync(club.Id, cancellationToken)).ReadCollection().Games.Count,
                 club.CollectionRevision, club.UpdatedAt, club.Gatherings,
                 AvatarUrl = await photos.GetDataUrlAsync(club.TelegramChatId, cancellationToken) });
         var camps = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).Include(x => x.SourceClub)

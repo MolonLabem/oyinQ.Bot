@@ -75,6 +75,100 @@ public sealed class CatalogCollectionDetailsTests
         Assert.Equal(30, Assert.Single(details.Expansions).BggId);
     }
 
+    [Fact]
+    public async Task SharedSourceChangesReachTwoClubsAndTwoCamps_WithoutChangingLocalData()
+    {
+        await using var fixture = Fixture.Create();
+        var source = fixture.AddClub("source", Game(10, "Старая игра"));
+        var linked = fixture.AddClub("linked", Game(999, "Старая копия"));
+        var linked2 = fixture.AddClub("linked2");
+        var unrelated = fixture.AddClub("unrelated", Game(77, "Отдельная коллекция"));
+        var camp = fixture.AddCamp("camp", Game(999, "Старый снимок"));
+        var camp2 = fixture.AddCamp("camp2");
+        await fixture.Db.SaveChangesAsync();
+        linked.SourceClubId = source.Id; linked2.SourceClubId = linked.Id;
+        camp.SourceClubId = source.Id; camp2.SourceClubId = linked2.Id;
+        var participant = new Participant { TelegramUserId = 100, DisplayName = "Игрок" };
+        fixture.Db.CampRegistrations.Add(new CampRegistration { Camp = camp, Participant = participant,
+            City = "Алматы", NeedsAccommodation = false, SelectedDays = [new() { Date = new DateOnly(2026, 9, 4) }] });
+        var contribution = new CampGameContribution { Camp = camp, Participant = participant,
+            BggId = 10, ItemType = CollectionItemType.BaseGame, Commitment = CampBringCommitment.Bringing,
+            SnapshotJson = CollectionItemSnapshotSerializer.Serialize(Snapshot("Личная коробка")) };
+        fixture.Db.Add(contribution);
+        fixture.Db.ParticipantCollectionItems.Add(new ParticipantCollectionItem { Participant = participant,
+            BggId = 10, ItemType = CollectionItemType.BaseGame,
+            SnapshotJson = CollectionItemSnapshotSerializer.Serialize(Snapshot("Личная коробка")) });
+        var gatheringSnapshot = Features.Gatherings.GatheringGameSnapshotSerializer.Serialize(new(
+            Features.Gatherings.GatheringGameSnapshot.CurrentVersion, 10, "Историческая игра", null, null, 1, 4, null, [], "collection", []));
+        fixture.Db.GameGatherings.Add(new GameGathering { PublicId = Guid.NewGuid(), CommunityKey = "camp",
+            GameSnapshotJson = gatheringSnapshot, OrganizerParticipant = participant,
+            StartsAtUtc = DateTimeOffset.UtcNow.AddDays(-1), Status = GatheringStatus.Completed });
+        fixture.Db.GameWishes.Add(new GameWish { CommunityKey = "camp", Participant = participant, BggId = 10,
+            SnapshotJson = ClubCollectionSerializer.Serialize(new(2, [Game(10, "Желаемая игра")])) });
+        await fixture.Db.SaveChangesAsync();
+        var snapshot = camp.BaseCollectionJson;
+        var query = new CatalogQuery(null, null, [], [], "name");
+        foreach (var key in new[] { "linked", "linked2", "camp", "camp2" })
+        {
+            var mode = key.StartsWith("camp") ? BotMode.Camp : BotMode.Club;
+            Assert.Contains(await fixture.Service.LoadAsync(key, mode, 100, default), x => x.Game.BggId == 10 && x.IsInBaseCollection);
+        }
+        for (var repeat = 0; repeat < 2; repeat++)
+        {
+            source.ReplaceCollection(new(ClubCollectionDocument.CurrentVersion, [Game(20, "Новая игра") with {
+                CategoryItems = [new(1001, "Economic")], Type = GameType.Strategy }]), DateTimeOffset.UtcNow);
+            await fixture.Db.SaveChangesAsync();
+            foreach (var key in new[] { "linked", "linked2", "camp", "camp2" })
+            {
+                var mode = key.StartsWith("camp") ? BotMode.Camp : BotMode.Club;
+                var result = await fixture.Service.ListAsync(key, mode, 100, query with { Ownership = "club" }, default);
+                Assert.Equal(20, Assert.Single(result.Items).BggId);
+                Assert.Equal(1, result.Total);
+                Assert.Equal(1001, Assert.Single(result.Filters.Categories).BggId);
+                Assert.Equal(result.Total, (await fixture.Service.ListAsync(key, mode, 100, query with { Ownership = "club" }, default, true)).Total);
+                if (mode == BotMode.Camp) Assert.False(result.Items[0].IsDefinitelyAvailable);
+            }
+        }
+        Assert.Equal(snapshot, camp.BaseCollectionJson);
+        Assert.Single(await fixture.Db.GameWishes.ToArrayAsync());
+        Assert.Equal(gatheringSnapshot, (await fixture.Db.GameGatherings.SingleAsync()).GameSnapshotJson);
+        Assert.Equal(CampBringCommitment.Bringing, (await fixture.Db.CampGameContributions.SingleAsync()).Commitment);
+        Assert.Single(await fixture.Db.ParticipantCollectionItems.ToArrayAsync());
+        Assert.Equal(77, Assert.Single(unrelated.ReadCollection().Games).BggId);
+        var retained = await fixture.Service.LoadAsync("camp", BotMode.Camp, 100, default);
+        Assert.Contains(retained, x => x.Game.BggId == 10 && !x.IsInBaseCollection && x.Providers.Count == 1);
+        Assert.Throws<InvalidOperationException>(() => linked.ReplaceCollection(ClubCollectionDocument.Empty, DateTimeOffset.UtcNow));
+        Assert.False((await new ClubCollectionService(fixture.Db).GetAsync(linked.Id, default)).CanEdit);
+    }
+
+    [Fact]
+    public async Task ClubIgnoresCampConstraints_CountUsesSameExpandedPlayerRangeAndGrouping()
+    {
+        await using var fixture = Fixture.Create();
+        fixture.AddClub("club", Game(10, "Игра", [new(20, "Дополнение", MinPlayers: 2, MaxPlayers: 6)]));
+        await fixture.Db.SaveChangesAsync();
+        var query = new CatalogQuery(null, 6, [], [], "popular", "participants", "possible", ProviderParticipantIds: [999]);
+        var list = await fixture.Service.ListAsync("club", BotMode.Club, 100, query, default);
+        Assert.Single(list.Items);
+        var preview = await fixture.Service.ListAsync("club", BotMode.Club, 100, query, default, true);
+        Assert.Equal(list.Total, preview.Total); Assert.Empty(preview.Items);
+        Assert.Equal(0, (await fixture.Service.ListAsync("club", BotMode.Club, 100, query with { Players = 7 }, default, true)).Total);
+    }
+
+    [Fact]
+    public async Task CampAvailabilityRequiresExplicitCommitment_AndLinksRejectCycles()
+    {
+        await using var fixture = Fixture.Create();
+        var source = fixture.AddClub("source", Game(10, "Игра"));
+        var camp = fixture.AddCamp("camp"); await fixture.Db.SaveChangesAsync();
+        camp.SourceClubId = source.Id; await fixture.Db.SaveChangesAsync();
+        var query = new CatalogQuery(null, null, [], [], null, Availability: "confirmed");
+        Assert.Empty((await fixture.Service.ListAsync("camp", BotMode.Camp, 100, query, default)).Items);
+        Assert.Single((await fixture.Service.ListAsync("camp", BotMode.Camp, 100, query with { Availability = null }, default)).Items);
+        source.SourceClubId = source.Id; await fixture.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new SharedCollectionReader(fixture.Db).SourceAsync(source.Id, default));
+    }
+
     private static ClubCollectionGame Game(long bggId, string name,
         IReadOnlyList<ClubCollectionExpansion>? expansions = null) =>
         new(bggId, name, null, null, 2, 4, "3", expansions ?? [], OriginalName: "Canonical English Name");

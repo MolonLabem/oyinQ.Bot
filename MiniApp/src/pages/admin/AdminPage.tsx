@@ -1,4 +1,5 @@
-import { ExpansionPicker } from "../../components/ExpansionPicker";
+import { ClubCollection } from "./ClubCollection";
+import { CampParticipants } from "./CampParticipants";
 import { AnnouncementsPage } from "./AnnouncementsPage";
 import { useEffect, useMemo, useState } from "react";
 import { api, download, json } from "../../api/client";
@@ -9,18 +10,15 @@ import { useScreenRequest } from "../../hooks/useScreenRequest";
 import { RecruitmentSettings } from "./RecruitmentSettings";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { GatheringDetails } from "../gatherings/GatheringsPage";
-import type { AdminCamp, AdminClub, AdminOverview, Administrator, CampAdminParticipants, CampParticipantDmResult, ClubCollectionState, ClubGame, Community, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
-import { BackButton, Badge, BggAttribution, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
-import { GameMeta, GamePicker, searchGames } from "../../components/GamePicker";
+import type { AdminCamp, AdminClub, AdminOverview, Administrator, Community, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
+import { BackButton, Badge, BggAttribution, Card, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { campStatusLabel, currentLocalMinute, formatInstant, formatDate, plural } from "../../app/format";
-import { bggImportProgressText, clubImportResultText, type BggImportStage } from "../../app/bggImportProgress";
-import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
 import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
 import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
-import { campStatusTone, importStatusTone } from "../../app/semanticTones";
+import { campStatusTone } from "../../app/semanticTones";
 
 type CommunityCreated = {
   id: number;
@@ -236,7 +234,7 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                       <summary>Техническая информация</summary>
                       <p>Telegram ID: <code>{club.telegramChatId}</code></p>
                       <p>Часовой пояс: {club.timeZoneId}</p>
-                      <p>Ревизия: {club.collectionRevision}</p>
+                      <p>Внутренняя версия коллекции: {club.collectionRevision}</p>
                       <small>Обновлено {new Date(club.updatedAt).toLocaleString("ru-RU")}</small>
                     </details>
                   </Card>
@@ -292,71 +290,6 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
   );
 }
 
-function CampParticipants({ campId, campName, back }: { campId: number; campName: string; back: () => void }) {
-  const api = useScreenRequest();
-  const state = useAsync(() => api<CampAdminParticipants>(`/admin/camps/${campId}/participants`), [campId]);
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string>();
-  async function sendToMe() {
-    if (sending) return;
-    setSending(true);
-    setSendError(undefined);
-    try {
-      const result = await api<CampParticipantDmResult>(`/admin/camps/${campId}/participants/send-to-me`, json("POST"));
-      telegram.success(result.participantCount
-        ? `Список отправлен: ${plural(result.participantCount, "участник", "участника", "участников")}`
-        : "Пустой список отправлен");
-    } catch (error) {
-      setSendError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSending(false);
-    }
-  }
-  return (
-    <Page
-      title="Участники кэмпа"
-      subtitle={state.data?.campName ?? campName}
-      actions={<BackButton onClick={back} />}
-    >
-      <Card>
-        <div className="row">
-          <div>
-            <strong>Список в личный чат</strong>
-            <p className="muted">Бот отправит эти данные вам в Telegram.</p>
-          </div>
-          <button className="primary" disabled={sending || state.loading || Boolean(state.error)} onClick={sendToMe}>
-            {sending ? "Отправляем…" : "Отправить мне"}
-          </button>
-        </div>
-        {sendError && <Notice kind="danger">{sendError}</Notice>}
-      </Card>
-      {state.loading ? (
-        <Loading />
-      ) : state.error ? (
-        <ErrorState message={state.error} retry={state.reload} />
-      ) : !state.data?.participants.length ? (
-        <Empty>Пока никто не зарегистрировался.</Empty>
-      ) : (
-        <div className="admin-entity-grid">
-          {state.data.participants.map((participant) => (
-            <Card key={participant.participantId}>
-              <div className="row">
-                <h3><ContactLink url={participant.contactUrl}>{participant.displayName}</ContactLink></h3>
-                <Badge tone={participant.needsAccommodation ? "attention" : "neutral"}>
-                  {participant.needsAccommodation ? "Нужно жильё" : "Жильё не нужно"}
-                </Badge>
-              </div>
-              {participant.telegramUsername && <p className="muted">@{participant.telegramUsername}</p>}
-              <p><strong>Город:</strong> {participant.city || "не указан"}</p>
-              <p><strong>Даты:</strong> {participant.selectedDates.length ? participant.selectedDates.map(formatDate).join(", ") : "не указаны"}</p>
-            </Card>
-          ))}
-        </div>
-      )}
-    </Page>
-  );
-}
-
 function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminOverview; done: () => void }) {
   const api = useScreenRequest();
   const [name, setName] = useState(club.name);
@@ -384,7 +317,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
   }
   async function copyCollection() {
     if (busy || !sourceClub) return;
-    if (!(await telegram.confirm(`Заменить ${plural(club.gameCount, "игру", "игры", "игр")} клуба «${club.name}» коллекцией «${sourceClub.name}» (${plural(sourceClub.gameCount, "игра", "игры", "игр")})?`))) return;
+    if (!(await telegram.confirm(`Заменить ${plural(club.gameCount, "игру", "игры", "игр")} клуба «${club.name}» общей коллекцией «${sourceClub.name}» (${plural(sourceClub.gameCount, "игра", "игры", "игр")})? Изменения источника будут поступать автоматически; редактирование доступно в клубе-источнике.`))) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -395,7 +328,7 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
           expectedRevision: club.collectionRevision,
         }),
       );
-      telegram.success("Коллекция клуба скопирована");
+      telegram.success("Общая коллекция подключена");
       done();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -423,11 +356,11 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
       <PostingTopicSetting communityKey={club.communityKey} />
       <RecruitmentSettings communityKey={club.communityKey} />
       <Card className="form-grid">
-        <h2>Скопировать коллекцию</h2>
-        <Notice>Коллекция выбранного клуба полностью заменит текущую. Сборы, уже созданные из старой коллекции, сохранят свои снимки игр.</Notice>
+        <h2>Подключить общую коллекцию</h2>
+        <Notice>Каталог будет использовать коллекцию выбранного клуба и автоматически получать её изменения. Редактировать общую коллекцию можно в клубе-источнике. Уже созданные сборы сохранят свои игры.</Notice>
         {sourceClubs.length ? (
           <>
-            <Field label="Клуб-источник" hint={sourceClub ? `${plural(sourceClub.gameCount, "игра", "игры", "игр")} в коллекции` : "Выберите клуб, коллекцию которого нужно скопировать"}>
+            <Field label="Клуб-источник" hint={sourceClub ? `${plural(sourceClub.gameCount, "игра", "игры", "игр")} в коллекции` : "Выберите клуб, чью коллекцию нужно подключить"}>
               <select value={source} onChange={(event) => setSource(event.target.value ? +event.target.value : "")}>
                 <option value="">Выберите клуб</option>
                 {sourceClubs.map((item) => (
@@ -438,11 +371,11 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
               </select>
             </Field>
             <button disabled={busy || !sourceClub} onClick={copyCollection}>
-              {busy ? "Копируем…" : "Заменить коллекцию"}
+              {busy ? "Подключаем…" : "Подключить коллекцию"}
             </button>
           </>
         ) : (
-          <Notice kind="warning">Других клубов пока нет, поэтому копировать коллекцию неоткуда.</Notice>
+          <Notice kind="warning">Других клубов пока нет, поэтому подключить общую коллекцию пока нельзя.</Notice>
         )}
       </Card>
       {error && <Notice kind="danger">{error}</Notice>}
@@ -480,7 +413,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
   }
   async function copyCollection() {
     if (busy || !sourceClub) return;
-    if (!(await telegram.confirm(`Заменить базовую коллекцию кэмпа снимком «${sourceClub.name}» (${plural(sourceClub.gameCount, "игра", "игры", "игр")})?`))) return;
+    if (!(await telegram.confirm(`Подключить к кэмпу обновляемую коллекцию «${sourceClub.name}» (${plural(sourceClub.gameCount, "игра", "игры", "игр")})?`))) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -520,10 +453,10 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
       <Card className="form-grid">
         <h2>Базовая коллекция</h2>
         {camp.status !== "Draft" ? (
-          <Notice>Снимок базовой коллекции зафиксирован при активации кэмпа и больше не изменяется.</Notice>
+          <Notice>Клуб-источник можно выбрать только до активации. Подключённая коллекция продолжает обновляться автоматически.</Notice>
         ) : (
           <>
-            <Notice>Будет создан новый снимок коллекции клуба. Игры участников и уже созданные сборы не изменятся.</Notice>
+            <Notice>Коллекция клуба будет обновляться автоматически. Участники отдельно отмечают, что привезут. Игры участников и уже созданные сборы сохраняются.</Notice>
             {overview?.clubs.length ? (
               <>
                 <Field label="Клуб-источник" hint={sourceClub ? `${plural(sourceClub.gameCount, "игра", "игры", "игр")} в коллекции` : "Выберите клуб с нужной коллекцией"}>
@@ -537,7 +470,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
                   </select>
                 </Field>
                 <button disabled={busy || !sourceClub} onClick={copyCollection}>
-                  {busy ? "Копируем…" : "Обновить базовую коллекцию"}
+                  {busy ? "Подключаем…" : "Обновить базовую коллекцию"}
                 </button>
               </>
             ) : (
@@ -801,7 +734,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
         <Field label="Часовой пояс" hint={sourceClub ? "Унаследован от клуба; при необходимости измените" : "Выберите местное время кэмпа"}>
           <TimeZoneSelect value={zone} onChange={setZone} />
         </Field>
-        {sourceClub && <Notice>Коллекция «{sourceClub.name}» будет скопирована один раз. Последующие изменения клуба кэмп не затронут.</Notice>}
+        {sourceClub && <Notice>Коллекция «{sourceClub.name}» будет обновляться автоматически при изменениях в клубе. Участники отдельно отмечают, какие игры привезут.</Notice>}
         {(selection || knownChat) && (
           <>
             <h2>Проверка</h2>
@@ -964,264 +897,6 @@ function Export({ isSuperAdmin, community }: { isSuperAdmin: boolean; community?
       </Card>
       <Notice>Коллекции клубов экспортируются отдельно на странице соответствующего клуба.</Notice>
       {error && <Notice kind="danger">{error}</Notice>}
-    </Page>
-  );
-}
-
-function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAvailable: boolean; back: () => void }) {
-  const api = useScreenRequest();
-  type ClubImport = {
-    publicId: string;
-    bggUsername: string;
-    status: string;
-    stage?: BggImportStage;
-    foundGames: number;
-    foundExpansions: number;
-    progressCurrent: number;
-    progressTotal: number;
-    addedGames: number;
-    addedExpansions: number;
-    orphanExpansions: number;
-    error?: string;
-  };
-  const state = useAsync(() => api<ClubCollectionState>(`/admin/clubs/${clubId}/collection`), [clubId]);
-  const [query, setQuery] = useState("");
-  const [preview, setPreview] = useState<ClubGame>();
-  const [selectedExpansions, setSelectedExpansions] = useState<number[]>([]);
-  const [expandedGameId, setExpandedGameId] = useState<number>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const [refresh, setRefresh] = useState<{
-    publicId: string;
-    status: string;
-    progressCurrent: number;
-    progressTotal: number;
-    error?: string;
-  }>();
-  const [bggInput, setBggInput] = useState("");
-  const [clubImport, setClubImport] = useState<ClubImport>();
-  useEffect(() => {
-    if (!refresh || !["Queued", "Running"].includes(refresh.status)) return;
-    const timer = window.setInterval(
-      () =>
-        api<typeof refresh>(`/admin/clubs/${clubId}/metadata-refresh/${refresh.publicId}`)
-          .then((value) => {
-            setRefresh(value);
-            if (value.status === "Completed") state.reload();
-          })
-          .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))),
-      3000,
-    );
-    return () => window.clearInterval(timer);
-  }, [refresh?.publicId, refresh?.status, clubId]);
-  useEffect(() => {
-    if (!clubImport || !["Queued", "Running"].includes(clubImport.status)) return;
-    const timer = window.setInterval(
-      () =>
-        api<ClubImport>(`/admin/clubs/${clubId}/bgg-imports/${clubImport.publicId}`)
-          .then((value) => {
-            setClubImport(value);
-            if (value.status === "Completed") {
-              telegram.success("Коллекция BGG добавлена");
-              state.reload();
-            }
-          })
-          .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))),
-      3000,
-    );
-    return () => window.clearInterval(timer);
-  }, [clubImport?.publicId, clubImport?.status, clubId]);
-  const games = useMemo(() => searchGames(state.data?.collection.games ?? [], query), [state.data, query]);
-  async function add() {
-    if (busy || !state.data || !preview) return;
-    setBusy(true);
-    try {
-      await api(
-        `/admin/clubs/${clubId}/games`,
-        json("POST", {
-          expectedRevision: state.data.revision,
-          bggInput: String(preview.bggId),
-          expansionBggIds: selectedExpansions,
-        }),
-      );
-      setPreview(undefined);
-      setSelectedExpansions([]);
-      telegram.success("Игра и данные BGG сохранены в коллекции");
-      state.reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      state.reload();
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function remove(id: number, name: string) {
-    if (busy || !state.data || !(await telegram.confirm(`Удалить «${name}» из коллекции клуба?\n\nИгра исчезнет из каталога, но уже созданные сборы сохранят её снимок.`))) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      await api(`/admin/clubs/${clubId}/games/${id}?expectedRevision=${state.data.revision}`, { method: "DELETE" });
-      telegram.success("Игра удалена из коллекции");
-      state.reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      state.reload();
-    } finally { setBusy(false); }
-  }
-  async function importFile(file: File) {
-    if (busy || !state.data || !(await telegram.confirm(`Полностью заменить текущую коллекцию (${plural(state.data.collection.games.length, "игра", "игры", "игр")}) содержимым файла?\n\nУже созданные сборы сохранят свои снимки игр.`))) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const document = JSON.parse(await file.text());
-      await api(`/admin/clubs/${clubId}/collection`, json("PUT", { expectedRevision: state.data.revision, document }));
-      telegram.success("Коллекция восстановлена");
-      state.reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally { setBusy(false); }
-  }
-  async function refreshMetadata() {
-    if (busy) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      setRefresh(
-        await api(`/admin/clubs/${clubId}/metadata-refresh`, {
-          method: "POST",
-        }),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function importBgg() {
-    if (busy || !bggInput.trim() || !(await telegram.confirm("Добавить все игры и связанные дополнения из коллекции BGG?\n\nТекущие игры и выбранные дополнения не будут удалены."))) return;
-    setBusy(true);
-    setError(undefined);
-    try {
-      setClubImport(await api<ClubImport>(`/admin/clubs/${clubId}/bgg-imports`, json("POST", { bggInput })));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Page title="Коллекция клуба" actions={<BackButton onClick={back} />}>
-      {state.loading ? (
-        <Loading />
-      ) : state.error || !state.data ? (
-        <ErrorState message={state.error ?? "Коллекция не найдена"} retry={state.reload} />
-      ) : (
-        <>
-          <div className="row">
-            <Badge tone="accent">Ревизия {state.data.revision}</Badge>
-            <span className="muted">Обновлено {new Date(state.data.updatedAt).toLocaleString("ru-RU")}</span>
-          </div>
-          {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Просмотр, поиск по коллекции, экспорт и восстановление продолжают работать.</Notice>}
-          <Card>
-            <h2>Добавить игру</h2>
-            <GamePicker
-              bggAvailable={bggAvailable}
-              selected={preview}
-              onSelect={(game, _source, expansions) => {
-                setPreview(game);
-                setSelectedExpansions(expansions);
-              }}
-              onClear={() => {
-                setPreview(undefined);
-                setSelectedExpansions([]);
-              }}
-            />
-            {preview && (
-              <div className="selected-game">
-                <div className="media">
-                  <Cover src={preview.thumbnailImageUrl} name={preview.name} />
-                  <div>
-                    <h3>{preview.name}</h3>
-                    <GameMeta game={preview} />
-                  </div>
-                </div>
-                <ExpansionPicker expansions={preview.expansions} selected={selectedExpansions} onChange={setSelectedExpansions} label="Дополнения в коллекции" />
-                <button className="primary" disabled={busy} onClick={add}>
-                  {busy ? "Сохраняем…" : "Сохранить игру и дополнения"}
-                </button>
-              </div>
-            )}
-          </Card>
-          <Card className="form-grid">
-            <h2>Добавить коллекцию BGG</h2>
-            <p className="muted">Одноразово добавляет все принадлежащие пользователю базовые игры и связанные дополнения. Уже сохранённые игры и дополнения не удаляются.</p>
-            <Field label="Пользователь BGG" hint="Имя пользователя или ссылка на профиль">
-              <input value={bggInput} maxLength={300} onChange={(event) => setBggInput(event.target.value)} placeholder="RollMoveClub" />
-            </Field>
-            <button disabled={!bggAvailable || busy || !bggInput.trim() || Boolean(clubImport && ["Queued", "Running"].includes(clubImport.status))} onClick={importBgg}>
-              {busy ? "Запускаем импорт…" : "Добавить из BGG"}
-            </button>
-            {clubImport && <Notice kind={clubImport.status === "Failed" ? "danger" : clubImport.status === "Completed" ? "success" : "info"}><Badge tone={importStatusTone(clubImport.status, clubImport.stage)}>{clubImport.status === "Queued" ? "В очереди" : clubImport.status === "Running" ? "Выполняется" : clubImport.status === "Completed" ? "Завершён" : "Ошибка"}</Badge><p>{clubImport.status === "Completed" ? clubImportResultText(clubImport) : clubImport.status === "Failed" ? (clubImport.error ?? "Не удалось импортировать коллекцию BGG.") : bggImportProgressText(clubImport)}</p></Notice>}
-          </Card>
-          <Card className="form-grid">
-            <h2>Данные игр из BGG</h2>
-            <p className="muted">Обновляет описания, изображения, возраст, время и таксономию. Состав коллекции и выбранные дополнения не меняются.</p>
-            <button disabled={!bggAvailable || busy || Boolean(refresh && ["Queued", "Running"].includes(refresh.status))} onClick={refreshMetadata}>
-              Обновить данные игр из BGG
-            </button>
-            {refresh && <Notice kind={refresh.status === "Failed" ? "danger" : refresh.status === "Completed" ? "success" : "info"}>{refresh.status === "Completed" ? "Данные обновлены." : refresh.status === "Failed" ? "Не удалось обновить данные BGG. Состав коллекции не изменён; повторите позже." : `Обработано ${refresh.progressCurrent} из ${refresh.progressTotal}`}</Notice>}
-          </Card>
-          <Card>
-            <h2>Экспорт / восстановление</h2>
-            <div className="row">
-              <button onClick={() => download(`/admin/clubs/${clubId}/collection/export`, `club-${clubId}.json`)}>Скачать JSON</button>
-              <label className="button">
-                Импорт JSON
-                <input hidden type="file" accept="application/json,.json" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
-              </label>
-            </div>
-          </Card>
-          <Field label="Поиск по коллекции">
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название игры" />
-          </Field>
-          {error && <Notice kind="danger">{error}</Notice>}
-          <div className="stack">
-            {games.map((game) => (
-              <Card key={game.bggId}>
-                <div className="row collection-row">
-                  <div className="media">
-                    <Cover src={game.thumbnailImageUrl} name={game.name} />
-                    <div>
-                      <h3>{game.name}</h3>
-                      <GameMeta game={game} />
-                    </div>
-                  </div>
-                  <div className="row">
-                    {hasAvailableExpansions(game) && (
-                      <button aria-expanded={expandedGameId === game.bggId} onClick={() => setExpandedGameId((current) => toggleExpansionList(current, game))}>
-                        Дополнения ({game.expansions.length})
-                      </button>
-                    )}
-                    <button className="danger ghost" onClick={() => remove(game.bggId, game.name)}>
-                      Удалить
-                    </button>
-                  </div>
-                </div>
-                {expandedGameId === game.bggId && (
-                  <div className="selected-game">
-                    <h4>Дополнения в коллекции</h4>
-                    <ul>
-                      {game.expansions.map((expansion) => (
-                        <li key={expansion.bggId}>{expansion.name}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        </>
-      )}
     </Page>
   );
 }

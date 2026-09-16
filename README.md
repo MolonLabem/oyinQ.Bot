@@ -8,12 +8,20 @@ OyinQ — Telegram-бот и Mini App для клубов настольных �
 
 - `OyinQCommunity` — привязка приложения к Telegram-группе. Поддерживаются режимы `Club` и `Camp`.
 - `Participant` и личная коллекция глобальны и не зависят от выбранного сообщества.
-- Клуб хранит общий каталог. В кэмпе доступность игр формируется из базового каталога и явных обещаний участников привезти коробку.
+- Клуб хранит авторитетную коллекцию; связанные клубы и кэмпы читают её через `SharedCollectionReader`. Личное владение и обещания привезти коробку на кэмп хранятся отдельно. Старые кэмпы без связи продолжают читать свой сохранённый каталог.
 - `GameGathering` — единая модель сбора. Будущие сборы показываются в расписании, завершённые и отменённые сохраняются в истории.
 - Завершение по времени не доказывает факт партии. Организатор или администратор сообщества отдельно подтверждает результат и фактический состав.
 - BGG — единственный внешний источник данных об играх. Недоступность BGG не должна ломать работу с уже сохранёнными данными.
 
 Подробные архитектурные инварианты и обязательные правила разработки находятся в [AGENTS.md](AGENTS.md).
+
+## Структура приложения
+
+- `Program.cs` регистрирует сервисы, применяет миграции и подключает HTTP/Telegram и workers.
+- `Features/MiniApp` — аутентифицированные маршруты; `MiniAppEndpointSupport` — общие проверки и ответы об ошибках. Доменные правила находятся в `Features/Collections`, `Catalog`, `Communities`, `Gatherings`, `Notifications` и `Admin`.
+- `Integrations` — BGG-клиент и Telegram: команды, ссылки, публикации, доставка и выбор чатов/администраторов. Старые ссылки и callback подтверждения Camp-импорта читаются для совместимости; отдельного Telegram wizard нет.
+- `MiniApp/src/app/App.tsx` выбирает сообщество и раздел. Административные коллекции и участники кэмпа находятся в `ClubCollection` и `CampParticipants`; мобильные панели используют `useMobileDialog`.
+- PostgreSQL хранит очереди, аренды и результаты фоновой работы. Прогресс BGG-refresh сохраняется отдельно; коллекция и её версия публикуются один раз после завершения.
 
 ## Локальный запуск
 
@@ -26,16 +34,25 @@ OyinQ — Telegram-бот и Mini App для клубов настольных �
 
 Минимальная конфигурация:
 
-| Переменная | Назначение |
+| Переменная | Хранение и назначение |
 |---|---|
-| `Database__ConnectionString` | Строка подключения PostgreSQL |
-| `Telegram__Token` | Токен Telegram-бота |
-| `Telegram__WebhookSecret` | Секрет webhook в production |
-| `Telegram__PublicBaseUrl` | Публичный HTTPS origin без завершающего `/` |
-| `Administration__SuperAdminTelegramUserIds` | Telegram ID глобальных администраторов через запятую |
-| `BoardGameGeek__ApiToken` | Необязательный серверный токен BGG |
+| `Database__ConnectionString` | Секрет: подключение PostgreSQL; обязательно |
+| `Telegram__Token` | Секрет: токен бота; обязательно |
+| `Telegram__WebhookSecret` | Секрет: обязателен в webhook-режиме |
+| `Telegram__PublicBaseUrl` | Обычная конфигурация окружения: публичный HTTPS origin; обязателен и для polling, поскольку нужен Mini App |
+| `Administration__SuperAdminTelegramUserIds` | Обычная серверная конфигурация: доверенные Telegram ID через запятую; в production укажите владельца |
+| `BoardGameGeek__ApiToken` | Необязательный секрет; без него сохранённые данные доступны, новые запросы BGG отключены |
 
 Секреты не должны попадать в Git. В Development бот использует long polling; production должен использовать webhook.
+
+`Telegram:UseLongPolling` уже задан в appsettings для Development/Production;
+production-переменная для polling не нужна. `CommunityBootstrap:CommunitiesJson`
+необязателен и только добавляет отсутствующие сообщества; обычная работа использует БД.
+`Gatherings:ScheduleConflictWarningWindowMinutes` имеет стандартное значение 120.
+Предпочтения уведомлений и интервал повторного запроса набора игроков хранятся в БД;
+периоды опроса workers и лимиты повторов заданы в коде, дополнительных env vars нет.
+Единственный старый `Administration:BootstrapTelegramUserIds` сохраняется как
+совместимый fallback владельца; новые установки используют `SuperAdminTelegramUserIds`.
 
 Запуск backend:
 
@@ -83,6 +100,12 @@ docker build -t oyinq-bot .
 
 Скрипт проверяет, что встроенные release resources существуют, отслеживаются Git и попадут в сборку из подготовленного индекса. Подробные ручные сценарии собраны в [docs/manual-verification.md](docs/manual-verification.md).
 
+Для PostgreSQL-тестов задайте `OYINQ_TEST_POSTGRES` на отдельный локальный сервер
+с правом создания БД. Тесты создают и удаляют только базы `oyinq_test_<guid>`.
+Без этой переменной интеграционные тесты пропускаются. CI поднимает PostgreSQL 17
+и запускает их; frontend typecheck также запрещает неиспользуемые импорты и параметры.
+Артефакты `output/`, `.playwright-cli/` и индекс `.codegraph/` не входят в сборку.
+
 ## Документация
 
 Документы разделены по назначению, чтобы правила не приходилось синхронизировать в нескольких местах:
@@ -95,7 +118,9 @@ docker build -t oyinq-bot .
 | [docs/database-rollout.md](docs/database-rollout.md) | Безопасная репетиция миграций и выпуск схемы PostgreSQL |
 | [docs/botfather-setup.md](docs/botfather-setup.md) | Ручные настройки профиля бота и Main Mini App |
 | [docs/planning-notifications-plays.md](docs/planning-notifications-plays.md) | Жизненный цикл сборов, планирование, доставка уведомлений, подтверждение партий и BG Stats |
-| [docs/wishlist-recruitment.md](docs/wishlist-recruitment.md) | Вишлист и групповые напоминания о наборе игроков |
+| [docs/wishlist-recruitment.md](docs/wishlist-recruitment.md) | Хотелки и групповые напоминания о наборе игроков |
+| [docs/club-collection-revisions.md](docs/club-collection-revisions.md) | Общие коллекции, версии, атомарное обновление BGG |
+| [docs/cleanup-audit.md](docs/cleanup-audit.md) | Аудит точек входа, сохранённая совместимость и результаты cleanup |
 | [Data/Imports/RollMove/README.md](Data/Imports/RollMove/README.md) | Одноразовое восстановление и сверка каталога RollMove |
 
 `docs/releases/` содержит встроенные объявления конкретных выпусков. Эти файлы являются ресурсами приложения, а не временными артефактами, поэтому должны оставаться в Git.

@@ -115,7 +115,7 @@ public sealed class GatheringGameSelectionServiceTests
         Assert.Equal(2, selection.Ownership.Count);
         Assert.Equal(42, selection.Ownership.Single(x => x.ItemType == CollectionItemType.Expansion).ParentBggId);
         Assert.Equal(1, fixture.Bgg.DetailRequests);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Selection.FromArbitraryBggAsync(42, [100], default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Selection.ExternalSelectionAsync(42, [100], default));
     }
     [Fact]
     public async Task ExternalBggUnavailable_DoesNotInventExpansionMetadata()

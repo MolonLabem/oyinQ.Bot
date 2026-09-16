@@ -4,20 +4,6 @@ namespace oyinQ.Bot.Integrations;
 
 public static class HttpRetryHelper
 {
-    public static Task<HttpResponseMessage> SendAsync(
-        Func<CancellationToken, Task<HttpResponseMessage>> sendAsync,
-        int maxAttempts,
-        TimeSpan retryDelay,
-        CancellationToken cancellationToken) =>
-        SendAsync(
-            sendAsync,
-            maxTransientAttempts: maxAttempts,
-            maxAcceptedAttempts: maxAttempts,
-            acceptedRetryDelay: retryDelay,
-            transientRetryDelay: retryDelay,
-            maxJitter: TimeSpan.Zero,
-            cancellationToken);
-
     public static async Task<HttpResponseMessage> SendAsync(
         Func<CancellationToken, Task<HttpResponseMessage>> sendAsync,
         int maxTransientAttempts,

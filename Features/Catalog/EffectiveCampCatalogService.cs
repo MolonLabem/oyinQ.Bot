@@ -23,7 +23,7 @@ public sealed class EffectiveCampCatalogService(
             ?? throw new KeyNotFoundException("Кэмп не найден.");
         var contributed = await contributions.GetEffectiveContributionsAsync(camp.Id, cancellationToken,
             currentParticipantId, attendanceDate);
-        return Build(camp.ReadBaseCollection(), contributed);
+        return Build(await new SharedCollectionReader(dbContext).ForCampAsync(camp, cancellationToken), contributed);
     }
 
     public static IReadOnlyList<EffectiveCampGame> Build(ClubCollectionDocument baseCollection,

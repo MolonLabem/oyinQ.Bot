@@ -23,7 +23,7 @@ public sealed class AdminHandler(
 
         var url = links.Admin();
         await botClient.SendMessage(telegramUserId,
-            "Администрирование OyinQ доступно в Mini App.",
+            "Откройте админ-панель кнопкой ниже.",
             replyMarkup: new InlineKeyboardMarkup([[
                 InlineKeyboardButton.WithWebApp("Открыть администрирование", new WebAppInfo { Url = url })
             ]]), cancellationToken: cancellationToken);

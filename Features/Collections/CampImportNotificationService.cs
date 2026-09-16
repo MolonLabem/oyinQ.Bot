@@ -6,9 +6,6 @@ public static class CampImportCallbackData
 {
     private const string Prefix = "campimp:";
 
-    public static string Create(Guid importId, CampImportOverrideResolution resolution) =>
-        $"{Prefix}{importId:N}:{(resolution == CampImportOverrideResolution.AddPersonalCopies ? "add" : "keep")}";
-
     public static bool TryParse(string? value, out Guid importId, out CampImportOverrideResolution resolution)
     {
         importId = default;

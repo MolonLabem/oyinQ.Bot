@@ -26,6 +26,7 @@ public sealed class ClubBggImportService(AppDbContext dbContext, CampBggImportSe
             ?? throw new InvalidOperationException("Введите имя пользователя BGG или ссылку на его профиль.");
         if (!await dbContext.Clubs.AsNoTracking().AnyAsync(x => x.Id == clubId, cancellationToken))
             throw new KeyNotFoundException("Клуб не найден.");
+        (await dbContext.Clubs.AsNoTracking().SingleAsync(x => x.Id == clubId, cancellationToken)).EnsureOwnCollection();
         var existing = await dbContext.ClubBggImports.SingleOrDefaultAsync(x => x.ClubId == clubId
             && (x.Status == ClubBggImportStatus.Queued || x.Status == ClubBggImportStatus.Running), cancellationToken);
         if (existing is not null) return ToView(existing);

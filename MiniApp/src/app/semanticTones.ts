@@ -40,16 +40,6 @@ export function importStatusTone(status: string | undefined, stage?: string): Ba
   }
 }
 
-export function attendanceOutcomeTone(outcome: string | undefined): BadgeTone {
-  switch (outcome) {
-    case "Attended": return "success";
-    case "NoShow": return "danger";
-    case "CancelledInAdvance":
-    case "Unknown":
-    default: return "neutral";
-  }
-}
-
 export function campStatusTone(status: string | undefined): BadgeTone {
   if (status === "Active") return "success";
   if (status === "Cancelled") return "danger";

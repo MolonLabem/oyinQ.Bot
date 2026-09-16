@@ -83,6 +83,6 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
         : <><button className="primary" disabled={busy} onClick={prepareExport}>Создать ссылку для BG Stats</button><small>В ссылке будут место, имена игроков, победители и счёт. Получатель сможет прочитать эти данные.</small></>}
     </section>}
     {(state.data.canShare || state.data.references.length > 0) && <section className="bgstats-references"><h3>Ссылки на партию</h3>{state.data.references.map(r => <div className="bgstats-reference" key={r.id}><p>{r.author}</p><a href={r.url} target="_blank" rel="noreferrer">Открыть запись</a>{r.canRemove && <button disabled={busy} onClick={() => removeReference(r.id)}>Удалить ссылку</button>}</div>)}
-      {state.data.canShare && <><Field label="Поделиться ссылкой из BG Stats" hint="HTTPS-ссылка на app.bgstatsapp.com. Её увидят фактические игроки."><input type="url" maxLength={2048} value={external} onChange={e => setExternal(e.target.value)} placeholder="https://app.bgstatsapp.com/…" /></Field><button disabled={busy || !external.trim()} onClick={addReference}>Добавить ссылку</button></>}</section>}
+      {state.data.canShare && <><Field label="Поделиться ссылкой из BG Stats" hint="HTTPS-ссылка на app.bgstatsapp.com. Её увидят участники сыгранной партии."><input type="url" maxLength={2048} value={external} onChange={e => setExternal(e.target.value)} placeholder="https://app.bgstatsapp.com/…" /></Field><button disabled={busy || !external.trim()} onClick={addReference}>Добавить ссылку</button></>}</section>}
   </Card>;
 }

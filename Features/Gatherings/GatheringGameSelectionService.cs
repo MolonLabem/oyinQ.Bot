@@ -98,10 +98,6 @@ public sealed class GatheringGameSelectionService(
         return await FromSavedGameAsync(game, selectedExpansionIds, cancellationToken);
     }
 
-    public async Task<GatheringGameSnapshot> FromArbitraryBggAsync(long bggId,
-        IReadOnlyCollection<long> selectedExpansionIds, CancellationToken cancellationToken) =>
-        (await ExternalSelectionAsync(bggId, selectedExpansionIds, cancellationToken)).Snapshot;
-
     public async Task<(GatheringGameSnapshot Snapshot, IReadOnlyList<CampBggImportDraftItem> Ownership)> ExternalSelectionAsync(
         long bggId, IReadOnlyCollection<long> selectedExpansionIds, CancellationToken cancellationToken)
     {

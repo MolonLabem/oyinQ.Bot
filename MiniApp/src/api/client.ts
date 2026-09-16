@@ -6,10 +6,10 @@ export class ApiError extends Error {
 }
 
 export function fallbackApiError(status: number) {
-  if (status === 401) return "Сессия Telegram устарела. Закройте Mini App и откройте её снова.";
+  if (status === 401) return "Не удалось подтвердить вход. Закройте приложение и снова откройте его из Telegram.";
   if (status === 403) return "У вас нет доступа к этому действию.";
-  if (status === 404) return "Запрошенные данные не найдены.";
-  if (status >= 500) return "Сервис временно недоступен. Попробуйте ещё раз позже.";
+  if (status === 404) return "Ничего не найдено. Возможно, запись уже удалена.";
+  if (status >= 500) return "OyinQ временно недоступен. Попробуйте ещё раз позже.";
   return "Не удалось выполнить запрос. Проверьте данные и попробуйте ещё раз.";
 }
 
@@ -33,7 +33,7 @@ export async function download(path: string, fileName: string): Promise<void> {
   let response: Response;
   try { response = await fetch(`/api/miniapp${path}`, { headers: { "X-Telegram-Init-Data": telegram.initData } }); }
   catch { throw new ApiError("Нет соединения с OyinQ. Не удалось скачать файл.", 0, "network_error"); }
-  if (!response.ok) throw new ApiError(response.status >= 500 ? "Сервис временно недоступен. Не удалось скачать файл." : "Не удалось скачать файл.", response.status);
+  if (!response.ok) throw new ApiError(response.status >= 500 ? "OyinQ временно недоступен. Не удалось скачать файл." : "Не удалось скачать файл.", response.status);
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a"); link.href = url; link.download = fileName; link.click();
   URL.revokeObjectURL(url);

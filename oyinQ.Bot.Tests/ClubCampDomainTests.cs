@@ -81,7 +81,7 @@ public sealed class ClubCampDomainTests
         using var dbContext = CreateDbContext();
         var service = new GatheringGameSelectionService(dbContext, new FakeBggClient());
 
-        var snapshot = await service.FromArbitraryBggAsync(42, [99], default);
+        var snapshot = (await service.ExternalSelectionAsync(42, [99], default)).Snapshot;
 
         Assert.Equal(42, snapshot.BggId);
         Assert.Equal(99, Assert.Single(snapshot.SelectedExpansions).BggId);
@@ -97,7 +97,7 @@ public sealed class ClubCampDomainTests
         using var dbContext = CreateDbContext();
         var service = new GatheringGameSelectionService(dbContext, new FakeBggClient(0, 0));
 
-        var snapshot = await service.FromArbitraryBggAsync(42, [], default);
+        var snapshot = (await service.ExternalSelectionAsync(42, [], default)).Snapshot;
 
         Assert.Equal(1, snapshot.MinPlayers);
         Assert.Equal(12, snapshot.MaxPlayers);

@@ -7,7 +7,7 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 namespace oyinQ.Bot.Features.Collections;
 
 public sealed record ClubMetadataRefreshView(Guid PublicId, ClubMetadataRefreshStatus Status,
-    int ProgressCurrent, int ProgressTotal, string? Error, DateTimeOffset UpdatedAt);
+    int ProgressCurrent, int ProgressTotal, string? Error, DateTimeOffset UpdatedAt, int? UpdatedGames);
 
 public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGameGeekClient bggClient,
     TimeProvider timeProvider)
@@ -20,13 +20,15 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
         var club = await dbContext.Clubs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == clubId, cancellationToken)
             ?? throw new KeyNotFoundException("Клуб не найден.");
         var ids = club.ReadCollection().Games.Select(x => x.BggId).ToArray();
+        club.EnsureOwnCollection();
         var existing = await dbContext.ClubMetadataRefreshes.SingleOrDefaultAsync(x => x.ClubId == clubId
             && (x.Status == ClubMetadataRefreshStatus.Queued || x.Status == ClubMetadataRefreshStatus.Running), cancellationToken);
         if (existing is not null) return ToView(existing);
         var now = timeProvider.GetUtcNow();
         var job = new ClubMetadataRefresh { PublicId = Guid.NewGuid(), ClubId = clubId,
             Status = ClubMetadataRefreshStatus.Queued, BggIdsJson = JsonSerializer.Serialize(ids, JsonOptions),
-            ProgressTotal = ids.Length, CreatedAt = now, UpdatedAt = now };
+            ProgressTotal = ids.Length, StagedCollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
+            CreatedAt = now, UpdatedAt = now };
         dbContext.ClubMetadataRefreshes.Add(job);
         try
         {
@@ -53,6 +55,9 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
 
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken)
     {
+        // A worker may reuse its scope while other workers advance the persisted job.
+        // Claim from current database values, never a previous iteration's tracked entity.
+        dbContext.ChangeTracker.Clear();
         var now = timeProvider.GetUtcNow();
         var leaseId = Guid.NewGuid();
         long jobId;
@@ -72,15 +77,13 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
                 return false;
             }
             ids = JsonSerializer.Deserialize<long[]>(job.BggIdsJson, JsonOptions) ?? [];
-            if (job.ProgressCurrent >= ids.Length)
+            if (job.StagedCollectionJson is null)
             {
-                job.Status = ClubMetadataRefreshStatus.Completed;
-                job.LeaseId = null;
-                job.LeaseExpiresAt = null;
-                job.UpdatedAt = now;
-                await dbContext.SaveChangesAsync(cancellationToken);
-                await claim.CommitAsync(cancellationToken);
-                return true;
+                // Older workers published each item. Re-fetch the entire job after upgrade;
+                // never reset the live collection or its historical revision.
+                job.ProgressCurrent = 0;
+                job.ProgressTotal = ids.Length;
+                job.StagedCollectionJson = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty);
             }
             job.Status = ClubMetadataRefreshStatus.Running;
             job.LeaseId = leaseId;
@@ -96,33 +99,54 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
         dbContext.ChangeTracker.Clear();
         try
         {
-            var details = await bggClient.GetGameDetailsAsync(ids[claimedIndex], cancellationToken);
+            ClubCollectionGame? refreshed = null;
+            if (claimedIndex < ids.Length)
+            {
+                var details = await bggClient.GetGameDetailsAsync(ids[claimedIndex], cancellationToken)
+                    ?? throw new InvalidOperationException("BGG не вернул данные игры. Повторите обновление позже.");
+                if (details.Game.BggId != ids[claimedIndex])
+                    throw new InvalidOperationException("BGG вернул данные другой игры.");
+                refreshed = BggGameMapper.ToCollectionGame(details);
+            }
             await using var finalize = await dbContext.Database.BeginTransactionAsync(cancellationToken);
             var job = await dbContext.ClubMetadataRefreshes
                 .FromSqlInterpolated($"SELECT * FROM \"ClubMetadataRefreshes\" WHERE \"Id\" = {jobId} FOR UPDATE")
                 .SingleAsync(cancellationToken);
-            if (job.LeaseId != leaseId)
+            if (job.LeaseId != leaseId || job.Status != ClubMetadataRefreshStatus.Running)
             {
                 await finalize.CommitAsync(cancellationToken);
                 return true;
             }
             if (job.ProgressCurrent != claimedIndex)
                 throw new InvalidOperationException("Прогресс обновления метаданных изменился вне активной аренды.");
-            if (details is not null)
+            var staged = ClubCollectionSerializer.Deserialize(job.StagedCollectionJson);
+            if (refreshed is not null)
             {
+                staged = ClubCollectionEditor.AddOrReplace(staged, refreshed);
+                job.StagedCollectionJson = ClubCollectionSerializer.Serialize(staged);
+                job.ProgressCurrent++;
+            }
+            if (job.ProgressCurrent >= ids.Length)
+            {
+                if (!ids.ToHashSet().SetEquals(staged.Games.Select(game => game.BggId)))
+                    throw new InvalidOperationException("Не все данные обновления сохранены. Запустите обновление заново.");
                 var club = await dbContext.Clubs.FromSqlInterpolated($"SELECT * FROM \"Clubs\" WHERE \"Id\" = {clubId} FOR UPDATE")
                     .SingleAsync(cancellationToken);
-                var document = club.ReadCollection();
-                var existing = document.Games.SingleOrDefault(x => x.BggId == details.Game.BggId);
-                if (existing is not null)
+                var current = club.ReadCollection();
+                var metadata = staged.Games.ToDictionary(game => game.BggId);
+                var changed = 0;
+                var games = current.Games.Select(existing =>
                 {
-                    var updated = EnrichPreservingMembership(existing, details);
-                    club.ReplaceCollection(ClubCollectionEditor.AddOrReplace(document, updated), timeProvider.GetUtcNow());
-                }
+                    if (!metadata.TryGetValue(existing.BggId, out var value)) return existing;
+                    var enriched = EnrichPreservingMembership(existing, value);
+                    if (!ClubCollectionSerializer.ContentEquals(new(2, [existing]), new(2, [enriched]))) changed++;
+                    return enriched;
+                }).ToArray();
+                var published = club.ReplaceCollection(new(ClubCollectionDocument.CurrentVersion, games), timeProvider.GetUtcNow());
+                job.UpdatedGames = published ? changed : 0;
+                job.Status = ClubMetadataRefreshStatus.Completed;
             }
-            job.ProgressCurrent++;
-            job.Status = job.ProgressCurrent >= job.ProgressTotal
-                ? ClubMetadataRefreshStatus.Completed : ClubMetadataRefreshStatus.Queued;
+            else job.Status = ClubMetadataRefreshStatus.Queued;
             job.LeaseId = null;
             job.LeaseExpiresAt = null;
             job.UpdatedAt = timeProvider.GetUtcNow();
@@ -151,14 +175,18 @@ public sealed class ClubMetadataRefreshService(AppDbContext dbContext, IBoardGam
     }
 
     private static ClubMetadataRefreshView ToView(ClubMetadataRefresh job) => new(job.PublicId, job.Status,
-        job.ProgressCurrent, job.ProgressTotal, job.Error, job.UpdatedAt);
+        job.ProgressCurrent, job.ProgressTotal,
+        job.Status == ClubMetadataRefreshStatus.Failed ? "Не удалось обновить данные BGG. Коллекция не изменена; повторите позже." : null,
+        job.UpdatedAt, job.UpdatedGames);
 
-    public static ClubCollectionGame EnrichPreservingMembership(ClubCollectionGame existing, BggGameDetails details)
+    public static ClubCollectionGame EnrichPreservingMembership(ClubCollectionGame existing, BggGameDetails details) =>
+        EnrichPreservingMembership(existing, BggGameMapper.ToCollectionGame(details));
+
+    public static ClubCollectionGame EnrichPreservingMembership(ClubCollectionGame existing, ClubCollectionGame metadata)
     {
-        var expansions = existing.Expansions.Select(selected => details.Expansions
-                .Where(x => x.BggId == selected.BggId)
-                .Select(value => BggGameMapper.ToCollectionExpansion(value).WithMetadataFallback(selected))
-                .SingleOrDefault() ?? selected).ToArray();
-        return BggGameMapper.ToCollectionGame(details.Game, expansions);
+        if (existing.BggId != metadata.BggId) throw new InvalidOperationException("Метаданные относятся к другой игре.");
+        var expansions = existing.Expansions.Select(selected => metadata.Expansions
+            .SingleOrDefault(value => value.BggId == selected.BggId)?.WithMetadataFallback(selected) ?? selected).ToArray();
+        return metadata with { Expansions = expansions };
     }
 }

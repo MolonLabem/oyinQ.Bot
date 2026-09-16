@@ -6,6 +6,7 @@
     <UserSecretsId>03ebc2f1-8d72-49d9-9097-d67f08cfae12</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
+    <DefaultItemExcludes>$(DefaultItemExcludes);output/**;.codegraph/**;.playwright-cli/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="oyinQ.Bot.Tests" />

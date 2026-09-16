@@ -85,8 +85,8 @@ public sealed class CampBggImportWorker(
                 });
             if (import.CampId is not null)
             {
-            var baseCollection = (await dbContext.Camps.AsNoTracking().SingleAsync(x => x.Id == import.CampId, stoppingToken))
-                .ReadBaseCollection();
+            var camp = await dbContext.Camps.AsNoTracking().SingleAsync(x => x.Id == import.CampId, stoppingToken);
+            var baseCollection = await new SharedCollectionReader(dbContext).ForCampAsync(camp, stoppingToken);
             var baseIds = baseCollection.Games.Select(x => x.BggId)
                 .Concat(baseCollection.Games.SelectMany(x => x.Expansions).Select(x => x.BggId)).ToHashSet();
             var manualIds = (await dbContext.CampGameContributions.AsNoTracking()

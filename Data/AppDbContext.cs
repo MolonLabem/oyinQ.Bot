@@ -193,6 +193,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.CollectionJson).HasColumnType("jsonb");
             entity.Property(x => x.CollectionRevision).HasDefaultValue(1L);
+            entity.HasOne<Club>().WithMany().HasForeignKey(x => x.SourceClubId).OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(x => x.BotChat)
                 .WithOne(x => x.Club)
@@ -310,6 +311,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .HasDatabaseName("IX_ClubMetadataRefreshes_ActiveClub")
                 .HasFilter("\"Status\" IN (0, 1)");
             entity.Property(x => x.BggIdsJson).HasColumnType("jsonb");
+            entity.Property(x => x.StagedCollectionJson).HasColumnType("jsonb");
             entity.Property(x => x.Error).HasMaxLength(2000);
             entity.HasOne(x => x.Club).WithMany().HasForeignKey(x => x.ClubId).OnDelete(DeleteBehavior.Cascade);
         });

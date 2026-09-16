@@ -15,7 +15,7 @@ public static class TelegramBotProfile
         new() { Command = "start", Description = "Открыть OyinQ" },
         new() { Command = "menu", Description = "Выбрать сообщество" },
         new() { Command = "help", Description = "Как пользоваться OyinQ" },
-        new() { Command = "privacy", Description = "Политика конфиденциальности" },
+        new() { Command = "privacy", Description = "О ваших данных" },
         new() { Command = "admin", Description = "Админ-панель" }
     ];
 
@@ -50,36 +50,6 @@ public static class TelegramBotDeepLinks
             throw new ArgumentException("У Telegram-бота отсутствует username.", nameof(runtimeUsername));
         return username;
     }
-}
-
-public static class TelegramEntryText
-{
-    public static string GroupConnected(string communityName) =>
-        $"🎲 OyinQ · {communityName}\n\nСборы, игры и коллекция этого сообщества.";
-
-    public const string GroupUnknown =
-        "OyinQ пока не подключён к этой группе.\n\nАдминистратор OyinQ может добавить её через админ-панель.";
-
-    public const string FunctionalityGuide =
-        "🎲 OyinQ\n\nПомогает договориться, во что играем, кто участвует и кто принесёт коробку.\n\n" +
-        "🎲 Сборы\nСмотрите ближайшие партии, записывайтесь или выходите. Если мест нет — вставайте в лист ожидания. " +
-        "Создавайте свои сборы: выбирайте игру и дополнения, число игроков, описание и готовность объяснить правила.\n\n" +
-        "📚 Игры\nИщите в коллекции клуба, среди коробок участников кэмпа, в своей коллекции и через BoardGameGeek. " +
-        "Смотрите число игроков, категории, дополнения и кто может или точно привезёт игру.\n\n" +
-        "👤 Профиль\nМоя коллекция сохраняется между клубами и кэмпами. Календарь собирает ваши предстоящие сборы из разных сообществ. " +
-        "В настройках — имя и уведомления. Напоминания о приближении игры можно включить; важные изменения придут автоматически.\n\n" +
-        "🏕 Кэмпы\nСначала зарегистрируйтесь и выберите дни участия. Затем создавайте сборы, записывайтесь и отмечайте, какие игры можете или точно привезёте.\n\n" +
-        "📊 После партии\nОрганизатор получает напоминание подтвердить, состоялась ли игра. Организатор или администратор уточняет результат и состав; длительность рассчитывается по времени окончания. Только сыгранные партии попадают в историю. " +
-        "Игроки могут открыть партию в BG Stats и поделиться ссылкой на свою запись.\n\nОткройте OyinQ кнопкой ниже.";
-    public const string Help = FunctionalityGuide;
-    public static string? ForPrivateCommand(string command) => command is "/start" or "/help" ? FunctionalityGuide : null;
-
-    public const string Privacy = "Политика конфиденциальности OyinQ:";
-
-    public const string CommunityOnboarding =
-        "🎲 OyinQ подключён к этой группе.\n\n" +
-        "Для игр и сборов используйте /oiynq.\n" +
-        "Объявления о сборах будут появляться здесь автоматически.";
 }
 
 public sealed record TelegramGroupEntry(string Text, string? ButtonText, string? ButtonUrl);

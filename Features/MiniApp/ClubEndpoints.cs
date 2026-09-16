@@ -74,11 +74,6 @@ internal static class ClubEndpoints
                 DateTimeOffset.UtcNow, cancellationToken);
             return Results.Ok(await service.GetAsync(clubId, cancellationToken));
         }
-        catch (ClubCollectionConflictException conflict)
-        {
-            return Results.Json(new { code = "stale_revision", message = conflict.Message,
-                currentRevision = conflict.CurrentRevision }, statusCode: StatusCodes.Status409Conflict);
-        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
@@ -88,8 +83,6 @@ internal static class ClubEndpoints
         ILogger<BoardGameGeekClient> logger, CancellationToken cancellationToken)
     {
         if (await AdminAsync(request, clubId, authenticator, authorization, cancellationToken) is null) return Results.Forbid();
-        if (!bggOptions.Value.IsAvailable)
-            return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
         var bggId = BggGameUrlParser.ParseInput(body.BggInput);
         if (bggId is null) return MiniAppEndpointSupport.Problem("validation", "Вставьте ссылку BGG или выберите игру из поиска.");
         try
@@ -97,19 +90,23 @@ internal static class ClubEndpoints
             var current = await service.GetAsync(clubId, cancellationToken);
             var existing = current.Collection.Games.SingleOrDefault(value => value.BggId == bggId.Value);
             var selected = body.ExpansionBggIds?.Distinct().ToHashSet() ?? [];
-            if (existing is not null && selected.All(id => existing.Expansions.Any(item => item.BggId == id)))
-                return Results.Json(new { code = "already_exists", message = "Эта игра уже есть в коллекции клуба.", game = existing,
-                    currentRevision = current.Revision }, statusCode: StatusCodes.Status409Conflict);
-            var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(bggId.Value, body.ExpansionBggIds ?? [], cancellationToken);
-            await service.AddOrReplaceGameAsync(clubId,
-                BggGameMapper.ToCollectionSelection(details, selected, existing),
+            if (current.Revision != body.ExpectedRevision)
+                throw new ClubCollectionConflictException(current.Revision);
+            ClubCollectionGame game;
+            var missing = selected.Where(id => existing?.Expansions.All(item => item.BggId != id) ?? true).ToArray();
+            if (existing is not null && missing.Length == 0)
+                game = existing with { Expansions = existing.Expansions.Where(item => selected.Contains(item.BggId)).ToArray() };
+            else
+            {
+                if (!bggOptions.Value.IsAvailable)
+                    return MiniAppEndpointSupport.Problem("bgg_unavailable", "BGG временно отключён.", 503);
+                var details = await new BggSelectionService(bggClient).LoadBaseSelectionAsync(bggId.Value, missing, cancellationToken);
+                game = BggGameMapper.ToCollectionSelection(details, missing, existing);
+                game = game with { Expansions = game.Expansions.Where(item => selected.Contains(item.BggId)).ToArray() };
+            }
+            await service.AddOrReplaceGameAsync(clubId, game,
                 body.ExpectedRevision, DateTimeOffset.UtcNow, cancellationToken);
             return Results.Ok(await service.GetAsync(clubId, cancellationToken));
-        }
-        catch (ClubCollectionConflictException conflict)
-        {
-            return Results.Json(new { code = "stale_revision", message = conflict.Message,
-                currentRevision = conflict.CurrentRevision }, statusCode: StatusCodes.Status409Conflict);
         }
         catch (HttpRequestException exception)
         {
@@ -131,11 +128,6 @@ internal static class ClubEndpoints
             if (!await service.RemoveGameAsync(clubId, bggId, expectedRevision,
                     DateTimeOffset.UtcNow, cancellationToken)) return Results.NotFound();
             return Results.Ok(await service.GetAsync(clubId, cancellationToken));
-        }
-        catch (ClubCollectionConflictException conflict)
-        {
-            return Results.Json(new { code = "stale_revision", message = conflict.Message,
-                currentRevision = conflict.CurrentRevision }, statusCode: StatusCodes.Status409Conflict);
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }

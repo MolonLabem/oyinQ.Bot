@@ -5,6 +5,7 @@ import type { CatalogResponse, ClubGame, Community } from "../api/types";
 import { useAsync } from "../hooks/useAsync";
 import { GamePicker } from "./GamePicker";
 import { Empty, ErrorState, Loading, Notice } from "./Ui";
+import { wishlistCopy } from "../app/productCopy";
 
 export function WishButton({ communityKey, bggId, initial, changed }: {
   communityKey: string; bggId: number; initial?: boolean; changed?: () => void;
@@ -32,7 +33,7 @@ export function WishButton({ communityKey, bggId, initial, changed }: {
     finally { if (version === scope.current) setBusy(false); }
   }
   return <div><button type="button" className="wishlist-button" aria-pressed={wished} disabled={busy || state.loading || !!state.error} onClick={() => void toggle()}>
-    {busy ? "Сохраняем…" : wished ? "♥ В вишлисте" : "♡ Хочу сыграть"}</button>
+    {busy ? "Сохраняем…" : wished ? wishlistCopy.selected : wishlistCopy.want}</button>
     {(error || state.error) && <Notice kind="danger">{error || state.error}</Notice>}</div>;
 }
 
@@ -40,13 +41,13 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
   const state = useAsync(() => api<CatalogResponse>(`/catalog?community=${encodeURIComponent(community.key)}&ownership=wishes`), [community.key]);
   const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key]);
   const [selected, setSelected] = useState<ClubGame>();
-  return <section className="content-section wishlist-panel"><h2>Вишлист · {community.name}</h2>
+  return <section className="content-section wishlist-panel"><h2>{wishlistCopy.title} · {community.name}</h2>
     <p className="muted">Игры, в которые хочется сыграть в этом сообществе. Коробку иметь не обязательно. Запись в сбор и обещание привезти игру оформляются отдельно.</p>
     <GamePicker selectionMode="wish" catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
-      selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label="Добавить в вишлист" />
+      selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label={wishlistCopy.add} />
     {selected && <div className="row"><strong>{selected.name}</strong><ComplexityBadge info={selected.complexityInfo} /><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length
-      ? <Empty>Вишлист пока пуст. Найдите игру выше.</Empty>
+      ? <Empty>{wishlistCopy.empty}</Empty>
       : <ul className="provider-list">{state.data.items.map(game => <li key={game.bggId}><span>{game.name} <ComplexityBadge info={game.complexityInfo} /></span>
         <WishButton communityKey={community.key} bggId={game.bggId} initial={game.isWished} changed={state.reload} /></li>)}</ul>}
   </section>;

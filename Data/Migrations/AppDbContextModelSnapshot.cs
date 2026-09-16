@@ -371,6 +371,9 @@ namespace oyinQ.Bot.Data.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<long?>("SourceClubId")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -378,6 +381,8 @@ namespace oyinQ.Bot.Data.Migrations
 
                     b.HasIndex("BotChatKey")
                         .IsUnique();
+
+                    b.HasIndex("SourceClubId");
 
                     b.HasIndex("BotChatKey", "BotChatMode")
                         .IsUnique();
@@ -502,11 +507,17 @@ namespace oyinQ.Bot.Data.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("StagedCollectionJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("UpdatedGames")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -1572,6 +1583,11 @@ namespace oyinQ.Bot.Data.Migrations
 
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.Club", b =>
                 {
+                    b.HasOne("oyinQ.Bot.Data.Entities.Club", null)
+                        .WithMany()
+                        .HasForeignKey("SourceClubId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("oyinQ.Bot.Data.Entities.OyinQCommunity", "BotChat")
                         .WithOne("Club")
                         .HasForeignKey("oyinQ.Bot.Data.Entities.Club", "BotChatKey", "BotChatMode")

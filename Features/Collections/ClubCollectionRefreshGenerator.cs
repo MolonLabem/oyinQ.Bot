@@ -166,21 +166,14 @@ public static class ClubCollectionRefreshGenerator
                 $"SELECT * FROM \"Clubs\" WHERE \"BotChatKey\" = {clubKey} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException($"Club '{clubKey}' was not found.");
+        club.EnsureOwnCollection();
         var current = ClubCollectionSerializer.Deserialize(club.CollectionJson);
-        var serialized = ClubCollectionSerializer.Serialize(document);
         var oldIds = CollectionIds(current);
         var newIds = CollectionIds(document);
         var oldLinks = ExpansionLinks(current);
         var newLinks = ExpansionLinks(document);
-        var changed = !string.Equals(ClubCollectionSerializer.Serialize(current), serialized,
-            StringComparison.Ordinal);
-        if (changed)
-        {
-            club.CollectionJson = serialized;
-            club.CollectionRevision++;
-            club.UpdatedAt = DateTimeOffset.UtcNow;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
+        var changed = club.ReplaceCollection(document, DateTimeOffset.UtcNow);
+        if (changed) await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         Console.WriteLine($"Applied Club '{clubKey}' reconciliation: changed={changed}, "
             + $"added={newIds.Except(oldIds).Count()}, retained={newIds.Intersect(oldIds).Count()}, "

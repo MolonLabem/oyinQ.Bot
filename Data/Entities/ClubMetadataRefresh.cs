@@ -7,6 +7,9 @@ public sealed class ClubMetadataRefresh
     public long ClubId { get; set; }
     public ClubMetadataRefreshStatus Status { get; set; }
     public string BggIdsJson { get; set; } = "[]";
+    // Null identifies a job created before staged publication was introduced.
+    public string? StagedCollectionJson { get; set; }
+    public int? UpdatedGames { get; set; }
     public int ProgressCurrent { get; set; }
     public int ProgressTotal { get; set; }
     public string? Error { get; set; }

@@ -160,7 +160,7 @@ public sealed class ReleaseAnnouncementTests
     {
         Assert.InRange(ReleaseContent.Text.Length, 1, 3500);
         Assert.InRange(TelegramBotProfile.Description.Length, 1, 512);
-        Assert.InRange(TelegramEntryText.FunctionalityGuide.Length, 1, 4096);
+        Assert.InRange(TelegramEntryText.Start.Length, 1, 550);
         Assert.Equal("Настольные игры, сборы и коллекции клубов и кэмпов.", TelegramBotProfile.ShortDescription);
         Assert.Contains("личные", TelegramBotProfile.Description); Assert.Contains("сыгранных", TelegramBotProfile.Description);
         Assert.DoesNotContain("Mini App", TelegramBotProfile.Description);

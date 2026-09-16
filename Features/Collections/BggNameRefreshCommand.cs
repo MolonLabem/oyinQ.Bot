@@ -57,7 +57,7 @@ public static class BggNameRefreshCommand
         var changedContributions = 0;
         var now = DateTimeOffset.UtcNow;
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        foreach (var club in await dbContext.Clubs.ToArrayAsync(cancellationToken))
+        foreach (var club in await dbContext.Clubs.Where(x => x.SourceClubId == null).ToArrayAsync(cancellationToken))
         {
             var document = club.ReadCollection();
             var updated = document with

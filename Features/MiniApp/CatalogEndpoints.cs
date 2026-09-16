@@ -24,7 +24,7 @@ internal static class CatalogEndpoints
 
     private static async Task<IResult> ListAsync(HttpRequest request, string community, string? search,
         int? players, string? types, string? categories, string? sort, string? ownership, string? availability,
-        string? planning, string? providers, string? complexities, string? mechanics, int? maxDurationMinutes, DateOnly? attendanceDate,
+        string? planning, string? providers, string? complexities, string? mechanics, int? maxDurationMinutes, DateOnly? attendanceDate, bool? countOnly,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         GameCatalogService service, CancellationToken cancellationToken)
     {
@@ -42,9 +42,11 @@ internal static class CatalogEndpoints
         if (levels.Any(x => x is null)) return MiniAppEndpointSupport.Problem("validation", "Неизвестная сложность игры.");
         var mechanicIds = (mechanics ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(x => long.TryParse(x, out var id) ? id : 0).Where(x => x > 0).Distinct().ToArray();
-        try { return Results.Ok(await service.ListAsync(community, access.Community.Mode, access.Identity.TelegramUserId,
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        try { var result = await service.ListAsync(community, access.Community.Mode, access.Identity.TelegramUserId,
             new CatalogQuery(search, players, parsedTypes, categoryIds, sort, ownership, availability, planning,
-                providerParticipantIds, levels.Select(x => x!.Value).ToArray(), maxDurationMinutes, mechanicIds, attendanceDate), cancellationToken)); }
+                providerParticipantIds, levels.Select(x => x!.Value).ToArray(), maxDurationMinutes, mechanicIds, attendanceDate), cancellationToken, countOnly == true);
+            return countOnly == true ? Results.Ok(new { result.Total }) : Results.Ok(result); }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
     }
 

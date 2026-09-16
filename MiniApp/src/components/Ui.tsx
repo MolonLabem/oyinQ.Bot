@@ -50,7 +50,8 @@ export function BggAttribution() {
 export function ProductFooter() {
   return <footer className="product-footer">
     <BggAttribution />
-    <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>Политика конфиденциальности</button>
+    <p>Автор бота — <ContactLink url="https://t.me/MolonLabe">@MolonLabe</ContactLink></p>
+    <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>О ваших данных</button>
   </footer>;
 }
 export function ContactLink({ url, children }: { url?: string; children: ReactNode }) {

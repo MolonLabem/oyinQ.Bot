@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  attendanceOutcomeTone,
   campStatusTone,
   gatheringStatusTone,
   importStatusTone,
@@ -17,7 +16,7 @@ describe("semantic tones", () => {
     expect(gatheringStatusTone("Cancelled")).toBe("danger");
   });
 
-  it("distinguishes participation, import, attendance and camp states", () => {
+  it("distinguishes participation, import and camp states", () => {
     expect(participationStatusTone("Confirmed")).toBe("success");
     expect(participationStatusTone("Waitlisted")).toBe("attention");
     expect(participationStatusTone("Withdrawn")).toBe("neutral");
@@ -25,9 +24,6 @@ describe("semantic tones", () => {
     expect(importStatusTone("Running", "Saving")).toBe("accent");
     expect(importStatusTone("Completed", "Completed")).toBe("success");
     expect(importStatusTone("Failed", "Failed")).toBe("danger");
-    expect(attendanceOutcomeTone("Attended")).toBe("success");
-    expect(attendanceOutcomeTone("NoShow")).toBe("danger");
-    expect(attendanceOutcomeTone("Unknown")).toBe("neutral");
     expect(campStatusTone("Active")).toBe("success");
     expect(campStatusTone("Cancelled")).toBe("danger");
   });

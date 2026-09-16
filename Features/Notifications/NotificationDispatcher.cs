@@ -149,7 +149,7 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
         var game = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson);
         if (!await db.GameWishes.AnyAsync(x => x.CommunityKey == g.CommunityKey && x.ParticipantId == row.ParticipantId
             && x.BggId == game.BggId, ct)) return false;
-        row.Text = $"🎲 Собирают {game.Name}\n\nВы отмечали эту игру как «Хочу сыграть».\n"
+        row.Text = $"🎲 Новый сбор: «{game.Name}»\n\nВы отмечали эту игру как «Хочу сыграть».\n"
             + GatheringPresentationService.FormatLocalDateTime(g.StartsAtUtc, g.Community.TimeZoneId)
             + $" · сейчас {GatheringCapacity.OccupiedSeats(g)}/{g.MaximumPlayers} игроков";
         return true;

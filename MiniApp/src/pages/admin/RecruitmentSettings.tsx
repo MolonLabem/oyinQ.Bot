@@ -34,7 +34,7 @@ export function RecruitmentSettings({ communityKey, mode = "Club" }: { community
       <p>{mode === "Camp" ? "Опубликуйте в группе предстоящие сборы кэмпа со свободными местами — без ограничения в 36 часов." : "Опубликуйте в группе сборы со свободными местами в ближайшие 36 часов."}</p>
       <button disabled={busy} onClick={() => void send()}>Отправить сборы, которым нужны игроки</button>
       {result && <Notice>{result}</Notice>}
-      <Field label="Интервал между напоминаниями о сборах" hint="Общий для организаторов и администраторов этого сообщества. Сообщения отправляются только по явному запросу.">
+      <Field label="Интервал между напоминаниями о сборах" hint="Общий для организаторов и администраторов этого сообщества. Автоматической рассылки нет — вы сами запускаете отправку кнопкой выше.">
         <select value={hours} onChange={e => setHours(+e.target.value)}>{Array.from({ length: 24 }, (_, i) => i + 1).map(value =>
           <option value={value} key={value}>{value} {value === 1 || value === 21 ? "час" : value < 5 || value > 21 ? "часа" : "часов"}</option>)}</select>
       </Field><button className="primary" disabled={busy} aria-busy={busy} onClick={() => void save()}>{busy ? "Сохраняем…" : "Сохранить интервал"}</button></>}

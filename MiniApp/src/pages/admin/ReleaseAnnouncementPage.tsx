@@ -41,7 +41,7 @@ export function MessageDeliveryPage({ messageId }: { messageId?: string }) {
     <div className="row">
       <button disabled={busy} onClick={() => { setReview(undefined); state.reload(); }}>Обновить результат доставки</button>
       <button disabled={!queueable.length || busy} onClick={() => setReview({ keys: queueable, retry: false })}>Предпросмотр</button>
-      {data.targets.some(x => x.canRetry) && <button disabled={busy} onClick={() => setReview({ keys: data.targets.filter(x => x.canRetry).map(x => x.key), retry: true })}>Повторить ошибочные</button>}
+      {data.targets.some(x => x.canRetry) && <button disabled={busy} onClick={() => setReview({ keys: data.targets.filter(x => x.canRetry).map(x => x.key), retry: true })}>Повторить неудачные отправки</button>}
     </div>
     {review && <section className="page-section" aria-label="Предпросмотр сообщения"><h2>{review.retry ? "Повторная отправка" : "Перед отправкой"}</h2><pre className="release-preview">{data.text}</pre><p>Кнопка под сообщением: «Открыть OyinQ»</p><p>Получатели: {data.targets.filter(x => review.keys.includes(x.key)).map(x => x.name).join(", ")}</p><div className="row"><button className="primary" disabled={busy} onClick={publish}>{busy ? "Добавляем в очередь…" : "Опубликовать"}</button><button disabled={busy} onClick={() => setReview(undefined)}>Отмена</button></div></section>}
     {data.targets.some(x => x.state === "DeliveryUnknown") && <Notice kind="warning">Результат части отправок неизвестен. Проверьте эти чаты вручную: автоматического повтора не будет.</Notice>}

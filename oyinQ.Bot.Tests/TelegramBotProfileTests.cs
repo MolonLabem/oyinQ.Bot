@@ -1,4 +1,6 @@
 using oyinQ.Bot.Integrations.Telegram;
+using System.Xml.Linq;
+using Telegram.Bot.Types.Enums;
 
 namespace oyinQ.Bot.Tests;
 
@@ -11,7 +13,7 @@ public sealed class TelegramBotProfileTests
                 "start:Открыть OyinQ",
                 "menu:Выбрать сообщество",
                 "help:Как пользоваться OyinQ",
-                "privacy:Политика конфиденциальности",
+                "privacy:О ваших данных",
                 "admin:Админ-панель"
             ],
             TelegramBotProfile.PrivateCommands.Select(x => $"{x.Command}:{x.Description}"));
@@ -72,23 +74,55 @@ public sealed class TelegramBotProfileTests
     [Fact]
     public void HelpAndPrivacyCopy_AreConciseAndActionable()
     {
-        Assert.Equal(TelegramEntryText.FunctionalityGuide, TelegramEntryText.Help);
+        Assert.InRange(TelegramEntryText.Start.Length, 1, 550);
+        Assert.EndsWith("Нужна инструкция? /help", TelegramEntryText.Start);
+        Assert.Contains("Сборы", TelegramEntryText.Start);
+        Assert.Contains("Игры", TelegramEntryText.Start);
+        Assert.Contains("Профиль", TelegramEntryText.Start);
         Assert.DoesNotContain("Mini App", TelegramEntryText.Help);
         Assert.Contains("Профиль", TelegramEntryText.Help);
         Assert.Contains("напоминания", TelegramBotProfile.Description);
-        Assert.Equal("Политика конфиденциальности OyinQ:", TelegramEntryText.Privacy);
+        Assert.Contains("данные", TelegramEntryText.Privacy);
     }
     [Fact]
-    public void StartAndHelpShareGuide_MenuStaysFocused_AndContextualDestinationSurvives()
+    public void CommandsUseExplicitFormatting_MenuStaysFocused_AndContextualDestinationSurvives()
     {
-        Assert.Equal(TelegramEntryText.ForPrivateCommand("/start"), TelegramEntryText.ForPrivateCommand("/help"));
+        Assert.Equal(new(TelegramEntryText.Start, ParseMode.None), TelegramEntryText.ForPrivateCommand("/start"));
+        Assert.Equal(new(TelegramEntryText.Help, ParseMode.Html), TelegramEntryText.ForPrivateCommand("/help"));
         Assert.Null(TelegramEntryText.ForPrivateCommand("/menu"));
         var links = new MiniAppLinkBuilder(Microsoft.Extensions.Options.Options.Create(new oyinQ.Bot.Common.Options.BotOptions { PublicBaseUrl = "https://test.example" }));
         var id = Guid.NewGuid();
         var gathering = MiniAppStartParameter.Parse("/start " + MiniAppStartParameter.ForGathering("club", id));
         Assert.Equal(links.Gathering("club", id), links.FromStartContext(gathering!));
-        var import = MiniAppStartParameter.Parse("/start " + MiniAppStartParameter.ForCampImport("camp", id));
-        Assert.Equal(links.CampImport("camp", id), links.FromStartContext(import!));
+        var import = MiniAppStartParameter.Parse("/start i-Hb5nG7rK0EGFXQS8Kb0ELQ-camp");
+        Assert.Equal(links.CampImport("camp", Guid.Parse("1b67be1d-caba-41d0-855d-04bc29bd042d")), links.FromStartContext(import!));
         Assert.Equal(links.Community("club"), links.FromStartContext(MiniAppStartParameter.Parse("/start community-club")!));
     }
+
+    [Fact]
+    public void Help_IsOneMessageWithSixExpandableTasksAndRoomToGrow()
+    {
+        var document = ParseHelp(TelegramEntryText.Help);
+        Assert.InRange(document.Value.Length, 1, TelegramEntryText.HelpVisibleBudget);
+        var quotes = document.Elements("blockquote").ToArray();
+        Assert.Equal(6, quotes.Length);
+        Assert.Equal(6, document.Elements("b").Count());
+        Assert.All(quotes, quote => { Assert.NotNull(quote.Attribute("expandable")); Assert.Empty(quote.Elements()); });
+        Assert.All(document.Elements(), element => Assert.Contains(element.Name.LocalName, new[] { "b", "blockquote" }));
+        foreach (var topic in new[] { "создать сбор", "дождаться места", "свою коллекцию", "Хотелки", "кэмпе", "после игры" })
+            Assert.Contains(document.Elements("b"), heading => heading.Value.Contains(topic));
+    }
+
+    [Fact]
+    public void HelpRenderer_EscapesAllTextBeforeAddingMarkup()
+    {
+        const string untrusted = "Имя <b> & \"название\" </blockquote>";
+        var document = ParseHelp(TelegramEntryText.RenderHelp(untrusted, [new(untrusted, untrusted)]));
+        Assert.Equal(untrusted, document.Element("b")!.Value);
+        Assert.Equal(untrusted, document.Element("blockquote")!.Value);
+        Assert.Equal(2, document.Elements().Count());
+    }
+
+    private static XElement ParseHelp(string html) => XElement.Parse("<root>" +
+        html.Replace("<blockquote expandable>", "<blockquote expandable=\"true\">") + "</root>");
 }

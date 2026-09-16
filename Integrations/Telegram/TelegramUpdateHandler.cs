@@ -97,7 +97,7 @@ public sealed class TelegramUpdateHandler(
             if (await peerSelectionService.CompleteUsersAsync(
                     usersShared.RequestId, user.Id, usersShared.Users, cancellationToken))
             {
-                await botClient.SendMessage(user.Id, "Выбор получен. Вернитесь в Mini App.",
+                await botClient.SendMessage(user.Id, "Выбор получен. Вернитесь в OyinQ.",
                     replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
             }
             return;
@@ -108,7 +108,7 @@ public sealed class TelegramUpdateHandler(
             if (await peerSelectionService.CompleteChatAsync(
                     chatShared.RequestId, user.Id, chatShared, cancellationToken))
             {
-                await botClient.SendMessage(user.Id, "Группа выбрана. Вернитесь в Mini App.",
+                await botClient.SendMessage(user.Id, "Группа выбрана. Вернитесь в OyinQ.",
                     replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
             }
             return;
@@ -130,7 +130,7 @@ public sealed class TelegramUpdateHandler(
 
         if (callback is not null)
         {
-            await botClient.AnswerCallbackQuery(callback.Id, "Это действие доступно в Mini App.", cancellationToken: cancellationToken);
+            await botClient.AnswerCallbackQuery(callback.Id, "Откройте OyinQ, чтобы продолжить.", cancellationToken: cancellationToken);
         }
 
         if (participant is null)
@@ -299,7 +299,7 @@ public sealed class TelegramUpdateHandler(
         long telegramUserId,
         MiniAppStartContext? startContext,
         bool isAdministrator,
-        string? overrideText,
+        TelegramEntryMessage? entryMessage,
         CancellationToken cancellationToken)
     {
         await EnsurePrivateMenuButtonAsync(privateChatId, cancellationToken);
@@ -316,7 +316,7 @@ public sealed class TelegramUpdateHandler(
             communities = [];
         }
 
-        if (communities.Count == 0 && !isAdministrator && overrideText is null)
+        if (communities.Count == 0 && !isAdministrator && entryMessage is null)
         {
             await botClient.SendMessage(privateChatId, "Не удалось подтвердить доступ к сообществу OyinQ. Откройте бота кнопкой из нужного группового чата.", replyMarkup: new ReplyKeyboardRemove(), cancellationToken: cancellationToken);
             return;
@@ -334,7 +334,7 @@ public sealed class TelegramUpdateHandler(
                 communities.Count == 1 ? "Открыть OyinQ" : community.Name,
                 new WebAppInfo { Url = startContext is not null ? links.FromStartContext(startContext) : links.Community(community.Key) })
         ]).ToList();
-        if (overrideText is not null && rows.Count == 0)
+        if (entryMessage is not null && rows.Count == 0)
         {
             rows.Add([
                 InlineKeyboardButton.WithWebApp("Открыть OyinQ",
@@ -348,12 +348,13 @@ public sealed class TelegramUpdateHandler(
                     new WebAppInfo { Url = links.Admin() })
             ]);
         }
-        var text = overrideText ?? (communities.Count == 0
+        var text = entryMessage?.Text ?? (communities.Count == 0
                 ? "Управление OyinQ доступно в админ-панели."
                 : communities.Count == 1
                     ? $"🎲 {communities[0].Name}\n\nОткройте OyinQ кнопкой ниже."
                     : "Выберите сообщество:");
-        await botClient.SendMessage(privateChatId, text, replyMarkup: new InlineKeyboardMarkup(rows), cancellationToken: cancellationToken);
+        await botClient.SendMessage(privateChatId, text, parseMode: entryMessage?.ParseMode ?? ParseMode.None,
+            replyMarkup: new InlineKeyboardMarkup(rows), cancellationToken: cancellationToken);
     }
 
     private async Task EnsurePrivateMenuButtonAsync(long privateChatId, CancellationToken cancellationToken)

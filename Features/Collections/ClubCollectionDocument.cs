@@ -103,6 +103,21 @@ public static class ClubCollectionSerializer
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
+    // Membership is unordered. Metadata arrays retain their presentation order.
+    // Re-serialize typed, upgraded documents so jsonb property order/whitespace and v1 defaults
+    // cannot cause a revision bump. Never compare raw database JSON strings.
+    public static bool ContentEquals(ClubCollectionDocument left, ClubCollectionDocument right) =>
+        string.Equals(ComparisonJson(left), ComparisonJson(right), StringComparison.Ordinal);
+
+    private static string ComparisonJson(ClubCollectionDocument document) => Serialize(document with
+    {
+        Games = document.Games.OrderBy(game => game.BggId).Select(game => game with
+        {
+            Expansions = (game.Expansions ?? []).OrderBy(expansion => expansion.BggId).ToArray(),
+            Types = game.Types ?? [], Categories = game.Categories ?? []
+        }).ToArray()
+    });
+
     public static string Serialize(ClubCollectionDocument document)
     {
         Validate(document);

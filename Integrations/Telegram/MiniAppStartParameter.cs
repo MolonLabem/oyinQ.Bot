@@ -11,15 +11,6 @@ public static class MiniAppStartParameter
     public static string ForGathering(string communityKey, Guid publicId) =>
         $"g-{WebEncoders.Base64UrlEncode(publicId.ToByteArray())}-{communityKey}";
 
-    public static string ForCampImport(string communityKey, Guid importId) =>
-        $"i-{WebEncoders.Base64UrlEncode(importId.ToByteArray())}-{communityKey}";
-
-    public static string ForCollectionGame(string communityKey, long bggId)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bggId);
-        return $"c-{bggId}-{communityKey}";
-    }
-
     public static MiniAppStartContext? Parse(string? messageText)
     {
         if (string.IsNullOrWhiteSpace(messageText)) return null;

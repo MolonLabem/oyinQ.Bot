@@ -7,11 +7,11 @@ import { telegram } from "../../telegram/webApp";
 type Settings = { wishlistGathering: boolean; gatheringFull: boolean; gatheringDetailsChanged: boolean; organizerParticipantLeft: boolean;
   organizerReplacement: boolean; organizerBelowMinimum: boolean; organizerMissingProvider: boolean; importCompleted: boolean; reminderLeadMinutes: number };
 const labels: [Exclude<keyof Settings, "reminderLeadMinutes">, string][] = [
-  ["wishlistGathering", "Уведомлять, когда собирают игры из моего вишлиста"],
-  ["gatheringFull", "Сбор полностью набран"], ["gatheringDetailsChanged", "Изменились описание или условия сбора"],
+  ["wishlistGathering", "Появился сбор по игре из моих хотелок"],
+  ["gatheringFull", "Все места в сборе заняты"], ["gatheringDetailsChanged", "Изменились описание или условия сбора"],
   ["organizerParticipantLeft", "Участник вышел из моего сбора"], ["organizerReplacement", "Освободившееся место занял человек из листа ожидания"],
-  ["organizerBelowMinimum", "В моём сборе стало меньше игроков, чем нужно"], ["organizerMissingProvider", "Для моего сбора не подтверждена коробка"],
-  ["importCompleted", "Завершена загрузка коллекции BGG"]
+  ["organizerBelowMinimum", "В моём сборе стало меньше игроков, чем нужно"], ["organizerMissingProvider", "Пока никто не обещал принести игру на мой сбор"],
+  ["importCompleted", "Коллекция из BGG загружена"]
 ];
 export function NotificationSettings() {
   const state = useAsync(() => api<Settings>("/profile/notifications"), []);
@@ -24,6 +24,6 @@ export function NotificationSettings() {
     <Notice>Освобождение места в листе ожидания, перенос времени, отмена и несостоявшийся сбор — обязательные сообщения. Их нельзя отключить. Организатору один раз напоминаем подтвердить партию после её ожидаемого окончания. Администраторам также сообщаем о недоступной теме публикаций.</Notice>
     {labels.map(([key, label]) => <label className="check" key={key}><input type="checkbox" checked={value[key]} onChange={e => setValue({ ...value, [key]: e.target.checked })} />{label}</label>)}
     <Field label="Напомнить перед сбором" hint="Для сборов, которые вы организуете или в которые записаны. В листе ожидания напоминаний нет."><select value={value.reminderLeadMinutes} onChange={e => setValue({ ...value, reminderLeadMinutes: +e.target.value })}>{[[0,"Не напоминать"],[30,"За 30 минут"],[60,"За 1 час"],[120,"За 2 часа"],[360,"За 6 часов"],[720,"За 12 часов"],[1440,"За сутки"]].map(([minutes,label])=><option key={minutes} value={minutes}>{label}</option>)}</select></Field>
-    {error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy} aria-busy={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить уведомления"}</button>
+    {error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy} aria-busy={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить настройки"}</button>
   </section>;
 }

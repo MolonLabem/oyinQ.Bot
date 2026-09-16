@@ -93,7 +93,7 @@ public sealed class GameProviderService(AppDbContext db, GameCatalogService cata
     private static GameProviderResponse Evaluate(ProviderContext context, long bggId, DateTimeOffset? startsAt)
     {
         var value = context.Games.GetValueOrDefault(bggId);
-        var result = Describe(value?.IsInBaseCollection == true, value?.Providers ?? []);
+        var result = Describe(context.Camp is null && value?.IsInBaseCollection == true, value?.Providers ?? []);
         var withinWindow = startsAt is null || context.Camp is { } camp && CampOperatingWindow.Contains(camp, startsAt.Value);
         return result with { IsOwned = context.Owned.Contains(bggId), CanBring = context.CanOffer && withinWindow && context.Owned.Contains(bggId)
             && !result.Providers.Any(x => x.IsCurrentUser && x.Commitment == CampBringCommitment.Bringing) };

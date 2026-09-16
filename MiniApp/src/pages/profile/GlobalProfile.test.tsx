@@ -39,7 +39,7 @@ describe("глобальный профиль", () => {
     ];
     const markup = renderToStaticMarkup(<ProfileCollectionPage bggAvailable community={{ key: "camp", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" }} />);
     expect(markup).toContain('<details class="collection-expansions"><summary>Дополнения (1)</summary>');
-    expect(markup.slice(markup.indexOf('<details'), markup.indexOf('</details>'))).toContain('Доступность Дополнение базы');
+    expect(markup.slice(markup.indexOf('<details'), markup.indexOf('</details>'))).toContain('Привезёте Дополнение базы?');
     expect(markup.indexOf('Отдельное дополнение')).toBeGreaterThan(markup.indexOf('</details>'));
     vi.unstubAllGlobals();
   });

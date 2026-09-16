@@ -39,6 +39,10 @@ jobs:
       - name: Restore
         run: dotnet restore oyinQ.Bot.slnx
 
+      - name: Verify embedded release inputs
+        shell: pwsh
+        run: ./scripts/verify-release-input.ps1
+
       - name: Build
         run: dotnet build oyinQ.Bot.slnx --configuration Release --no-restore
 

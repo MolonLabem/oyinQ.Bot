@@ -68,7 +68,7 @@ describe("экраны планирования", () => {
     expect(markup).not.toContain("Занять место");
     expect(markup).not.toContain("Изменить сбор");
     expect(markup).not.toContain("Я привезу");
-    expect(markup).not.toContain("Добавить в вишлист");
+    expect(markup).not.toContain("Добавить в хотелки");
     expect(markup.match(/Сардар/g)).toHaveLength(1);
     expect(markup).toContain('notice success');
     expect(markup).toContain("привезёт");

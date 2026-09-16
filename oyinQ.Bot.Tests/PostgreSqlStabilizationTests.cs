@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
@@ -449,6 +450,69 @@ public sealed partial class PostgreSqlStabilizationTests
         Assert.Equal(1, sends.Calls);
     }
 
+    [PostgreSqlFact]
+    public async Task SharedCollectionsCommitAtomicallyAcrossContextsAndRejectReciprocalLinks()
+    {
+        await using var database = await Database.CreateAsync();
+        var actor = await SeedAsync(database);
+        long sourceId, consumerId;
+        await using (var db = database.Open())
+        {
+            sourceId = await db.Clubs.Select(x => x.Id).SingleAsync();
+            var consumer = new Club { BotChat = new OyinQCommunity { Key = "consumer", Name = "Другой клуб",
+                Mode = BotMode.Club, TelegramChatId = -10012346, TimeZoneId = "UTC", IsActive = true } };
+            db.Clubs.Add(consumer); await db.SaveChangesAsync(); consumerId = consumer.Id;
+            await new ClubCollectionService(db).CopyFromClubAsync(consumerId, sourceId, consumer.CollectionRevision, Now, default);
+        }
+        var game = new ClubCollectionGame(42, "Игра", null, null, 1, 4, null, []);
+        await using (var writer = database.Open())
+        {
+            await new ClubCollectionService(writer).ReplaceAsync(sourceId, new(2, [game]), 1, Now, default);
+        }
+        await using (var reader = database.Open())
+        {
+            var state = await new ClubCollectionService(reader).GetAsync(consumerId, default);
+            Assert.Equal(42, Assert.Single(state.Collection.Games).BggId); Assert.False(state.CanEdit);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => new ClubCollectionService(reader)
+                .AddOrReplaceGameAsync(consumerId, game, state.Revision, Now, default));
+        }
+        // A failed import never replaces the committed source document.
+        await using (var worker = database.Open())
+        {
+            var loader = new CampBggImportService(new Bgg());
+            var service = new ClubBggImportService(worker, loader, Time, NullLogger<ClubBggImportService>.Instance);
+            await service.QueueAsync(sourceId, "owner", default);
+            await service.ProcessOneAsync(default);
+            Assert.Equal(ClubBggImportStatus.Failed, (await worker.ClubBggImports.SingleAsync()).Status);
+            Assert.Single((await new ClubCollectionService(worker).GetAsync(consumerId, default)).Collection.Games);
+        }
+        for (var repeat = 0; repeat < 2; repeat++)
+        {
+            await using var worker = database.Open();
+            var imported = new ExternalGame[] { new(42, "Обновлённая игра", 1, 5, null, "https://boardgamegeek.com/boardgame/42"),
+                new(43, "Добавленная игра", 2, 6, null, "https://boardgamegeek.com/boardgame/43") };
+            var service = new ClubBggImportService(worker, new(new Bgg(importGames: imported)), Time, NullLogger<ClubBggImportService>.Instance);
+            await service.QueueAsync(sourceId, "owner", default); await service.ProcessOneAsync(default);
+            await using var reader = database.Open();
+            var importedState = await new ClubCollectionService(reader).GetAsync(consumerId, default);
+            Assert.Equal(3, importedState.Revision); // Replaying identical import does not publish another version.
+            var games = importedState.Collection.Games;
+            Assert.Equal(2, games.Count); Assert.Equal("Обновлённая игра", games.Single(x => x.BggId == 42).Name);
+        }
+        await using (var writer = database.Open())
+        {
+            await new ClubCollectionService(writer).RemoveGameAsync(sourceId, 42, 3, Now, default);
+            await new ClubCollectionService(writer).RemoveGameAsync(sourceId, 43, 4, Now, default);
+        }
+        await using (var reader = database.Open())
+        {
+            Assert.Empty((await new ClubCollectionService(reader).GetAsync(consumerId, default)).Collection.Games);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => new ClubCollectionService(reader)
+                .CopyFromClubAsync(sourceId, consumerId, 5, Now, default));
+            Assert.Null((await reader.Clubs.AsNoTracking().SingleAsync(x => x.Id == sourceId)).SourceClubId);
+        }
+    }
+
     private sealed class ReleaseSender : ITelegramGroupMessageSender
     {
         public int Calls; public bool FailPreparation;
@@ -502,14 +566,14 @@ public sealed partial class PostgreSqlStabilizationTests
         else db.Clubs.Add(new() { BotChat = community, CollectionJson = ClubCollectionSerializer.Serialize(new(2, [])) });
         await db.SaveChangesAsync(); return p;
     }
-    private sealed class Bgg(Func<Task>? lookup = null) : IBoardGameGeekClient
+    private sealed class Bgg(Func<Task>? lookup = null, IReadOnlyList<ExternalGame>? importGames = null) : IBoardGameGeekClient
     {
         public IReadOnlyList<BggExpansion> Expansions { get; init; } = [];
         public async Task<BggGameDetails?> GetGameDetailsAsync(long id, CancellationToken ct)
         { if (lookup is not null) await lookup(); return new(new ExternalGame(42, "Игра", 1, 4, null, "https://boardgamegeek.com/boardgame/42"), Expansions); }
         public Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(string q, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string u, CancellationToken ct) => throw new NotSupportedException();
-        public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string u, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ExternalGame>> GetOwnedBaseGamesAsync(string u, CancellationToken ct) => importGames is null ? throw new NotSupportedException() : Task.FromResult(importGames);
+        public Task<IReadOnlyList<BggOwnedExpansion>> GetOwnedExpansionsAsync(string u, CancellationToken ct) => importGames is null ? throw new NotSupportedException() : Task.FromResult<IReadOnlyList<BggOwnedExpansion>>([]);
         public Task<IReadOnlyList<BggCollectionItem>> GetItemsByIdsAsync(IReadOnlyCollection<long> ids, CancellationToken ct) => Task.FromResult<IReadOnlyList<BggCollectionItem>>([]);
     }
     private sealed class Transport : INotificationTransport

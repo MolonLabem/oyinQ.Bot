@@ -6,8 +6,7 @@ namespace oyinQ.Bot.Features.Gatherings;
 public sealed class TelegramMessageCleanupProcessor(
     AppDbContext dbContext,
     TelegramMessageDeletionHandler deletionHandler,
-    TimeProvider timeProvider,
-    ILogger<TelegramMessageCleanupProcessor> logger)
+    TimeProvider timeProvider)
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMinutes(1);
 
@@ -56,7 +55,6 @@ public sealed class TelegramMessageCleanupProcessor(
             await dbContext.TelegramMessageCleanups.Where(x => x.Id == cleanupId)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastError,
                     outcome.Error), CancellationToken.None);
-            logger.LogWarning("Telegram message cleanup {CleanupId} will be retried.", cleanupId);
         }
 
         return true;

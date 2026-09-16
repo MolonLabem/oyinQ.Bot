@@ -33,7 +33,7 @@ it("restores the account from the server without local storage and refreshes wit
   await act(async () => button("Обновить из BGG").click());
   const request = vi.mocked(api).mock.calls.find(call => call[0].endsWith("/imports"))!;
   expect(JSON.parse(String(request[1]?.body))).toEqual({});
-  await act(async () => button("К моим играм").click());
+  await act(async () => button("К моей коллекции").click());
   expect(host.textContent).toContain("saved-player");
   expect(localStorage.getItem("oyinq-profile-import")).toBeNull();
 });

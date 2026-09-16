@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentLocalMinute, formatLocalDateTimeInput, isFutureLocalDateTime, plural } from "./format";
+import { currentLocalMinute, isFutureLocalDateTime, plural } from "./format";
 import { buildCatalogQuery, toggleValue } from "./catalogQuery";
 import { defaultImportSelection, expansionBelongsToBase, isImportItemSelectable } from "../pages/camp/importSelection";
 import type { ImportDraftItem } from "../api/types";
@@ -52,8 +52,6 @@ describe("Russian product helpers", () => {
     expect(currentLocalMinute("Asia/Qyzylorda", now)).toBe("2026-09-01T05:30");
     expect(isFutureLocalDateTime("2026-09-01T05:31", "Asia/Qyzylorda", now)).toBe(true);
     expect(isFutureLocalDateTime("2026-09-01T05:30", "Asia/Qyzylorda", now)).toBe(false);
-    expect(formatLocalDateTimeInput("2026-09-01T05:31")).toContain("вт");
-    expect(formatLocalDateTimeInput("2026-09-01T05:31")).toContain("05:31");
   });
 
   it("adds, sorts, and removes exact registration dates immutably", () => {

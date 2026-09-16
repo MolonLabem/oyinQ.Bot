@@ -28,9 +28,9 @@ public sealed class MiniAppStartParameterTests
     }
 
     [Fact]
-    public void CollectionGameParameter_RoundTripsCanonicalContext()
+    public void LegacyCollectionGameParameter_ParsesCanonicalContext()
     {
-        var parameter = MiniAppStartParameter.ForCollectionGame("club-main", 167791);
+        const string parameter = "c-167791-club-main";
 
         var parsed = MiniAppStartParameter.Parse($"/start {parameter}");
 

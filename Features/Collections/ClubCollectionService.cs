@@ -7,7 +7,7 @@ namespace oyinQ.Bot.Features.Collections;
 public sealed record ClubCollectionState(
     ClubCollectionDocument Collection,
     long Revision,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt, bool CanEdit = true, long? SourceClubId = null);
 
 public sealed class ClubCollectionConflictException(long currentRevision)
     : InvalidOperationException("Коллекция была изменена другим администратором.")
@@ -19,15 +19,10 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
 {
     public async Task<ClubCollectionState> GetAsync(long clubId, CancellationToken cancellationToken)
     {
-        var value = await dbContext.Clubs.AsNoTracking()
-            .Where(value => value.Id == clubId)
-            .Select(value => new { value.CollectionJson, value.CollectionRevision, value.UpdatedAt })
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Клуб не найден.");
-        return new ClubCollectionState(
-            ClubCollectionSerializer.Deserialize(value.CollectionJson),
-            value.CollectionRevision,
-            value.UpdatedAt);
+        var club = await dbContext.Clubs.AsNoTracking().SingleAsync(x => x.Id == clubId, cancellationToken);
+        var source = await new SharedCollectionReader(dbContext).SourceAsync(clubId, cancellationToken);
+        return new(source.ReadCollection(), source.CollectionRevision, source.UpdatedAt, club.SourceClubId is null,
+            club.SourceClubId is null ? null : source.Id);
     }
 
     public async Task AddOrReplaceGameAsync(
@@ -40,6 +35,7 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var club = await LockClubAsync(clubId, cancellationToken);
         EnsureRevision(club, expectedRevision);
+        club.EnsureOwnCollection();
         var current = club.ReadCollection();
         club.ReplaceCollection(ClubCollectionEditor.AddOrReplace(current, game), now);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -56,6 +52,7 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         var club = await LockClubAsync(clubId, cancellationToken);
         EnsureRevision(club, expectedRevision);
+        club.EnsureOwnCollection();
         var current = club.ReadCollection();
         var updated = ClubCollectionEditor.Remove(current, bggId);
         if (updated.Games.Count == current.Games.Count)
@@ -95,14 +92,15 @@ public sealed class ClubCollectionService(AppDbContext dbContext)
         if (clubId == sourceClubId)
             throw new InvalidOperationException("Выберите другой клуб как источник коллекции.");
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // Serialize link changes across instances, including reciprocal link attempts.
+        await dbContext.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(719834215)", cancellationToken);
         var club = await LockClubAsync(clubId, cancellationToken);
         EnsureRevision(club, expectedRevision);
-        var sourceJson = await dbContext.Clubs.AsNoTracking()
-            .Where(value => value.Id == sourceClubId)
-            .Select(value => value.CollectionJson)
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Исходный клуб не найден.");
-        club.ReplaceCollection(ClubCollectionSerializer.Deserialize(sourceJson), now);
+        _ = await new SharedCollectionReader(dbContext).SourceAsync(sourceClubId, cancellationToken, clubId);
+        if (club.SourceClubId == sourceClubId) { await transaction.CommitAsync(cancellationToken); return; }
+        club.SourceClubId = sourceClubId;
+        club.CollectionRevision++;
+        club.UpdatedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
