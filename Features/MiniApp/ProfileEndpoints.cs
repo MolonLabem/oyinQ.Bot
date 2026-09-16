@@ -1,6 +1,7 @@
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Features.Changelog;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Integrations.Telegram;
 using Microsoft.EntityFrameworkCore;
@@ -17,10 +18,7 @@ internal static class ProfileEndpoints
         group.MapGet("/profile/changelog", (HttpRequest request, TelegramMiniAppAuthenticator authenticator) =>
         {
             if (MiniAppEndpointSupport.Authenticate(request, authenticator) is null) return Results.Unauthorized();
-            using var stream = typeof(ProfileEndpoints).Assembly.GetManifestResourceStream("OyinQ.Changelog")
-                ?? throw new InvalidOperationException("Раздел «Что нового?» временно недоступен.");
-            using var reader = new StreamReader(stream);
-            return Results.Ok(new { markdown = reader.ReadToEnd() });
+            return Results.Ok(new { markdown = ChangelogContent.Markdown });
         });
         group.MapGet("/profile/gatherings", GetGatheringsAsync);
         group.MapGet("/profile/gatherings.ics", ExportAgendaAsync);

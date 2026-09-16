@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Changelog;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
@@ -12,23 +13,12 @@ namespace oyinQ.Bot.Features.Admin;
 
 public static class ReleaseContent
 {
-    public const string Id = "2026-09-07";
-    public static string Text
-    {
-        get
-        {
-            using var stream = typeof(ReleaseContent).Assembly.GetManifestResourceStream("OyinQ.Release." + Id)
-                ?? throw new InvalidOperationException("Текст обновления отсутствует.");
-            using var reader = new StreamReader(stream);
-            var text = reader.ReadToEnd().Trim();
-            if (text.Length is 0 or > 3500) throw new InvalidOperationException("Текст обновления слишком длинный.");
-            return text;
-        }
-    }
+    public static string Id => ChangelogContent.Latest.Id;
+    public static string Text => ChangelogContent.Latest.Text;
 }
 public sealed record ReleaseTarget(string Key, string Name, bool CanPost, ReleaseDeliveryState? State, string? Error,
     bool CanQueue, bool CanRetry);
-public sealed record ReleasePreview(string ReleaseId, string Text, IReadOnlyList<ReleaseTarget> Targets);
+public sealed record ReleasePreview(string ReleaseId, string Text, IReadOnlyList<ReleaseTarget> Targets, string? ReleaseDate = null);
 
 public sealed partial class ReleaseAnnouncementService(AppDbContext db, IAdminAuthorizationService authorization,
     ITelegramBotClient bot, ITelegramGroupMessageSender sender, TimeProvider clock, ILogger<ReleaseAnnouncementService>? logger = null)
@@ -62,7 +52,8 @@ public sealed partial class ReleaseAnnouncementService(AppDbContext db, IAdminAu
     public async Task<ReleasePreview> PreviewAsync(long telegramId, CancellationToken ct)
     {
         RequireSuperAdmin(telegramId);
-        return await PreviewContentAsync(ReleaseContent.Id, ReleaseContent.Text, ct);
+        return (await PreviewContentAsync(ReleaseContent.Id, ReleaseContent.Text, ct))
+            with { ReleaseDate = ChangelogContent.Latest.Date };
     }
 
     private async Task<ReleasePreview> PreviewContentAsync(string id, string text, CancellationToken ct)
@@ -85,7 +76,9 @@ public sealed partial class ReleaseAnnouncementService(AppDbContext db, IAdminAu
     public async Task QueueAsync(long telegramId, string releaseId, IReadOnlyCollection<string> keys, bool confirmed, bool retryFailed, CancellationToken ct)
     {
         RequireSuperAdmin(telegramId);
-        if (!confirmed || releaseId != ReleaseContent.Id || keys is null || keys.Count is 0 or > 200)
+        if (releaseId != ReleaseContent.Id)
+            throw new ArgumentException("Обновление изменилось. Обновите предпросмотр и подтвердите текущий текст.");
+        if (!confirmed || keys is null || keys.Count is 0 or > 200)
             throw new ArgumentException("Подтвердите текущий выпуск и выберите от 1 до 200 сообществ.");
         var preview = await PreviewAsync(telegramId, ct);
         await QueueContentAsync(telegramId, preview, keys, retryFailed, ct);

@@ -6,7 +6,7 @@ import { plural } from "../../app/format";
 import { Page, Card, ErrorState, Loading, Notice } from "../../components/Ui";
 
 type Target = { key: string; name: string; canPost: boolean; canQueue: boolean; canRetry: boolean; state?: string; error?: string };
-type Preview = { releaseId: string; text: string; targets: Target[] };
+type Preview = { releaseId: string; releaseDate?: string; text: string; targets: Target[] };
 const labels: Record<string, string> = { Pending: "В очереди", Preparing: "Подготовка", Delivering: "Отправляется", Delivered: "Отправлено", Failed: "Ошибка", DeliveryUnknown: "Проверьте чат вручную" };
 export function ReleaseAnnouncementPage() { return <MessageDeliveryPage />; }
 
@@ -32,7 +32,7 @@ export function MessageDeliveryPage({ messageId }: { messageId?: string }) {
   if (state.error || !state.data) return <ErrorState message={state.error ?? "Сообщение недоступно"} retry={state.reload} />;
   const data = state.data;
   const queueable = selected.filter(key => data.targets.some(t => t.key === key && t.canQueue));
-  return <Page as="section" title={messageId ? "Своё сообщение" : "Обновление OyinQ"} subtitle={messageId ? "Текст сохранён. Выберите получателей для отправки." : data.releaseId}><Card>
+  return <Page as="section" title={messageId ? "Своё сообщение" : "Обновление OyinQ"} subtitle={messageId ? "Текст сохранён. Выберите получателей для отправки." : data.releaseDate ?? data.releaseId}><Card>
     {messageId && <pre className="release-preview">{data.text}</pre>}
     <p>Выберите управляемые сообщества. Успешные публикации повторно не отправляются.</p>
     {data.targets.map(t => <label className="check" key={t.key}><input type="checkbox" disabled={!t.canQueue || busy} checked={queueable.includes(t.key)} onChange={e => { setReview(undefined); setSelected(old => e.target.checked ? [...old, t.key] : old.filter(x => x !== t.key)); }} /><span>{t.name} · {t.state ? labels[t.state] : t.canPost ? "Готово к отправке" : "Нет доступа для публикации"}{t.error && <small>{t.error}</small>}</span></label>)}

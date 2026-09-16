@@ -35,9 +35,10 @@ describe("экраны планирования", () => {
     expect(markup).not.toContain("Добавить в BG Stats"); expect(markup).not.toContain("Скачать JSON");
   });
   it("публикация обновления начинается с выбора и предпросмотра", () => {
-    mock.data = { releaseId: "2026-09-04", text: "Что нового", targets: [{ key: "club", name: "Клуб", canPost: true }] };
+    mock.data = { releaseId: "2026-09-16-content-revision", releaseDate: "2026-09-16", text: "Что нового", targets: [{ key: "club", name: "Клуб", canPost: true }] };
     const markup = renderToStaticMarkup(<ReleaseAnnouncementPage />);
     expect(markup).toContain("Предпросмотр"); expect(markup).not.toContain("Опубликовать</button>");
+    expect(markup).toContain("2026-09-16"); expect(markup).not.toContain("content-revision");
   });
   it("отделяет личную коллекцию от обещания привезти игру", () => {
     mock.data = { isConfirmed: false, summary: "Никто пока не подтвердил коробку", isOwned: false };

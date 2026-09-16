@@ -14,6 +14,31 @@ namespace oyinQ.Bot.Tests;
 public sealed class ReleaseAnnouncementTests
 {
     [Fact]
+    public async Task CurrentChangelogFlowsFromPreviewToQueueAndDeliveryWithoutRewritingPastRelease()
+    {
+        await using var f = new Fixture();
+        var old = new ReleaseAnnouncement { Id = "2026-09-07", Text = "Старое объявление", CreatedByParticipantId = f.Data.Me.Id, CreatedAt = f.Data.Clock.Now };
+        f.Data.Db.ReleaseAnnouncements.Add(old);
+        f.Data.Db.ReleaseAnnouncementDeliveries.Add(new() { ReleaseId = old.Id, CommunityKey = "a", State = ReleaseDeliveryState.Delivered, TelegramMessageId = 99 });
+        await f.Data.Db.SaveChangesAsync();
+        var preview = await f.Service.PreviewAsync(f.Data.Me.TelegramUserId, default);
+        Assert.Equal(oyinQ.Bot.Features.Changelog.ChangelogContent.Latest.Date, preview.ReleaseDate);
+        Assert.Equal(ReleaseContent.Text, preview.Text);
+        Assert.True(preview.Targets.Single(x => x.Key == "a").CanQueue);
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Service.QueueAsync(f.Data.Me.TelegramUserId, old.Id, ["a"], true, false, default));
+        Assert.Single(f.Data.Db.ReleaseAnnouncementDeliveries);
+        await f.Service.QueueAsync(f.Data.Me.TelegramUserId, preview.ReleaseId, ["a"], true, false, default);
+        Assert.Equal(preview.Text, (await f.Data.Db.ReleaseAnnouncements.SingleAsync(x => x.Id == preview.ReleaseId)).Text);
+        Assert.Empty(f.Handler.Sends);
+        await f.NewService().DispatchOneAsync(default);
+        using var sent = System.Text.Json.JsonDocument.Parse(Assert.Single(f.Handler.Sends));
+        Assert.Equal(WebUtility.HtmlEncode(preview.Text), sent.RootElement.GetProperty("text").GetString());
+        Assert.Equal("Старое объявление", old.Text);
+        Assert.Equal(99, (await f.Data.Db.ReleaseAnnouncementDeliveries.SingleAsync(x => x.ReleaseId == old.Id)).TelegramMessageId);
+        Assert.False((await f.Service.PreviewAsync(f.Data.Me.TelegramUserId, default)).Targets.Single(x => x.Key == "a").CanQueue);
+    }
+
+    [Fact]
     public async Task CustomDraft_IsImmutableAndIdempotent_AndDoesNotSend()
     {
         await using var f = new Fixture();
