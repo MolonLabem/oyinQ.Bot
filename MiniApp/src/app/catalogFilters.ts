@@ -1,11 +1,24 @@
 import { wishlistCopy } from "./productCopy";
 import type { CatalogResponse, CommunityMode, GameType } from "../api/types";
 import { plural } from "./format";
-import { buildCatalogQuery } from "./catalogQuery";
+import { buildCatalogQuery, type PlayerCountMode } from "./catalogQuery";
 
-export type Filters = { players?: number; types: GameType[]; categories: number[]; ownership: string; availability: string; planning: string; providers: number[]; complexities: string[]; mechanics: number[]; maxDurationMinutes?: number; attendanceDate?: string };
+export type Filters = { players?: number; playerCountMode: PlayerCountMode; fromYear?: number; toYear?: number; types: GameType[]; categories: number[]; ownership: string; availability: string; planning: string; providers: number[]; complexities: string[]; mechanics: number[]; maxDurationMinutes?: number; attendanceDate?: string };
 export type FilterOptions = CatalogResponse["filters"];
-export const emptyFilters = (): Filters => ({ types: [], categories: [], ownership: "", availability: "", planning: "", providers: [], complexities: [], mechanics: [] });
+export const emptyFilters = (): Filters => ({ playerCountMode: "supported", types: [], categories: [], ownership: "", availability: "", planning: "", providers: [], complexities: [], mechanics: [] });
+export const minPublicationYear = 1;
+export const maxPublicationYear = 9999;
+const validYear = (year: unknown): year is number => typeof year === "number" && Number.isInteger(year) && year >= minPublicationYear && year <= maxPublicationYear;
+export function yearFilterError(f: Pick<Filters, "fromYear" | "toYear">): string | undefined {
+  if ([f.fromYear, f.toYear].some(year => year !== undefined && !validYear(year))) return `Укажите целый год от ${minPublicationYear} до ${maxPublicationYear}.`;
+  if (f.fromYear !== undefined && f.toYear !== undefined && f.fromYear > f.toYear) return "Год «От» не должен быть позже года «До».";
+}
+export function yearFilterLabel(f: Pick<Filters, "fromYear" | "toYear">) {
+  if (f.fromYear !== undefined && f.toYear !== undefined) return `${f.fromYear}–${f.toYear}`;
+  if (f.fromYear !== undefined) return `От ${f.fromYear}`;
+  if (f.toYear !== undefined) return `До ${f.toYear}`;
+  return "Любой";
+}
 export const ownershipLabels: Record<string, string> = { club: "Коллекция клуба", mine: "Есть у меня", wishes: wishlistCopy.mine, participants: "Игры участников" };
 export const availabilityLabels: Record<string, string> = { confirmed: "Точно привезут", possible: "Нужно договориться" };
 export const planningLabels: Record<string, string> = { planned: "Уже запланированы", unplanned: "Ещё не запланированы" };
@@ -16,6 +29,9 @@ export function normalizeFilters(value: unknown, mode: CommunityMode, options?: 
   const ownership = typeof f.ownership === "string" && Object.hasOwn(ownershipLabels, f.ownership) && (mode === "Camp" || f.ownership !== "participants") ? f.ownership : "";
   return {
     players: typeof f.players === "number" && Number.isSafeInteger(f.players) && f.players > 0 ? f.players : undefined,
+    playerCountMode: f.playerCountMode === "best" ? "best" : "supported",
+    fromYear: validYear(f.fromYear) ? f.fromYear : undefined,
+    toYear: validYear(f.toYear) ? f.toYear : undefined,
     types: Array.isArray(f.types) ? [...new Set(f.types.filter(x => gameTypes.includes(x) && (!options || options.types.some(o => o.key === x))))] : [],
     categories: ids(f.categories).filter(x => !options || options.categories.some(o => o.bggId === x)),
     complexities: Array.isArray(f.complexities) ? [...new Set(f.complexities.filter(x => typeof x === "string" && (!options || options.complexities?.some(o => o.level === x))))] : [],
@@ -28,7 +44,7 @@ export function normalizeFilters(value: unknown, mode: CommunityMode, options?: 
   };
 }
 export function activeGroups(f: Filters) {
-  return [Boolean(f.players), f.types.length > 0, f.categories.length > 0, Boolean(f.ownership), Boolean(f.availability), Boolean(f.planning), f.providers.length > 0, f.complexities.length > 0, f.mechanics.length > 0, Boolean(f.maxDurationMinutes), Boolean(f.attendanceDate)].filter(Boolean).length;
+  return [Boolean(f.players), f.fromYear !== undefined || f.toYear !== undefined, f.types.length > 0, f.categories.length > 0, Boolean(f.ownership), Boolean(f.availability), Boolean(f.planning), f.providers.length > 0, f.complexities.length > 0, f.mechanics.length > 0, Boolean(f.maxDurationMinutes), Boolean(f.attendanceDate)].filter(Boolean).length;
 }
 export function catalogParams(key: string, mode: CommunityMode, f: Filters, search: string, sort: string) {
   const normalized = normalizeFilters(f, mode);
@@ -43,9 +59,10 @@ export function filterChips(f: Filters, options?: FilterOptions): { key: string;
   return [
     ...(f.attendanceDate ? [{ key: "day", label: f.attendanceDate, remove: { ...f, attendanceDate: undefined } }] : []),
     ...(f.maxDurationMinutes ? [{ key: "duration", label: `До ${f.maxDurationMinutes} мин`, remove: { ...f, maxDurationMinutes: undefined } }] : []),
+    ...(f.fromYear !== undefined || f.toYear !== undefined ? [{ key: "year", label: `Год выпуска: ${yearFilterLabel(f)}`, remove: { ...f, fromYear: undefined, toYear: undefined } }] : []),
     ...f.complexities.map(x => ({ key: `complexity-${x}`, label: options?.complexities?.find(o => o.level === x)?.displayName ?? x, remove: { ...f, complexities: f.complexities.filter(v => v !== x) } })),
     ...f.mechanics.map(x => ({ key: `mechanic-${x}`, label: options?.mechanics?.find(o => o.bggId === x)?.name ?? "Механика", remove: { ...f, mechanics: f.mechanics.filter(v => v !== x) } })),
-    ...(f.players ? [{ key: "players", label: `Игроков: ${f.players}`, remove: { ...f, players: undefined } }] : []),
+    ...(f.players ? [{ key: "players", label: `${f.playerCountMode === "best" ? "Лучше всего" : "Игроков"}: ${f.players}`, remove: { ...f, players: undefined, playerCountMode: "supported" as const } }] : []),
     ...([ ["ownership", ownershipLabels], ["availability", availabilityLabels], ["planning", planningLabels] ] as const).flatMap(([key, labels]) => f[key] ? [{ key, label: labels[f[key]], remove: { ...f, [key]: "", ...(key === "ownership" ? { providers: [] } : {}) } }] : []),
     ...f.types.map(x => ({ key: `type-${x}`, label: options?.types.find(o => o.key === x)?.value ?? x, remove: { ...f, types: f.types.filter(v => v !== x) } })),
     ...f.categories.map(x => ({ key: `category-${x}`, label: options?.categories.find(o => o.bggId === x)?.name ?? "Категория", remove: { ...f, categories: f.categories.filter(v => v !== x) } })),

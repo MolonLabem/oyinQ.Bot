@@ -169,6 +169,57 @@ public sealed class CatalogCollectionDetailsTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => new SharedCollectionReader(fixture.Db).SourceAsync(source.Id, default));
     }
 
+    [Theory]
+    [InlineData(BotMode.Club)]
+    [InlineData(BotMode.Camp)]
+    public async Task YearAndBestPlayers_ListAndPreviewUseTheSameStoredMetadata(BotMode mode)
+    {
+        await using var fixture = Fixture.Create();
+        ClubCollectionGame[] games = [
+            Game(10, "A") with { YearPublished = 2014, BestPlayers = "2–4" },
+            Game(20, "B") with { YearPublished = 2015, BestPlayers = "2–4, 6" },
+            Game(30, "C") with { YearPublished = 2020, BestPlayers = "4" },
+            Game(40, "D") with { YearPublished = 2021, BestPlayers = null },
+            Game(50, "E") with { YearPublished = null, BestPlayers = "4" }
+        ];
+        if (mode == BotMode.Club) fixture.AddClub("catalog", games);
+        else fixture.AddCamp("catalog", games);
+        await fixture.Db.SaveChangesAsync();
+        var all = new CatalogQuery(null, null, [], [], "name");
+        (CatalogQuery Query, long[] Ids)[] cases = [
+            (all, [10, 20, 30, 40, 50]),
+            (all with { FromYear = 2015 }, [20, 30, 40]),
+            (all with { ToYear = 2015 }, [10, 20]),
+            (all with { FromYear = 2015, ToYear = 2020 }, [20, 30]),
+            (all with { FromYear = 2015, ToYear = 2015 }, [20]),
+            (all with { Players = 4, PlayerCountMode = CatalogPlayerCountMode.Best }, [10, 20, 30, 50]),
+            (all with { Players = 4, FromYear = 2015, ToYear = 2021, PlayerCountMode = CatalogPlayerCountMode.Best }, [20, 30]),
+            (all with { Players = 6, PlayerCountMode = CatalogPlayerCountMode.Best }, [20]),
+            (all with { Players = 5, PlayerCountMode = CatalogPlayerCountMode.Best }, [])
+        ];
+        foreach (var (query, ids) in cases)
+        {
+            var list = await fixture.Service.ListAsync("catalog", mode, 100, query, default);
+            var preview = await fixture.Service.ListAsync("catalog", mode, 100, query, default, countOnly: true);
+            Assert.Equal(ids, list.Items.Select(x => x.BggId));
+            Assert.Equal(ids.Length, list.Total);
+            Assert.Equal(list.Total, preview.Total);
+            Assert.Empty(preview.Items);
+        }
+    }
+
+    [Theory]
+    [InlineData(2020, 2015)]
+    [InlineData(0, null)]
+    [InlineData(null, 10000)]
+    public async Task InvalidYearRange_IsRejectedForListAndPreview(int? from, int? to)
+    {
+        await using var fixture = Fixture.Create();
+        var query = new CatalogQuery(null, null, [], [], null, FromYear: from, ToYear: to);
+        foreach (var countOnly in new[] { false, true })
+            await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.ListAsync("catalog", BotMode.Club, 100, query, default, countOnly));
+    }
+
     private static ClubCollectionGame Game(long bggId, string name,
         IReadOnlyList<ClubCollectionExpansion>? expansions = null) =>
         new(bggId, name, null, null, 2, 4, "3", expansions ?? [], OriginalName: "Canonical English Name");

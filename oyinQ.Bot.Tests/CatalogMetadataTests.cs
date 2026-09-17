@@ -9,6 +9,42 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class CatalogMetadataTests
 {
+    [Theory]
+    [InlineData(2015, null, 2015, true)]
+    [InlineData(2015, null, 2030, true)]
+    [InlineData(2015, null, 2014, false)]
+    [InlineData(null, 2015, 2015, true)]
+    [InlineData(null, 2015, 2000, true)]
+    [InlineData(null, 2015, 2016, false)]
+    [InlineData(2015, 2020, 2015, true)]
+    [InlineData(2015, 2020, 2020, true)]
+    [InlineData(2015, 2020, 2021, false)]
+    [InlineData(2015, 2015, 2015, true)]
+    [InlineData(2015, null, null, false)]
+    [InlineData(null, 2015, null, false)]
+    [InlineData(2015, 2020, null, false)]
+    [InlineData(null, null, null, true)]
+    public void YearFilter_UsesInclusiveOpenBoundsAndExcludesUnknown(int? from, int? to, int? year, bool expected)
+    {
+        Assert.Equal(expected, GameCatalogService.Matches(Game() with { YearPublished = year },
+            new CatalogQuery(null, null, [], [], null, FromYear: from, ToYear: to)));
+    }
+
+    [Fact]
+    public void PlayerMode_SelectsExactlyOneCriterion()
+    {
+        var game = Game() with { BestPlayers = "3–4, 6", Expansions = [new(20, "Дополнение", MinPlayers: 2, MaxPlayers: 5)] };
+        var query = new CatalogQuery(null, 5, [], [], null);
+        Assert.True(GameCatalogService.Matches(game, query));
+        Assert.False(GameCatalogService.Matches(game, query with { PlayerCountMode = CatalogPlayerCountMode.Best }));
+        Assert.True(GameCatalogService.Matches(game, query with { Players = 6, PlayerCountMode = CatalogPlayerCountMode.Best }));
+        Assert.False(GameCatalogService.Matches(game with { BestPlayers = null }, query with { Players = 3, PlayerCountMode = CatalogPlayerCountMode.Best }));
+        Assert.True(GameCatalogService.Matches(game with { BestPlayers = null }, query with { Players = 3 }));
+        Assert.True(GameCatalogService.Matches(game with { MinPlayers = null, MaxPlayers = null }, query with { Players = 3, PlayerCountMode = CatalogPlayerCountMode.Best }));
+        Assert.False(GameCatalogService.Matches(game with { MinPlayers = null, MaxPlayers = null }, query with { Players = 3 }));
+        Assert.True(GameCatalogService.Matches(game with { BestPlayers = null }, query with { Players = null, PlayerCountMode = CatalogPlayerCountMode.Best }));
+    }
+
     [Fact]
     public void PlayerFilter_IncludesStoredExpansionRangeWithoutChangingBaseMetadata()
     {

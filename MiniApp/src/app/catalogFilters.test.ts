@@ -1,7 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, normalizeFilters, showGames } from "./catalogFilters";
+import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, normalizeFilters, showGames, yearFilterError } from "./catalogFilters";
 const options = { categories: [{ bggId: 2, name: "Экономика" }], types: [{ key: "Strategy" as const, value: "Стратегия" }], providers: [{ participantId: 4, displayName: "Анна" }] };
 describe("contextual catalog filters", () => {
+  it.each([
+    [2015, undefined, "От 2015"],
+    [undefined, 2015, "До 2015"],
+    [2015, 2020, "2015–2020"],
+    [2015, 2015, "2015–2015"]
+  ])("serializes open and inclusive year bounds %s / %s as one group", (fromYear, toYear, label) => {
+    const f = normalizeFilters({ fromYear, toYear }, "Club");
+    expect(yearFilterError(f)).toBeUndefined();
+    const params = new URLSearchParams(catalogParams("club", "Club", f, "", "name"));
+    expect(params.get("fromYear")).toBe(fromYear === undefined ? null : String(fromYear));
+    expect(params.get("toYear")).toBe(toYear === undefined ? null : String(toYear));
+    expect(activeGroups(f)).toBe(1);
+    const chip = filterChips(f)[0];
+    expect(chip.label).toBe(`Год выпуска: ${label}`);
+    expect(activeGroups(chip.remove)).toBe(0);
+    expect(catalogParams("club", "Club", chip.remove, "", "name")).not.toMatch(/fromYear|toYear/);
+  });
+  it("reports reversed and invalid years without swapping bounds or limiting to today's year", () => {
+    const reversed = normalizeFilters({ fromYear: 2020, toYear: 2015 }, "Club");
+    expect(reversed).toMatchObject({ fromYear: 2020, toYear: 2015 });
+    expect(yearFilterError(reversed)).toContain("не должен быть позже");
+    for (const year of [0, -1, 10000, 2015.5, NaN, Infinity]) expect(yearFilterError({ fromYear: year })).toContain("целый год");
+    expect(yearFilterError({ fromYear: new Date().getFullYear() + 5 })).toBeUndefined();
+    expect(yearFilterError({})).toBeUndefined();
+  });
+  it("uses a single players group with distinct best-mode chips and backwards compatible defaults", () => {
+    const legacy = normalizeFilters({ players: 4 }, "Camp");
+    expect(legacy.playerCountMode).toBe("supported");
+    expect(filterChips(legacy)[0].label).toBe("Игроков: 4");
+    const best = { ...legacy, playerCountMode: "best" as const, fromYear: 2015, toYear: 2020 };
+    const params = new URLSearchParams(catalogParams("camp", "Camp", best, "Игра", "players"));
+    expect(params.get("playerCountMode")).toBe("best");
+    expect(params.get("players")).toBe("4");
+    expect(activeGroups(best)).toBe(2);
+    const chip = filterChips(best).find(x => x.key === "players")!;
+    expect(chip.label).toBe("Лучше всего: 4");
+    expect(chip.remove.playerCountMode).toBe("supported");
+    expect(catalogParams("camp", "Camp", chip.remove, "", "name")).not.toMatch(/players|playerCountMode/);
+    expect(catalogParams("camp", "Camp", legacy, "", "name")).not.toContain("playerCountMode");
+    expect(activeGroups({ ...emptyFilters(), playerCountMode: "best" })).toBe(0);
+    expect(catalogParams("camp", "Camp", emptyFilters(), "", "name")).not.toMatch(/players|playerCountMode|fromYear|toYear/);
+  });
   it("preserves complexity, mechanics, duration and Camp date through the shared panel query", () => {
     const available = { ...options, complexities: [{ level: "MediumHeavy", displayName: "Сложная", cssClass: "complexity-hard" }], mechanics: [{ bggId: 9, name: "Аукцион" }] };
     const f = normalizeFilters({ complexities: ["MediumHeavy", "missing"], mechanics: [9, 99], maxDurationMinutes: 90, attendanceDate: "2026-09-18" }, "Camp", available);

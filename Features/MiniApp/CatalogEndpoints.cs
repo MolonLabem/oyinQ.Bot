@@ -25,11 +25,19 @@ internal static class CatalogEndpoints
     private static async Task<IResult> ListAsync(HttpRequest request, string community, string? search,
         int? players, string? types, string? categories, string? sort, string? ownership, string? availability,
         string? planning, string? providers, string? complexities, string? mechanics, int? maxDurationMinutes, DateOnly? attendanceDate, bool? countOnly,
+        int? fromYear, int? toYear, string? playerCountMode,
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
         GameCatalogService service, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
+        var countMode = playerCountMode switch
+        {
+            null or "supported" => CatalogPlayerCountMode.Supported,
+            "best" => CatalogPlayerCountMode.Best,
+            _ => (CatalogPlayerCountMode?)null
+        };
+        if (countMode is null) return MiniAppEndpointSupport.Problem("validation", "Неизвестный режим количества игроков.");
         var parsedTypes = (types ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(value => Enum.TryParse<GameType>(value, true, out var parsed) ? parsed : (GameType?)null)
             .Where(value => value.HasValue).Select(value => value!.Value).ToArray();
@@ -45,7 +53,8 @@ internal static class CatalogEndpoints
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         try { var result = await service.ListAsync(community, access.Community.Mode, access.Identity.TelegramUserId,
             new CatalogQuery(search, players, parsedTypes, categoryIds, sort, ownership, availability, planning,
-                providerParticipantIds, levels.Select(x => x!.Value).ToArray(), maxDurationMinutes, mechanicIds, attendanceDate), cancellationToken, countOnly == true);
+                providerParticipantIds, levels.Select(x => x!.Value).ToArray(), maxDurationMinutes, mechanicIds, attendanceDate,
+                fromYear, toYear, countMode.Value), cancellationToken, countOnly == true);
             return countOnly == true ? Results.Ok(new { result.Total }) : Results.Ok(result); }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
     }

@@ -52,7 +52,9 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
   }, [state.reload]);
   const chips = filterChips(applied, options);
   const count = activeGroups(applied);
-  const loading = state.loading || (!result && !state.error) || query !== debouncedQuery;
+  // A same-query refresh keeps the mounted list (and expanded rows) in place.
+  // Replacing it with Loading collapses the page and clamps the browser's scroll.
+  const loading = (!result && !state.error) || query !== debouncedQuery;
   const reset = () => { setApplied(emptyFilters()); setQuery(""); };
   if (selected) return <GameDetail createGathering={createGathering} openGathering={openGathering} attendanceDate={applied.attendanceDate} community={community} bggId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} />;
   return <Page title="Игры" subtitle={community.name}>
@@ -64,8 +66,9 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
         <button type="button" disabled={!options} aria-expanded={filtersOpen} aria-controls="catalog-filters" className={count ? "filter-button active" : "filter-button"} onClick={() => setFiltersOpen(true)}>Фильтры{count ? ` · ${count}` : ""}</button></div>
       </div>
       {chips.length > 0 && <div className="catalog-applied"><div className="catalog-chip-strip" aria-label="Активные фильтры">{chips.map(chip => <button type="button" className="filter-chip" key={chip.key} aria-label={`Убрать фильтр: ${chip.label}`} onClick={() => setApplied(chip.remove)}><span>{chip.label}</span><span aria-hidden>×</span></button>)}</div><button className="ghost" type="button" onClick={() => setApplied(emptyFilters())}>Сбросить</button></div>}
-      <p className="catalog-result-status" role="status" aria-live="polite">{loading ? "Обновляем список игр…" : state.error ? "Не удалось обновить игры" : gameCount(result?.total ?? result?.items.length ?? 0)}</p>
-      {loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !result?.items.length ? <Empty>{query.trim() || count ? <>Ничего не найдено. Попробуйте изменить запрос или фильтры.<button type="button" onClick={reset}>Сбросить поиск и фильтры</button></> : community.mode === "Club" ? "В коллекции пока нет игр. Администратор может добавить их в разделе управления коллекцией." : "На кэмпе пока нет игр. Добавьте свою игру в разделе «Профиль → Моя коллекция»."}</Empty> : <CatalogGameList items={result.items} searching={Boolean(debouncedQuery.trim())} open={setSelected} />}
+      <p className="catalog-result-status" role="status" aria-live="polite">{loading || state.loading ? "Обновляем список игр…" : state.error ? "Не удалось обновить игры" : gameCount(result?.total ?? result?.items.length ?? 0)}</p>
+      {loading ? <Loading /> : result?.items.length ? <CatalogGameList items={result.items} searching={Boolean(debouncedQuery.trim())} open={setSelected} /> : !state.error && <Empty>{query.trim() || count ? <>Ничего не найдено. Попробуйте изменить запрос или фильтры.<button type="button" onClick={reset}>Сбросить поиск и фильтры</button></> : community.mode === "Club" ? "В коллекции пока нет игр. Администратор может добавить их в разделе управления коллекцией." : "На кэмпе пока нет игр. Добавьте свою игру в разделе «Профиль → Моя коллекция»."}</Empty>}
+      {state.error && <ErrorState message={state.error} retry={state.reload} />}
       {filtersOpen && options && <CatalogFilters community={community} applied={applied} options={options} search={debouncedQuery} sort={sort} onClose={() => setFiltersOpen(false)} onApply={value => { if (catalogParams(community.key, community.mode, value, debouncedQuery, sort) === params) state.reload(); setApplied(value); setFiltersOpen(false); }} />}
     </>}
   </Page>;

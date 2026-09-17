@@ -8,11 +8,14 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Catalog;
 
+public enum CatalogPlayerCountMode { Supported, Best }
+
 public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollection<GameType> Types,
     IReadOnlyCollection<long> CategoryIds, string? Sort, string? Ownership = null, string? Availability = null,
     string? Planning = null, IReadOnlyCollection<long>? ProviderParticipantIds = null,
     IReadOnlyCollection<GameComplexity>? ComplexityLevels = null, int? MaxDurationMinutes = null,
-    IReadOnlyCollection<long>? MechanicIds = null, DateOnly? AttendanceDate = null);
+    IReadOnlyCollection<long>? MechanicIds = null, DateOnly? AttendanceDate = null,
+    int? FromYear = null, int? ToYear = null, CatalogPlayerCountMode PlayerCountMode = CatalogPlayerCountMode.Supported);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
 public sealed record CatalogProviderFilter(long ParticipantId, string DisplayName);
 public sealed record GameListItemResponse(long BggId, string Name, string? OriginalName, string? ThumbnailImageUrl,
@@ -74,6 +77,10 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         CatalogQuery query, CancellationToken cancellationToken, bool countOnly = false)
     {
         if (query.MaxDurationMinutes is <= 0 or > 10080) throw new ArgumentException("Укажите длительность от 1 до 10080 минут.");
+        if (query.FromYear is < 1 or > 9999 || query.ToYear is < 1 or > 9999)
+            throw new ArgumentException("Укажите целый год от 1 до 9999.");
+        if (query.FromYear > query.ToYear) throw new ArgumentException("Год «От» не должен быть позже года «До».");
+        if (!Enum.IsDefined(query.PlayerCountMode)) throw new ArgumentException("Неизвестный режим количества игроков.");
         query = NormalizeQuery(query, mode);
         var effective = await LoadAsync(communityKey, mode, telegramUserId, cancellationToken, query.AttendanceDate);
         // Restored filters may reference options removed by a source collection update.
@@ -285,6 +292,10 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
 
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)
     {
+        if (query.FromYear.HasValue || query.ToYear.HasValue)
+        {
+            if (game.YearPublished is not { } year || year < query.FromYear || year > query.ToYear) return false;
+        }
         if (query.ComplexityLevels is { Count: > 0 } levels
             && (GameComplexityPresentation.Resolve(game.ComplexityWeight, game.Complexity) is not { } level || !levels.Contains(level))) return false;
         if (query.MaxDurationMinutes is { } maximum)
@@ -295,8 +306,15 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         if (query.MechanicIds is { Count: > 0 } mechanics && !mechanics.All(id => game.Mechanics?.Any(x => x.BggId == id) == true)) return false;
         if (query.Players is { } players)
         {
-            var range = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers).WithExpansions(game.Expansions);
-            if (range.WasDefaulted || players < range.Minimum || players > range.Maximum) return false;
+            if (query.PlayerCountMode == CatalogPlayerCountMode.Best)
+            {
+                if (!BggBestPlayerRecommendation.Matches(game.BestPlayers, players)) return false;
+            }
+            else
+            {
+                var range = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers).WithExpansions(game.Expansions);
+                if (range.WasDefaulted || players < range.Minimum || players > range.Maximum) return false;
+            }
         }
         if (query.Types.Count > 0 && !BggTaxonomyCatalog.ResolveTypes(game.Type, game.Subdomains,
                 game.Types, game.CategoryItems, game.Categories).Any(query.Types.Contains)) return false;

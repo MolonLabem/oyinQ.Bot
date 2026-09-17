@@ -21,6 +21,15 @@ async function click(text: string, inDialog = false) {
   expect(el, text).toBeTruthy(); await act(async () => el.click());
 }
 async function tick() { await act(async () => { await vi.advanceTimersByTimeAsync(310); }); }
+async function changeField(label: string, value: string) {
+  const field = Array.from(host.querySelectorAll("label")).find(x => x.querySelector("span")?.textContent === label)!;
+  const input = field?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select") ?? host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
+  await act(async () => {
+    const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLSelectElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event(input instanceof HTMLInputElement ? "input" : "change", { bubbles: true }));
+  });
+}
 const listCalls = () => vi.mocked(api).mock.calls.filter(([url]) => url.startsWith("/catalog?") && !url.includes("countOnly"));
 const status = () => host.querySelector(".catalog-result-status")!.textContent;
 beforeEach(() => {
@@ -35,6 +44,97 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("catalog panel", () => {
+  it("uses the same year/best-player parameters for preview, apply, persistence and reset", async () => {
+    await mount(); await click("Фильтры");
+    await changeField("От", "2015"); await changeField("До", "2020");
+    await changeField("Подбор по числу игроков", "best"); await click("4", true); await tick();
+    const previewUrl = vi.mocked(api).mock.calls.filter(([url]) => url.includes("countOnly")).at(-1)![0];
+    const previewParams = new URLSearchParams(previewUrl.split("?")[1]);
+    expect(Object.fromEntries(previewParams)).toMatchObject({ fromYear: "2015", toYear: "2020", players: "4", playerCountMode: "best", countOnly: "true" });
+    await click("Показать 3 игры", true);
+    previewParams.delete("countOnly");
+    expect(listCalls().at(-1)![0]).toBe(`/catalog?${previewParams}`);
+    expect(host.querySelector(".catalog-applied")!.textContent).toContain("Лучше всего: 4");
+    expect(host.textContent).toContain("Фильтры · 2");
+    expect(JSON.parse(sessionStorage.getItem(filterStorageKey("camp", "Camp"))!)).toMatchObject({ fromYear: 2015, toYear: 2020, players: 4, playerCountMode: "best" });
+    await mount({ ...community, key: "other" }); await mount();
+    expect(listCalls().at(-1)![0]).toBe(`/catalog?${previewParams}`);
+    await click("Фильтры · 2"); await click("Сбросить", true); await tick(); await click("Показать 3 игры", true);
+    expect(listCalls().at(-1)![0]).not.toMatch(/fromYear|toYear|players|playerCountMode/);
+    expect(host.querySelector(".catalog-applied")).toBeNull();
+  });
+  it("restores old player-only session filters as supported mode", async () => {
+    sessionStorage.setItem(filterStorageKey("camp", "Camp"), JSON.stringify({ players: 4 }));
+    await mount(); expect(listCalls().at(-1)![0]).toContain("players=4");
+    expect(listCalls().at(-1)![0]).not.toContain("playerCountMode");
+    await click("Фильтры · 1");
+    const mode = Array.from(host.querySelectorAll("select")).find(x => x.textContent?.includes("Лучше всего для"))!;
+    expect(mode.value).toBe("supported");
+  });
+  it("still clears dependent Camp providers when ownership changes while retaining year validation", async () => {
+    sessionStorage.setItem(filterStorageKey("camp", "Camp"), JSON.stringify({ ownership: "participants", providers: [1] }));
+    await mount(); await click("Фильтры · 2");
+    await changeField("От", "0");
+    await changeField("Чья игра", "mine");
+    await changeField("Чья игра", "participants");
+    expect(host.querySelector('[role="alert"]')!.textContent).toContain("целый год");
+    const providers = Array.from(host.querySelectorAll("details")).find(x => x.querySelector("summary strong")?.textContent === "Кто может привезти")!;
+    expect(providers.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(false);
+  });
+  it("blocks preview and apply for invalid years, retaining the user's bounds until corrected", async () => {
+    await mount(); await click("Фильтры"); await tick();
+    const before = vi.mocked(api).mock.calls.length;
+    await changeField("От", "2020"); await changeField("До", "2015"); await tick();
+    expect(host.querySelector('[role="alert"]')!.textContent).toContain("не должен быть позже");
+    expect(host.querySelector<HTMLButtonElement>(".catalog-filter-actions .primary")!.disabled).toBe(true);
+    expect(vi.mocked(api).mock.calls).toHaveLength(before);
+    await changeField("От", "0"); await click("4", true); await tick();
+    expect(host.querySelector('[role="alert"]')!.textContent).toContain("целый год");
+    expect(vi.mocked(api).mock.calls).toHaveLength(before);
+    await changeField("От", "2015"); await tick();
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.querySelector<HTMLButtonElement>(".catalog-filter-actions .primary")!.disabled).toBe(false);
+    expect(vi.mocked(api).mock.calls.at(-1)![0]).toContain("fromYear=2015&toYear=2015");
+  });
+  it.each(["focus", "visibilitychange", "test:success"])("keeps the same list and expanded rows mounted throughout a %s refresh", async event => {
+    const data = result(); data.items[0].expansions = [{ bggId: 2, name: "Дополнение" }];
+    vi.mocked(api).mockResolvedValue(data);
+    sessionStorage.setItem(filterStorageKey("camp", "Camp"), JSON.stringify({ players: 4, fromYear: 2015, playerCountMode: "best" }));
+    await mount();
+    const grid = host.querySelector(".catalog-grid");
+    const card = host.querySelector(".catalog-card");
+    const expansions = host.querySelector<HTMLDetailsElement>(".collection-expansions")!;
+    expansions.open = true;
+    vi.mocked(window.scrollTo).mockClear();
+    let finish!: (value: CatalogResponse) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => (event === "visibilitychange" ? document : window).dispatchEvent(new Event(event)));
+    expect(status()).toContain("Обновляем");
+    expect(host.querySelector(".catalog-grid")).toBe(grid);
+    expect(host.querySelector(".catalog-card")).toBe(card);
+    expect(expansions.open).toBe(true);
+    await act(async () => finish(structuredClone(data)));
+    expect(host.querySelector(".catalog-grid")).toBe(grid);
+    expect(host.querySelector(".catalog-card")).toBe(card);
+    expect(expansions.open).toBe(true);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+    expect(listCalls()).toHaveLength(2);
+    expect(listCalls()[0][0]).toBe(listCalls()[1][0]);
+  });
+  it("retains the list on a failed refresh and ignores an older focus response", async () => {
+    await mount(); const grid = host.querySelector(".catalog-grid");
+    let old!: (value: CatalogResponse) => void;
+    vi.mocked(api).mockImplementationOnce(() => new Promise(resolve => { old = resolve; }));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    vi.mocked(api).mockRejectedValueOnce(new Error("Нет сети"));
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(host.querySelector(".catalog-grid")).toBe(grid);
+    expect(host.textContent).toContain("Нет сети");
+    await act(async () => old(result(99)));
+    expect(status()).toContain("Не удалось");
+    vi.mocked(api).mockResolvedValue(result(2)); await click("Повторить");
+    expect(host.querySelector(".catalog-grid")).toBe(grid); expect(status()).toBe("2 игры");
+  });
   it("separates section expansion, five-option preview, draft, apply and reset", async () => {
     await mount(); await click("Фильтры");
     const section = Array.from(host.querySelectorAll("details")).find(x => x.textContent?.includes("Категории"))!;
