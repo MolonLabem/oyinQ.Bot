@@ -128,15 +128,19 @@ public sealed class CsvExportService(
     private static CsvExportFile File(string name, IReadOnlyList<string> headers, IEnumerable<object?[]> rows) =>
         new(name, BuildCsv(headers, rows));
 
-    private static MemoryStream BuildCsv(IReadOnlyList<string> headers, IEnumerable<object?[]> rows)
+    internal static MemoryStream BuildCsv(IReadOnlyList<string> headers, IEnumerable<object?[]> rows)
     {
         var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, new UTF8Encoding(true), 1024, leaveOpen: true);
-        WriteRow(writer, headers);
-        foreach (var row in rows) WriteRow(writer, row);
-        writer.Flush();
-        stream.Position = 0;
-        return stream;
+        try
+        {
+            using var writer = new StreamWriter(stream, new UTF8Encoding(true), 1024, leaveOpen: true);
+            WriteRow(writer, headers);
+            foreach (var row in rows) WriteRow(writer, row);
+            writer.Flush();
+            stream.Position = 0;
+            return stream;
+        }
+        catch { stream.Dispose(); throw; }
     }
 
     private static void WriteRow(TextWriter writer, IEnumerable<object?> values) =>

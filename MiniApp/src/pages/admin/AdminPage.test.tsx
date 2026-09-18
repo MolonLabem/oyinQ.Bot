@@ -93,6 +93,20 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("persistent admin community context", () => {
+  it("opens the authorized camp from the Telegram roster link instead of the saved community", async () => {
+    vi.stubGlobal("location", { search: "?admin=1&adminCommunity=camp-4&adminSection=participants" });
+    localStorage.setItem("oyinq-admin-community", "camp-3");
+    await mount();
+    expect(title()).toBe("Участники кэмпа");
+    expect(api).toHaveBeenCalledWith("/admin/camps/4/participants", undefined);
+    expect(api).not.toHaveBeenCalledWith("/admin/camps/3/participants", undefined);
+  });
+  it("does not substitute another roster when the linked camp is unauthorized", async () => {
+    vi.stubGlobal("location", { search: "?admin=1&adminCommunity=missing-camp&adminSection=participants" });
+    await mount();
+    expect(host.textContent).toContain("Кэмп из ссылки недоступен");
+    expect(vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/participants"))).toBe(false);
+  });
   it.each(["club", "camp"])("keeps unavailable %s management and deletion accessible", async kind => {
     data.clubs[0].isBotUnavailable = true;
     data.camps[0].isBotUnavailable = true;

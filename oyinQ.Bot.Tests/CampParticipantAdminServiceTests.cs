@@ -54,7 +54,8 @@ public sealed class CampParticipantAdminServiceTests
         var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO",
             new HttpClient(new NeverCalledHandler()));
         var service = new CampParticipantAdminService(db, authorization, bot,
-            NullLogger<CampParticipantAdminService>.Instance);
+            NullLogger<CampParticipantAdminService>.Instance,
+            new oyinQ.Bot.Integrations.Telegram.MiniAppLinkBuilder(Options.Create(new BotOptions { PublicBaseUrl = "https://example.test" })), TimeProvider.System);
 
         var result = await service.GetAsync(42, camp.Id, default);
 

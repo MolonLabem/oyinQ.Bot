@@ -28,16 +28,19 @@ type CommunityCreated = {
 
 export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolean; isSuperAdmin: boolean }) {
   const state = useAsync(() => api<AdminOverview>("/admin/overview"), []);
-  const [section, setSection] = useState<Section>("community");
-  const [selection, setSelection] = useState(() => localStorage.getItem(adminCommunityStorageKey) ?? "");
+  const [section, setSection] = useState<Section>(() => new URLSearchParams(location.search).get("adminSection") === "participants" ? "participants" : "community");
+  const [selection, setSelection] = useState(() => new URLSearchParams(location.search).get("adminCommunity") ?? localStorage.getItem(adminCommunityStorageKey) ?? "");
+  const [linkedCommunity] = useState(() => new URLSearchParams(location.search).get("adminCommunity"));
   const options = useMemo(() => state.data ? adminCommunityOptions(state.data) : [], [state.data]);
-  const selected = resolveAdminCommunity(options, selection);
+  const missingLinkedCamp = Boolean(linkedCommunity && selection === linkedCommunity && section === "participants"
+    && state.data && !options.some(item => item.communityKey === linkedCommunity && item.camp));
+  const selected = missingLinkedCamp ? undefined : resolveAdminCommunity(options, selection);
   useEffect(() => {
-    if (!state.data || state.loading || state.error) return;
+    if (!state.data || state.loading || state.error || missingLinkedCamp) return;
     setSelection(selected?.id ?? "");
     if (selected) localStorage.setItem(adminCommunityStorageKey, selected.id);
     else localStorage.removeItem(adminCommunityStorageKey);
-  }, [selected?.id, state.data, state.loading, state.error]);
+  }, [selected?.id, state.data, state.loading, state.error, missingLinkedCamp]);
   const currentSection = adminSectionForCommunity(section, selected);
   const switchCommunity = (key: string) => {
     const next = options.find(item => item.id === key);
@@ -72,6 +75,7 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
       <div className="admin-main" key={currentSection === "release" ? "announcements" : `${selected?.id ?? "none"}:${currentSection}`}>
         {currentSection === "release" && isSuperAdmin ? <AnnouncementsPage /> : state.loading ? <Loading />
           : state.error ? <ErrorState message={state.error} retry={state.reload} />
+          : missingLinkedCamp ? <ErrorState message="Кэмп из ссылки недоступен или у вас нет доступа к его участникам." />
           : currentSection === "settings" && club ? <EditClub club={club} overview={state.data} done={() => { back(); state.reload(); }} />
           : currentSection === "settings" && camp ? <EditCamp camp={camp} overview={state.data} done={() => { back(); state.reload(); }} />
           : currentSection === "collection" && club ? <ClubCollection clubId={club.id} bggAvailable={bggAvailable} back={back} />

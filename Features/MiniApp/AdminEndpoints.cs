@@ -49,12 +49,20 @@ internal static class AdminEndpoints
         admin.MapPost("/camps", CreateCampAsync);
         admin.MapPut("/camps/{campId:long}", UpdateCampAsync);
         admin.MapDelete("/camps/{campId:long}", DeleteCampAsync);
-        admin.MapGet("/camps/{campId:long}/participants", CampParticipantsAsync);
-        admin.MapPost("/camps/{campId:long}/participants/send-to-me", SendCampParticipantsToMeAsync);
+        admin.MapCampParticipantEndpoints();
         admin.MapPost("/camps/{campId:long}/base-collection/from-club", CopyCampCollectionAsync);
         admin.MapPost("/camps/{campId:long}/status", ChangeCampStatusAsync);
         admin.MapGet("/exports/statistics.zip", ExportAsync);
         return group;
+    }
+
+    internal static RouteGroupBuilder MapCampParticipantEndpoints(this RouteGroupBuilder admin)
+    {
+        admin.MapGet("/camps/{campId:long}/participants", CampParticipantsAsync);
+        admin.MapPost("/camps/{campId:long}/participants/send-to-me", SendCampParticipantsToMeAsync);
+        admin.MapGet("/camps/{campId:long}/participants/export/{format}", ExportCampParticipantsAsync);
+        admin.MapPost("/camps/{campId:long}/participants/export/{format}/send-to-me", SendCampParticipantFileAsync);
+        return admin;
     }
 
     private static async Task<IResult> CampParticipantsAsync(HttpRequest request, long campId,
@@ -63,7 +71,55 @@ internal static class AdminEndpoints
     {
         var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
         if (identity is null) return Results.Forbid();
-        try { return Results.Ok(await participants.GetAsync(identity.TelegramUserId, campId, cancellationToken)); }
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        try { return Results.Ok(await participants.GetAsync(identity.TelegramUserId, campId, cancellationToken, ParticipantFilter(request))); }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static CampParticipantFilter ParticipantFilter(HttpRequest request, bool export = false)
+    {
+        if (export)
+        {
+            var scope = request.Query["scope"].ToString();
+            if (scope is "" or "all") return new();
+            if (scope != "filtered") throw new ArgumentException("Выберите всех участников или результат фильтра.");
+        }
+        DateOnly? date = null;
+        if (request.Query["attendanceDate"].ToString() is { Length: > 0 } value)
+        {
+            if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var parsed))
+                throw new ArgumentException("Укажите дату участия в формате ГГГГ-ММ-ДД.");
+            date = parsed;
+        }
+        return new(request.Query["search"], date, request.Query["accommodation"]);
+    }
+
+    private static async Task<IResult> ExportCampParticipantsAsync(HttpRequest request, long campId, string format,
+        TelegramMiniAppAuthenticator authenticator, CampParticipantAdminService participants, CancellationToken cancellationToken)
+    {
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            var file = await participants.ExportAsync(identity.TelegramUserId, campId, format, cancellationToken, ParticipantFilter(request, true));
+            return Results.File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> SendCampParticipantFileAsync(HttpRequest request, long campId, string format,
+        TelegramMiniAppAuthenticator authenticator, CampParticipantAdminService participants, CancellationToken cancellationToken)
+    {
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Forbid();
+        try
+        {
+            return Results.Ok(await participants.SendFileToActorAsync(identity.TelegramUserId, campId, format,
+                cancellationToken, ParticipantFilter(request, true)));
+        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 
@@ -107,12 +163,13 @@ internal static class AdminEndpoints
         TelegramMiniAppAuthenticator authenticator, CampParticipantAdminService participants,
         CancellationToken cancellationToken)
     {
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
         var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
         if (identity is null) return Results.Forbid();
         try
         {
             return Results.Ok(await participants.SendToActorAsync(identity.TelegramUserId, campId,
-                cancellationToken));
+                cancellationToken, ParticipantFilter(request, true)));
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }

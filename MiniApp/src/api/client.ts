@@ -29,14 +29,28 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
 export const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
-export async function download(path: string, fileName: string): Promise<void> {
+export async function download(path: string, fileName: string, signal?: AbortSignal): Promise<void> {
   let response: Response;
-  try { response = await fetch(`/api/miniapp${path}`, { headers: { "X-Telegram-Init-Data": telegram.initData } }); }
-  catch { throw new ApiError("Нет соединения с OyinQ. Не удалось скачать файл.", 0, "network_error"); }
-  if (!response.ok) throw new ApiError(response.status >= 500 ? "OyinQ временно недоступен. Не удалось скачать файл." : "Не удалось скачать файл.", response.status);
+  try { response = await fetch(`/api/miniapp${path}`, { headers: { "X-Telegram-Init-Data": telegram.initData }, signal, cache: "no-store" }); }
+  catch (error) { if (signal?.aborted) throw error; throw new ApiError("Нет соединения с OyinQ. Не удалось скачать файл.", 0, "network_error"); }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as ApiErrorBody;
+    throw new ApiError(body.message?.trim() || fallbackApiError(response.status), response.status, body.code);
+  }
+  const disposition = response.headers.get("Content-Disposition");
+  const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition ?? "")?.[1];
+  const quotedName = /filename="([^"]+)"/i.exec(disposition ?? "")?.[1];
+  try { fileName = encodedName ? decodeURIComponent(encodedName) : quotedName ?? fileName; } catch { /* Keep the caller's safe fallback. */ }
+  fileName = fileName.replace(/[\\/\x00-\x1f\x7f]/g, "_");
   const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement("a"); link.href = url; link.download = fileName; link.click();
-  URL.revokeObjectURL(url);
+  if (signal?.aborted) { URL.revokeObjectURL(url); return; }
+  const link = document.createElement("a"); link.href = url; link.download = fileName;
+  try { document.body.appendChild(link); link.click(); }
+  finally {
+    link.remove();
+    // Embedded browsers may begin reading the object URL after the click handler returns.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
 }
 
 export async function gatheringMutation<T>(path: string, options: RequestInit): Promise<T> {

@@ -115,6 +115,7 @@ docker build -t oyinq-bot .
 | [AGENTS.md](AGENTS.md) | Канонические архитектурные и процессные правила |
 | [CHANGELOG.md](CHANGELOG.md) | Единая история пользовательских изменений; эти данные показывает раздел «Что нового?» |
 | [docs/manual-verification.md](docs/manual-verification.md) | Общий чек-лист ручной и интеграционной проверки |
+| [docs/camp-participants.md](docs/camp-participants.md) | Таблица участников кэмпа, Excel/CSV и отправка администратору в личный чат |
 | [docs/database-rollout.md](docs/database-rollout.md) | Безопасная репетиция миграций и выпуск схемы PostgreSQL |
 | [docs/botfather-setup.md](docs/botfather-setup.md) | Ручные настройки профиля бота и Main Mini App |
 | [docs/planning-notifications-plays.md](docs/planning-notifications-plays.md) | Жизненный цикл сборов, планирование, доставка уведомлений, подтверждение партий и BG Stats |

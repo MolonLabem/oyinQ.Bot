@@ -60,6 +60,7 @@ internal static class MiniAppEndpointSupport
 
     public static IResult FromException(Exception exception) => exception switch
     {
+        oyinQ.Bot.Features.Admin.CampParticipantDeliveryException delivery => Problem(delivery.Code, delivery.Message, 502),
         oyinQ.Bot.Features.Collections.ClubCollectionConflictException conflict => Results.Json(new
         { code = "stale_revision", message = conflict.Message, currentRevision = conflict.CurrentRevision }, statusCode: 409),
         oyinQ.Bot.Features.Gatherings.GatheringPlayConflictException conflict => Problem("play_outcome_conflict", conflict.Message, 409),

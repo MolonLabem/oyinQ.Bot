@@ -41,6 +41,34 @@
   --elevation-pressed: 0 2px 10px rgba(0, 0, 0, .24);
 }
 * { box-sizing: border-box; }
+.camp-roster-filters, .camp-roster-export { display: grid; gap: var(--space-3); }
+.camp-roster-export summary { cursor: pointer; padding-block: 8px; font-weight: 650; }
+.camp-roster-export-options { display: grid; gap: var(--space-3); padding-top: var(--space-3); }
+.camp-roster-table caption { text-align: left; padding: 10px 8px; color: var(--muted); overflow-wrap: anywhere; }
+.camp-roster-filters .field, .camp-roster-export .field { margin: 0; }
+.camp-roster-filter-row, .camp-roster-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.camp-roster-actions button:last-child { grid-column: 1 / -1; }
+.camp-roster-scroll { max-height: 70dvh; overflow: auto; border: var(--surface-border); border-radius: var(--radius-control); background: var(--surface); }
+.camp-roster-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: .9rem; }
+.camp-roster-table th, .camp-roster-table td { text-align: left; vertical-align: top; padding: 10px 8px; overflow-wrap: anywhere; border-bottom: var(--surface-border); }
+.camp-roster-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 1px 0 var(--separator); }
+.camp-roster-table tbody th { font-weight: 600; }
+.camp-roster-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--muted) 5%, var(--surface)); }
+.camp-roster-table a { display: inline-block; padding-block: 4px; }
+.camp-roster-dates { width: 30%; }
+.camp-roster-housing { width: 25%; }
+.camp-roster-secondary { display: block; margin-top: 4px; font-size: var(--font-small); font-weight: normal; color: var(--muted); }
+.camp-roster-date { display: block; }
+.camp-roster-needed { color: var(--color-attention); font-weight: 600; }
+.camp-roster-wide { display: none; }
+@media (min-width: 760px) {
+  .camp-roster-wide { display: table-cell; width: 17%; }
+  .camp-roster-mobile { display: none; }
+  .camp-roster-dates { width: 24%; }
+  .camp-roster-housing { width: 14%; }
+  .camp-roster-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .camp-roster-actions button:last-child { grid-column: auto; }
+}
 html { overflow-x: hidden; }
 body { margin: 0; min-width: 280px; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--text); }
 button, input, textarea, select { min-width: 0; max-width: 100%; font: inherit; }
