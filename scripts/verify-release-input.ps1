@@ -12,3 +12,5 @@ foreach ($resource in $project.Project.ItemGroup.EmbeddedResource) {
     if ($LASTEXITCODE -gt 1) { throw 'Ошибка проверки git check-ignore' }
 }
 Write-Output 'Обязательные встроенные ресурсы присутствуют в Git-индексе и не исключены.'
+# git check-ignore returns 1 for valid inputs; GitHub Actions propagates LASTEXITCODE.
+exit 0
