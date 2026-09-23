@@ -1,4 +1,5 @@
 import { CommunityDemand } from "./CommunityDemand";
+import { CampWishlist } from "./CampWishlist";
 import { GameGatherings } from "./GameGatherings";
 import { ComplexityBadge, ComplexityDetails } from "../../components/ComplexityBadge";
 import { wishlistCopy } from "../../app/productCopy";
@@ -19,13 +20,18 @@ export function GamesPage(props: GamesPageProps) {
   return <CommunityGames key={`${props.community.mode}:${props.community.key}`} {...props} />;
 }
 function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsumed, backToGathering, createGathering, openGathering }: GamesPageProps) {
-  const [section, setSection] = useState("catalog");
+  const [section, setSection] = useState(() => {
+    if (new URLSearchParams(location.search).get("wishlist") === "1") return "wishlist";
+    try { return sessionStorage.getItem(`oyinq-games-section:${community.key}`) ?? "catalog"; } catch { return "catalog"; }
+  });
+  useEffect(() => { try { sessionStorage.setItem(`oyinq-games-section:${community.key}`, section); } catch { /* Optional storage. */ } }, [section, community.key]);
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState(() => restoreFilters(community.key, community.mode));
   const [options, setOptions] = useState<FilterOptions>();
   const [sort, setSort] = useState("name");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<number | undefined>(initialGameId);
+  const [selectedPerson, setSelectedPerson] = useState<string>();
   const [initialBackToGathering] = useState<(() => void) | undefined>(() => initialGameId ? backToGathering : undefined);
   useEffect(() => { if (initialGameId) onInitialConsumed?.(); }, []);
   const debouncedQuery = useDebouncedValue(query, 400);
@@ -56,10 +62,12 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
   // Replacing it with Loading collapses the page and clamps the browser's scroll.
   const loading = (!result && !state.error) || query !== debouncedQuery;
   const reset = () => { setApplied(emptyFilters()); setQuery(""); };
-  if (selected) return <GameDetail createGathering={createGathering} openGathering={openGathering} attendanceDate={applied.attendanceDate} community={community} bggId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} />;
+  if (selectedPerson && community.mode === "Camp") return <Page title="Участник кэмпа" subtitle={community.name}><CampWishlist community={community} bggAvailable={bggAvailable} initialPersonId={selectedPerson} back={() => setSelectedPerson(undefined)} create={createGathering} openGathering={openGathering} /></Page>;
+  if (selected && community.mode === "Camp" && section === "wishlist") return <Page title="Хотелки" subtitle={community.name}><CampWishlist community={community} bggAvailable={bggAvailable} initialGameId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} create={createGathering} openGathering={openGathering} /></Page>;
+  if (selected) return <GameDetail createGathering={createGathering} openGathering={openGathering} attendanceDate={applied.attendanceDate} community={community} bggId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} openCampWishlist={() => setSection("wishlist")} openPerson={setSelectedPerson} />;
   return <Page title="Игры" subtitle={community.name}>
     <Tabs label="Разделы игр" active={section} onChange={setSection} items={[{ id: "catalog", label: "Каталог" }, { id: "wishlist", label: wishlistCopy.title }]} />
-    {section === "wishlist" ? <><WishlistPanel community={community} bggAvailable={bggAvailable} /><CommunityDemand communityKey={community.key} create={createGathering} /></> : <>
+    {section === "wishlist" ? community.mode === "Camp" ? <CampWishlist community={community} bggAvailable={bggAvailable} create={createGathering} openGathering={openGathering} /> : <><WishlistPanel community={community} bggAvailable={bggAvailable} /><CommunityDemand communityKey={community.key} create={createGathering} /></> : <>
       <div className="catalog-browse-toolbar">
         <Field label="Поиск игры"><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Название игры или дополнения" /></Field>
         <div className="catalog-browse-actions"><Field label="Сортировка"><select value={sort} onChange={e => setSort(e.target.value)}><option value="name">По названию</option><option value="players">По числу игроков</option><option value="popular">По сыгранным партиям</option></select></Field>
@@ -92,7 +100,7 @@ function GameCard({ game, open }: { game: GameListItem; open: () => void }) {
   return <button className="card catalog-card" onClick={open}><Cover src={game.thumbnailImageUrl} name={game.name} /><span className="catalog-card-body"><strong className="catalog-title">{game.name}</strong><ComplexityBadge info={game.complexityInfo} /><span className="catalog-card-facts">{game.minPlayers && game.maxPlayers && <small><span aria-hidden>👥</span> {game.minPlayers}–{game.maxPlayers}{game.bestPlayers ? ` · лучше ${game.bestPlayers}` : ""}</small>}{game.expansionPlayerRange && <small>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</small>}{Boolean(game.scheduledGatherings) && <small className="catalog-activity">Запланировано: {game.scheduledGatherings}</small>}</span>{game.availabilitySummary && <small className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</small>}</span></button>;
 }
 
-function GameDetail({ community, bggId, attendanceDate, back, createGathering, openGathering }: { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggId: number; attendanceDate?: string; back: () => void }) {
+function GameDetail({ community, bggId, attendanceDate, back, createGathering, openGathering, openCampWishlist, openPerson }: { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggId: number; attendanceDate?: string; back: () => void; openCampWishlist?: () => void; openPerson?: (id: string) => void }) {
   const state = useAsync(() => api<GameDetails>(`/catalog/${bggId}?community=${encodeURIComponent(community.key)}${attendanceDate ? `&attendanceDate=${encodeURIComponent(attendanceDate)}` : ""}`), [community.key, bggId, attendanceDate]);
   useEffect(() => telegram.back(true, back), [back]);
   if (state.loading) return <Page title="Игра"><Loading /></Page>;
@@ -101,9 +109,10 @@ function GameDetail({ community, bggId, attendanceDate, back, createGathering, o
   const game = state.data; const time = game.minPlayTimeMinutes ? game.minPlayTimeMinutes === game.maxPlayTimeMinutes ? `${game.minPlayTimeMinutes} мин` : `${game.minPlayTimeMinutes}–${game.maxPlayTimeMinutes ?? "?"} мин` : undefined;
   return <Page title={game.name} subtitle={game.yearPublished ? `${game.yearPublished} год` : undefined} actions={<BackButton onClick={back} />}>
     <div className="game-detail-hero"><Cover src={game.imageUrl} name={game.name} /><div><div className="detail-facts">{game.minPlayers && game.maxPlayers && <span>👥 {game.minPlayers}–{game.maxPlayers}</span>}{game.expansionPlayerRange && <span>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{time && <span>⏱ {time}</span>}{game.minAge != null && <span>{game.minAge}+</span>}</div><a className="button secondary-link" href={game.bggUrl} target="_blank" rel="noreferrer">Открыть на BGG</a></div></div>
+    {community.mode === "Camp" && game.canWish !== false && <button onClick={openCampWishlist}>Кто хочет сыграть · Попросить привезти</button>}
     {game.canWish !== false && createGathering && <button className="primary" onClick={() => createGathering(bggId)}>Создать сбор по этой игре</button>}
     {game.canWish !== false && <WishButton key={bggId} communityKey={community.key} bggId={bggId} initial={game.isWished} />}
-    <section className="content-section detail-section">{community.mode === "Club" ? <p className={`availability${game.availability.isInBaseCollection || game.availability.isOwned ? " success" : ""}`}>Коробка · {game.availability.isInBaseCollection ? "Есть в клубе" : "Нет в коллекции клуба"}{game.availability.isOwned && " · Есть у вас"}</p> : <><h2>Кто привезёт игру{attendanceDate ? ` · ${attendanceDate}` : ""}</h2>{game.availability.isOwned && <Notice kind="success">Есть у вас</Notice>}{game.availability.isInBaseCollection && <Notice kind="success">✓ Есть в коллекции клуба</Notice>}{game.availability.providers.length > 0 && <><h3>Кто может привезти</h3><ul className="provider-list">{game.availability.providers.map(provider => <li key={provider.participantId}><span>{provider.commitment === "Bringing" ? "✓ " : ""}<ContactLink url={provider.contactUrl}>{provider.displayName}</ContactLink>{provider.city ? ` (${provider.city})` : ""}</span><span className={`provider-status${provider.commitment === "Bringing" ? " success" : ""}`}>{provider.commitment === "Bringing" ? "точно привезёт" : "может привезти"}</span></li>)}</ul></>}{!game.availability.isInBaseCollection && !game.availability.hasCommittedProvider && game.availability.providers.length === 0 && <Notice kind="warning">Пока никто не подтвердил коробку. Сбор всё равно можно создать.</Notice>}{!game.availability.isInBaseCollection && !game.availability.hasCommittedProvider && game.availability.providers.length > 1 && <Notice kind="warning">Нужно решить, кто привезёт игру.</Notice>}</>}</section>
+    <section className="content-section detail-section">{community.mode === "Club" ? <p className={`availability${game.availability.isInBaseCollection || game.availability.isOwned ? " success" : ""}`}>Коробка · {game.availability.isInBaseCollection ? "Есть в клубе" : "Нет в коллекции клуба"}{game.availability.isOwned && " · Есть у вас"}</p> : <><h2>Кто привезёт игру{attendanceDate ? ` · ${attendanceDate}` : ""}</h2>{game.availability.isOwned && <Notice kind="success">Есть у вас</Notice>}{game.availability.isInBaseCollection && <Notice kind="success">✓ Есть в коллекции клуба</Notice>}{game.availability.providers.length > 0 && <><h3>Кто может привезти</h3><ul className="provider-list">{game.availability.providers.map(provider => <li key={provider.participantId}><span>{provider.commitment === "Bringing" ? "✓ " : ""}<>{provider.publicId && openPerson ? <button className="person-link" onClick={() => openPerson(provider.publicId!)}>{provider.displayName}</button> : <ContactLink url={provider.contactUrl}>{provider.displayName}</ContactLink>}</>{provider.city ? ` (${provider.city})` : ""}</span><span className={`provider-status${provider.commitment === "Bringing" ? " success" : ""}`}>{provider.commitment === "Bringing" ? "точно привезёт" : "может привезти — пока без подтверждения"}{provider.availableDates?.length ? ` · ${provider.availableDates.join(", ")}` : ""}</span></li>)}</ul></>}{!game.availability.isInBaseCollection && !game.availability.hasCommittedProvider && game.availability.providers.length === 0 && <Notice kind="warning">Пока никто не подтвердил коробку. Сбор всё равно можно создать.</Notice>}{!game.availability.isInBaseCollection && !game.availability.hasCommittedProvider && game.availability.providers.length > 1 && <Notice kind="warning">Нужно решить, кто привезёт игру.</Notice>}</>}</section>
     <section className="content-section detail-section game-activity"><h2>Активность</h2><div><span><strong>{game.scheduledGatherings ?? 0}</strong><small>запланировано сборов</small></span><span><strong>{game.recordedPlays ?? 0}</strong><small>подтверждено партий</small></span></div></section>
     {openGathering && <GameGatherings communityKey={community.key} bggId={bggId} open={openGathering} />}
     {game.description && <details className="content-section detail-section detail-disclosure"><summary>Об игре</summary><div>{game.description.split("\n").map((text, i) => text ? <p key={i}>{text}</p> : null)}</div></details>}

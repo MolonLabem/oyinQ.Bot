@@ -5,12 +5,14 @@ public enum NotificationKind
     WaitlistPromotion, GatheringTimeChanged, GatheringCancelled, GatheringFailed,
     GatheringDetailsChanged, GatheringFull, OrganizerParticipantLeft, OrganizerReplacement,
     OrganizerBelowMinimum, OrganizerMissingProvider, ImportCompleted, Reminder, PostingTopicUnavailable, WishlistGathering,
-    PlayConfirmationReminder
+    PlayConfirmationReminder, CampBoxOffered, CampBoxConfirmed, CampBringRequested, CampBringDeclined
 }
 public enum NotificationState { Pending, Delivered, Failed, SuppressedByPreference, CannotMessageUser, Delivering, DeliveryUnknown, Expired }
 
 public sealed class Notification
 {
+    public long? BggId { get; set; }
+    public long? ActorParticipantId { get; set; }
     public long Id { get; set; }
     public long ParticipantId { get; set; }
     public Participant Participant { get; set; } = null!;

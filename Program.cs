@@ -95,6 +95,7 @@ builder.Services.AddScoped<CampContributionSelectionService>();
 builder.Services.AddScoped<ParticipantCollectionService>();
 builder.Services.AddScoped<GameCatalogService>();
 builder.Services.AddScoped<GameWishService>();
+builder.Services.AddScoped<CampWishlistService>();
 builder.Services.AddScoped<RecruitmentDigestService>();
 builder.Services.AddScoped<RecruitmentDigestDispatcher>();
 builder.Services.AddHostedService<RecruitmentDigestWorker>();

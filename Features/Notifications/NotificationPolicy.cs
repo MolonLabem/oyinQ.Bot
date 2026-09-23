@@ -13,7 +13,8 @@ public static class NotificationPolicy
         or NotificationKind.PlayConfirmationReminder;
     public static bool Allows(NotificationKind kind, NotificationPreferences preferences) => IsEssential(kind) || kind switch
     {
-        NotificationKind.WishlistGathering => preferences.WishlistGathering,
+        NotificationKind.WishlistGathering or NotificationKind.CampBoxOffered or NotificationKind.CampBoxConfirmed
+            or NotificationKind.CampBringRequested or NotificationKind.CampBringDeclined => preferences.WishlistGathering,
         NotificationKind.GatheringFull => preferences.GatheringFull,
         NotificationKind.GatheringDetailsChanged => preferences.GatheringDetailsChanged,
         NotificationKind.OrganizerParticipantLeft => preferences.OrganizerParticipantLeft,

@@ -77,7 +77,8 @@ public sealed class GatheringDashboardService(AppDbContext db, GameProviderServi
                 var registeredIds = registrations.Where(x => CampParticipationPolicy.IsRegistrationComplete(x, camp)
                     && x.SelectedDays.Any(d => d.Date == today)).Select(x => x.ParticipantId).ToArray();
                 var registered = registeredIds.Length;
-                var contributions = await db.CampGameContributions.Where(x => x.CampId == camp.Id && registeredIds.Contains(x.ParticipantId))
+                var contributions = await db.CampGameContributions.Where(x => x.CampId == camp.Id && registeredIds.Contains(x.ParticipantId)
+                    && (x.AvailableDates == null || x.AvailableDates.Contains(today)))
                     .Select(x => new { x.BggId, x.Commitment }).ToArrayAsync(ct);
                 var bringing = contributions.Where(x => x.Commitment == CampBringCommitment.Bringing).Select(x => x.BggId).ToHashSet();
                 context = new(registered, result.Count(x => x.IsToday && !x.RecentlyCancelled), bringing.Count,

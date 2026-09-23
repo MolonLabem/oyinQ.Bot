@@ -254,8 +254,11 @@ internal static class CampEndpoints
         var values = await dbContext.CampGameContributions.AsNoTracking()
             .Where(x => x.CampId == owned.CampId && x.ParticipantId == owned.ParticipantId)
             .OrderBy(x => x.ItemType).ThenBy(x => x.BggId).ToArrayAsync(cancellationToken);
+        var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
+            .SingleOrDefaultAsync(x => x.CampId == owned.CampId && x.ParticipantId == owned.ParticipantId, cancellationToken);
         return Results.Ok(values.Select(x => new { x.BggId, ItemType = x.ItemType.ToString(),
-            x.ParentBggId, Source = x.Source.ToString(), Commitment = x.Commitment.ToString(), Snapshot = x.ReadSnapshot() }));
+            x.ParentBggId, Source = x.Source.ToString(), Commitment = x.Commitment.ToString(), Snapshot = x.ReadSnapshot(),
+            AvailableDates = registration == null ? [] : CampContributionSelectionService.EffectiveDates(x, registration) }));
     }
 
     private static async Task<IResult> AddManualAsync(HttpRequest request, AddManualContributionRequest body,

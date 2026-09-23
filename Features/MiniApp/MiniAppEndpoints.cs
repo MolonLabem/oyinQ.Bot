@@ -10,6 +10,7 @@ public static class MiniAppEndpoints
         group.MapPlayEndpoints();
         group.MapPlanningEndpoints();
         group.MapRecruitmentEndpoints();
+        group.MapCampWishlistEndpoints();
         group.MapNotificationEndpoints();
         group.MapProfileCollectionEndpoints();
         group.MapCommunityEndpoints();

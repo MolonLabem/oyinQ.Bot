@@ -6,6 +6,8 @@ namespace oyinQ.Bot.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<CampBringRequest> CampBringRequests => Set<CampBringRequest>();
+    public DbSet<CampBringRequester> CampBringRequesters => Set<CampBringRequester>();
     public DbSet<GameWish> GameWishes => Set<GameWish>();
     public DbSet<RecruitmentDigest> RecruitmentDigests => Set<RecruitmentDigest>();
     public DbSet<ReleaseAnnouncement> ReleaseAnnouncements => Set<ReleaseAnnouncement>();
@@ -38,6 +40,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CampBringRequest>(b =>
+        {
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SnapshotJson).HasColumnType("jsonb");
+            b.HasIndex(x => new { x.CampId, x.OwnerParticipantId, x.BggId }).IsUnique();
+            b.HasOne(x => x.Camp).WithMany().HasForeignKey(x => x.CampId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerParticipantId).OnDelete(DeleteBehavior.Restrict);
+            b.ToTable(t => t.HasCheckConstraint("CK_CampBringRequest_BggId", "\"BggId\" > 0"));
+        });
+        modelBuilder.Entity<CampBringRequester>(b =>
+        {
+            b.HasKey(x => new { x.RequestId, x.ParticipantId });
+            b.HasOne(x => x.Request).WithMany(x => x.Requesters).HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.Participant).WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ParticipantId, x.CreatedAt });
+        });
         modelBuilder.Entity<GameWish>(b =>
         {
             b.HasKey(x => new { x.CommunityKey, x.ParticipantId, x.BggId });

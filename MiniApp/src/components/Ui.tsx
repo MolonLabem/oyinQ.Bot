@@ -21,9 +21,9 @@ export function Field({ label, children, hint, error }: { label: string; childre
 export function Notice({ children, kind = "info" }: { children: ReactNode; kind?: "info" | "warning" | "danger" | "success" }) { return <div className={`notice ${kind}`} role="status">{children}</div>; }
 export function Badge({ children, tone = "neutral", className = "" }: { children: ReactNode; tone?: BadgeTone; className?: string }) { return <span className={`badge ${tone} ${className}`}>{children}</span>; }
 export type TabItem = { id: string; label: string };
-export function Tabs({ items, active, onChange, label, className = "" }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string }) {
+export function Tabs({ items, active, onChange, label, className = "", scrollActiveIntoView = true }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string; scrollActiveIntoView?: boolean }) {
   const activeButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { activeButton.current?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [active]);
+  useEffect(() => { if (scrollActiveIntoView) activeButton.current?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [active, scrollActiveIntoView]);
   return <div className={`page-tabs ${className}`.trim()} role="tablist" aria-label={label}>{items.map(item => <button
     key={item.id} ref={active === item.id ? activeButton : undefined} type="button" role="tab"
     aria-selected={active === item.id} className={active === item.id ? "active" : ""}

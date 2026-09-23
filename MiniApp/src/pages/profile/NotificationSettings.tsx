@@ -7,7 +7,7 @@ import { telegram } from "../../telegram/webApp";
 type Settings = { wishlistGathering: boolean; gatheringFull: boolean; gatheringDetailsChanged: boolean; organizerParticipantLeft: boolean;
   organizerReplacement: boolean; organizerBelowMinimum: boolean; organizerMissingProvider: boolean; importCompleted: boolean; reminderLeadMinutes: number };
 const labels: [Exclude<keyof Settings, "reminderLeadMinutes">, string][] = [
-  ["wishlistGathering", "Появился сбор по игре из моих хотелок"],
+  ["wishlistGathering", "Сборы по хотелкам, предложения коробок и просьбы привезти"],
   ["gatheringFull", "Все места в сборе заняты"], ["gatheringDetailsChanged", "Изменились описание или условия сбора"],
   ["organizerParticipantLeft", "Участник вышел из моего сбора"], ["organizerReplacement", "Освободившееся место занял человек из листа ожидания"],
   ["organizerBelowMinimum", "В моём сборе стало меньше игроков, чем нужно"], ["organizerMissingProvider", "Пока никто не обещал принести игру на мой сбор"],

@@ -4,6 +4,8 @@ namespace oyinQ.Bot.Data.Entities;
 
 public sealed class CampGameContribution
 {
+    // Null preserves legacy availability on all current registration dates.
+    public DateOnly[]? AvailableDates { get; set; }
     public long Id { get; set; }
     public long CampId { get; set; }
     public long ParticipantId { get; set; }

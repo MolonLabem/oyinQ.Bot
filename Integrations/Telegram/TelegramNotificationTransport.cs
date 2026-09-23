@@ -12,6 +12,8 @@ public sealed class TelegramNotificationTransport(ITelegramBotClient bot, MiniAp
     public async Task<NotificationReceipt> SendAsync(Notification notification, Participant recipient, CancellationToken ct)
     {
         InlineKeyboardMarkup? keyboard = null;
+        if (notification.BggId is { } game && notification.CommunityKey is { } campKeyForWish)
+            keyboard = new([[InlineKeyboardButton.WithWebApp("Открыть игру и хотелки", new WebAppInfo { Url = links.CollectionGame(campKeyForWish, game) + "&wishlist=1" })]]);
         if (notification.GatheringPublicId is { } id && notification.CommunityKey is { } key && notification.Kind != NotificationKind.GatheringFailed)
             keyboard = new([[InlineKeyboardButton.WithWebApp("Открыть сбор", new WebAppInfo { Url = links.Gathering(key, id) })]]);
         if (notification.ImportPublicId is { } importId)

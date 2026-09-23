@@ -47,6 +47,8 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             var prefs = await db.NotificationPreferences.AsNoTracking().SingleOrDefaultAsync(x => x.ParticipantId == row.ParticipantId, ct)
                 ?? new NotificationPreferences();
             if (!NotificationPolicy.Allows(row.Kind, prefs)) row.State = NotificationState.SuppressedByPreference;
+            else if (row.Kind is NotificationKind.CampBoxOffered or NotificationKind.CampBoxConfirmed or NotificationKind.CampBringRequested or NotificationKind.CampBringDeclined
+                && !await new CampWishlistNotifications(db, time).PrepareAsync(row, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.WishlistGathering && !await PrepareWishlistAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.WaitlistPromotion && !await PromotionStillValidAsync(row, now, ct)) row.State = NotificationState.Expired;
             else if (row.Kind == NotificationKind.Reminder && !await PrepareReminderAsync(row, prefs, now, ct)) { }

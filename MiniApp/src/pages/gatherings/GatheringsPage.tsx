@@ -106,10 +106,9 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
     if (game) chooseGame(game, "catalog");
     else {
       let current = true;
-      void api<{ game: ClubGame }[]>(`/catalog/demand?community=${encodeURIComponent(community.key)}`).then(items => {
+      void api<ClubGame>(`/catalog/demand/${initialGameId}?community=${encodeURIComponent(community.key)}`).then(game => {
         if (!current) return;
-        const demand = items.find(x => x.game.bggId === initialGameId);
-        if (demand) { chooseGame(demand.game, "catalog"); setSource("demand"); }
+        if (game.bggId === initialGameId) { chooseGame(game, "catalog"); setSource("demand"); }
         else setError("Игра больше не доступна в каталоге. Выберите её заново.");
         setSeeded(true);
       }).catch(e => { if (current) { setError(e instanceof Error ? e.message : String(e)); setSeeded(true); } });

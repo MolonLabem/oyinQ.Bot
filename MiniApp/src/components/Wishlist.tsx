@@ -6,6 +6,7 @@ import { useAsync } from "../hooks/useAsync";
 import { GamePicker } from "./GamePicker";
 import { Empty, ErrorState, Loading, Notice } from "./Ui";
 import { wishlistCopy } from "../app/productCopy";
+import { successEventName } from "../telegram/webApp";
 
 export function WishButton({ communityKey, bggId, initial, changed }: {
   communityKey: string; bggId: number; initial?: boolean; changed?: () => void;
@@ -17,6 +18,7 @@ export function WishButton({ communityKey, bggId, initial, changed }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const scope = useRef(0);
+  useEffect(() => { setValue(undefined); }, [initial]);
   useEffect(() => {
     scope.current++; setValue(undefined); setError(undefined); setBusy(false);
     return () => { scope.current++; };
@@ -28,7 +30,7 @@ export function WishButton({ communityKey, bggId, initial, changed }: {
     try {
       const result = await api<{ wished: boolean }>(`/wishlist/${bggId}`, json("PUT", { communityKey, wished: !wished }));
       if (version !== scope.current) return;
-      setValue(result.wished); changed?.();
+      setValue(result.wished); changed?.(); window.dispatchEvent(new Event(successEventName));
     } catch (e) { if (version === scope.current) setError(e instanceof Error ? e.message : String(e)); }
     finally { if (version === scope.current) setBusy(false); }
   }

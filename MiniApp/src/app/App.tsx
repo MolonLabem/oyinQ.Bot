@@ -24,7 +24,7 @@ export function App() {
   const [communityKey, setCommunityKey] = useState(() => launchContext.communityKey ?? localStorage.getItem("oyinq-community") ?? ""); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
   const [initialGatheringId, setInitialGatheringId] = useState(() => launchContext.gatheringId);
-  const [creationGameId, setCreationGameId] = useState<number>();
+  const [creationGameId, setCreationGameId] = useState<number | undefined>(() => positiveGameId(new URLSearchParams(location.search).get("createGame")));
   const [initialCollectionGameId, setInitialCollectionGameId] = useState(() => positiveGameId(new URLSearchParams(location.search).get("game")));
   const [collectionReturnGatheringId, setCollectionReturnGatheringId] = useState<string>();
   const [profileReturnCommunityKey, setProfileReturnCommunityKey] = useState<string>();

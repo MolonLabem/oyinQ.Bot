@@ -49,8 +49,8 @@ it("retries a lost creation response with the same operation identity", async ()
 });
 
 it("selects a demanded game absent from the personal catalog", async () => {
-  vi.mocked(api).mockImplementation(async path => path.startsWith("/catalog/demand?")
-    ? [{ game: { bggId: 77, name: "Игра из спроса", minPlayers: 2, maxPlayers: 4, expansions: [] } }]
+  vi.mocked(api).mockImplementation(async path => path.startsWith("/catalog/demand/77?")
+    ? { bggId: 77, name: "Игра из спроса", minPlayers: 2, maxPlayers: 4, expansions: [] }
     : path.startsWith("/games?") ? [] : { providers: [], isConfirmed: false, summary: "Нет коробки" });
   await act(async () => root.render(<CreateGathering initialGameId={77} community={{ key: "demand", name: "Клуб", mode: "Club", timeZoneId: "UTC" }} bggAvailable={false} onDone={() => {}} editRegistration={() => {}} />));
   expect(host.textContent).toContain("Игра из спроса");

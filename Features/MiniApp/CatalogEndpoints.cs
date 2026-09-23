@@ -10,6 +10,7 @@ internal static class CatalogEndpoints
     {
         group.MapGet("/catalog", ListAsync);
         group.MapGet("/catalog/demand", DemandAsync);
+        group.MapGet("/catalog/demand/{bggId:long}", DemandGameAsync);
         group.MapGet("/catalog/{bggId:long}", DetailsAsync);
         return group;
     }
@@ -20,6 +21,16 @@ internal static class CatalogEndpoints
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, ct);
         if (access is null) return Results.Forbid();
         return Results.Ok(await service.DemandAsync(community, access.Community.Mode, access.Identity.TelegramUserId, ct));
+    }
+
+    private static async Task<IResult> DemandGameAsync(HttpRequest request, string community, long bggId,
+        TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver, GameCatalogService service, CancellationToken ct)
+    {
+        var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, ct);
+        if (access == null) return Results.Forbid();
+        request.HttpContext.Response.Headers.CacheControl = "no-store";
+        try { return Results.Ok(await service.DemandGameAsync(community, access.Community.Mode, access.Identity.TelegramUserId, bggId, ct)); }
+        catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
     }
 
     private static async Task<IResult> ListAsync(HttpRequest request, string community, string? search,

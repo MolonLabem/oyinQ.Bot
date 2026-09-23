@@ -38,13 +38,16 @@ public sealed record EffectiveCampCatalogItem(long BggId, CollectionItemType Ite
 
 public sealed record CampCatalogProvider(long? ParticipantId, string DisplayName, string? City,
     CollectionItemSource? Source, CampBringCommitment Commitment = CampBringCommitment.Available,
-    bool IsCurrentUser = false, string? ContactUrl = null);
+    bool IsCurrentUser = false, string? ContactUrl = null, Guid? PublicId = null, IReadOnlyList<DateOnly>? AvailableDates = null);
 
 public sealed class CampContributionSelectionService(
     AppDbContext dbContext,
     CampParticipationPolicy participationPolicy,
     TimeProvider timeProvider)
 {
+    public static DateOnly[] EffectiveDates(CampGameContribution contribution, CampRegistration registration) =>
+        registration.SelectedDays.Select(x => x.Date).Where(d => contribution.AvailableDates == null || contribution.AvailableDates.Contains(d)).Distinct().Order().ToArray();
+
     public async Task ConfirmImportAsync(long campId, long participantId, CampBggImportDraft draft,
         IReadOnlyCollection<long> selectedBaseGameIds, IReadOnlyCollection<long> selectedExpansionIds,
         DateTimeOffset now, CancellationToken cancellationToken)
@@ -169,17 +172,24 @@ public sealed class CampContributionSelectionService(
     public async Task RemoveAsync(long campId, long participantId, long bggId,
         CollectionItemType itemType, CancellationToken cancellationToken)
     {
+        await using var transaction = dbContext.Database.CurrentTransaction is null
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken) : null;
+        if (dbContext.Database.IsRelational())
+        {
+            await dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE").AsNoTracking().SingleAsync(cancellationToken);
+            await dbContext.Participants.FromSqlInterpolated($"SELECT * FROM \"Participants\" WHERE \"Id\" = {participantId} FOR UPDATE").AsNoTracking().SingleAsync(cancellationToken);
+        }
         await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
             cancellationToken);
-        if (contribution is null) return;
-        dbContext.Remove(contribution);
+        if (contribution is not null) dbContext.Remove(contribution);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task SetCommitmentAsync(long campId, long participantId, long bggId,
-        CollectionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken, DateTimeOffset? gatheringStartsAt = null)
+        CollectionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken, DateTimeOffset? gatheringStartsAt = null, DateOnly[]? availableDates = null)
     {
         if (!Enum.IsDefined(itemType) || !Enum.IsDefined(commitment))
             throw new ArgumentException("Неизвестный тип игры или отметка доступности.");
@@ -205,6 +215,9 @@ public sealed class CampContributionSelectionService(
         var contribution = await dbContext.CampGameContributions.SingleOrDefaultAsync(
             x => x.CampId == campId && x.ParticipantId == participantId && x.BggId == bggId && x.ItemType == itemType,
             cancellationToken);
+        var registrationNow = (await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken)).Registration;
+        var previousCommitment = contribution?.Commitment;
+        var previousDates = contribution == null ? [] : EffectiveDates(contribution, registrationNow);
         if (contribution is null)
         {
             contribution = new CampGameContribution { CampId = campId, ParticipantId = participantId,
@@ -212,9 +225,27 @@ public sealed class CampContributionSelectionService(
                 SnapshotJson = owned.SnapshotJson, Source = owned.Source, CreatedAt = timeProvider.GetUtcNow() };
             dbContext.CampGameContributions.Add(contribution);
         }
+        if (availableDates != null)
+        {
+            var registration = await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
+            if (availableDates.Length == 0 || availableDates.Except(registration.Registration.SelectedDays.Select(x => x.Date)).Any())
+                throw new ArgumentException("Выберите дни из своей регистрации.");
+            contribution.AvailableDates = availableDates.Distinct().Order().ToArray();
+        }
+        else if (gatheringStartsAt is { } at && (contribution.AvailableDates != null || contribution.Commitment != CampBringCommitment.Bringing))
+        {
+            var zone = await dbContext.Camps.Where(x => x.Id == campId).Select(x => x.BotChat.TimeZoneId).SingleAsync(cancellationToken);
+            contribution.AvailableDates = (contribution.AvailableDates ?? []).Append(CommunityTime.LocalDate(at, zone)).Distinct().Order().ToArray();
+        }
         contribution.Commitment = commitment;
+        var decision = itemType == CollectionItemType.BaseGame ? await dbContext.CampBringRequests.SingleOrDefaultAsync(
+            x => x.CampId == campId && x.OwnerParticipantId == participantId && x.BggId == bggId, cancellationToken) : null;
+        if (decision != null) decision.Declined = false;
         contribution.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (itemType == CollectionItemType.BaseGame && (previousCommitment != commitment
+            || !previousDates.SequenceEqual(EffectiveDates(contribution, registrationNow))))
+            await new Features.Notifications.CampWishlistNotifications(dbContext, timeProvider).BoxChangedAsync(campId, participantId, bggId, commitment, cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
@@ -227,13 +258,16 @@ public sealed class CampContributionSelectionService(
         var eligible = registrations.Where(x => CampParticipationPolicy.IsRegistrationComplete(x, camp)
             && (attendanceDate == null || x.SelectedDays.Any(d => d.Date == attendanceDate))).Select(x => x.ParticipantId).ToArray();
         var values = await dbContext.CampGameContributions.AsNoTracking()
-            .Where(x => x.CampId == campId && eligible.Contains(x.ParticipantId))
+            .Where(x => x.CampId == campId && eligible.Contains(x.ParticipantId)
+                && (attendanceDate == null || x.AvailableDates == null || x.AvailableDates.Contains(attendanceDate.Value)))
             .Select(x => new { Contribution = x, x.Participant.DisplayName, x.Participant.PreferredDisplayName,
-                x.Participant.TelegramUserId, x.Participant.TelegramUsername,
+                x.Participant.TelegramUserId, x.Participant.TelegramUsername, x.Participant.PublicId,
                 CampDisplayName = x.Participant.CampRegistrations.Where(r => r.CampId == campId)
                     .Select(r => r.DisplayName).SingleOrDefault(),
                 City = x.Participant.CampRegistrations.Where(r => r.CampId == campId).Select(r => r.City).SingleOrDefault() })
             .ToArrayAsync(cancellationToken);
+        values = values.Where(x => EffectiveDates(x.Contribution,
+            registrations.Single(r => r.ParticipantId == x.Contribution.ParticipantId)).Length > 0).ToArray();
         return values.GroupBy(x => new { x.Contribution.BggId, x.Contribution.ItemType })
             .Select(group => new EffectiveCampCatalogItem(group.Key.BggId, group.Key.ItemType,
                 ParentIds(group.Select(x => x.Contribution)),
@@ -242,7 +276,8 @@ public sealed class CampContributionSelectionService(
                 group.Select(x => new CampCatalogProvider(x.Contribution.ParticipantId,
                     x.CampDisplayName ?? x.PreferredDisplayName ?? x.DisplayName, x.City, x.Contribution.Source,
                     x.Contribution.Commitment, x.Contribution.ParticipantId == currentParticipantId,
-                    ParticipantPresentation.GetContactUrl(x.TelegramUserId, x.TelegramUsername))).ToArray()))
+                    ParticipantPresentation.GetContactUrl(x.TelegramUserId, x.TelegramUsername), x.PublicId,
+                    EffectiveDates(x.Contribution, registrations.Single(r => r.ParticipantId == x.Contribution.ParticipantId)))).ToArray()))
             .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 

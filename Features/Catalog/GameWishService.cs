@@ -24,6 +24,11 @@ public sealed class GameWishService(AppDbContext db, GameCatalogService catalog,
             if (saved is not null) game = saved.Game;
             else
             {
+                try { game = await catalog.DemandGameAsync(key, community.Mode, telegramId, bggId, ct); }
+                catch (KeyNotFoundException) { /* New selection requires provider metadata. */ }
+            }
+            if (game is null)
+            {
                 var details = await bgg.GetGameDetailsAsync(bggId, ct)
                     ?? throw new ArgumentException("Базовая игра не найдена в BGG.");
                 if (details.Game.BggId != bggId) throw new InvalidOperationException("BGG вернул другую игру.");
@@ -34,11 +39,13 @@ public sealed class GameWishService(AppDbContext db, GameCatalogService catalog,
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var current = await CommunityMutationLock.AcquireAsync(db, key, ct);
         if (current.DeletedAt is not null || !current.IsActive) throw new InvalidOperationException("Сообщество недоступно.");
-        if (wished && current.Mode == BotMode.Camp)
+        if (current.Mode == BotMode.Camp)
         {
             var camp = await db.Camps.AsNoTracking().SingleAsync(x => x.BotChatKey == key, ct);
             if (camp.Status != CampStatus.Active || CampParticipationPolicy.HasEnded(camp, current.TimeZoneId, clock.GetUtcNow()))
                 throw new InvalidOperationException("Менять хотелки можно только пока кэмп открыт.");
+            if (db.Database.IsRelational()) await db.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {camp.Id} FOR UPDATE").AsNoTracking().SingleAsync(ct);
+            await new CampParticipationPolicy(db, clock).RequireCompleteRegistrationAsync(camp.Id, participantId, ct);
         }
         var row = await db.GameWishes.SingleOrDefaultAsync(x => x.CommunityKey == key && x.ParticipantId == participantId && x.BggId == bggId, ct);
         if (wished && row is null)

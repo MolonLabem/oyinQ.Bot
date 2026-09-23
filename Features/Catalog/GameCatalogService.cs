@@ -4,6 +4,7 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 
 namespace oyinQ.Bot.Features.Catalog;
@@ -65,12 +66,34 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
 
     public async Task<ClubCollectionGame> DemandGameAsync(string key, BotMode mode, long telegramUserId, long bggId, CancellationToken ct)
     {
+        if (mode == BotMode.Camp)
+        {
+            var scope = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == key, ct);
+            var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
+                .SingleOrDefaultAsync(x => x.CampId == scope.Id && x.Participant.TelegramUserId == telegramUserId, ct);
+            if (!CampParticipationPolicy.IsRegistrationComplete(registration, scope))
+                throw new UnauthorizedAccessException("Сначала завершите регистрацию на этот кэмп.");
+        }
         var available = (await LoadAsync(key, mode, telegramUserId, ct)).SingleOrDefault(x => x.Game.BggId == bggId && x.IsBaseGame);
         if (available is not null) return available.Game;
         var wish = await dbContext.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key && x.BggId == bggId)
-            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.ParticipantId).FirstOrDefaultAsync(ct)
-            ?? throw new KeyNotFoundException("Игра больше не представлена в спросе сообщества. Выберите игру заново.");
-        return ClubCollectionSerializer.Deserialize(wish.SnapshotJson).Games.Single() with { Expansions = [] };
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.ParticipantId).FirstOrDefaultAsync(ct);
+        if (wish != null) return ClubCollectionSerializer.Deserialize(wish.SnapshotJson).Games.Single() with { Expansions = [] };
+        if (mode == BotMode.Camp)
+        {
+            var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == key, ct);
+            var registrations = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
+                .Where(x => x.CampId == camp.Id && x.ShareCollection).ToArrayAsync(ct);
+            var ids = registrations.Where(x => CampParticipationPolicy.IsRegistrationComplete(x, camp)).Select(x => x.ParticipantId).ToArray();
+            var visible = await dbContext.ParticipantCollectionItems.AsNoTracking().Where(x => x.BggId == bggId && x.ItemType == CollectionItemType.BaseGame
+                && (x.Participant.TelegramUserId == telegramUserId || ids.Contains(x.ParticipantId))).OrderBy(x => x.ParticipantId).FirstOrDefaultAsync(ct);
+            if (visible != null) return visible.ReadSnapshot().ToCollectionGame(bggId) with { Expansions = [] };
+            var requested = await dbContext.CampBringRequests.AsNoTracking().Where(x => x.CampId == camp.Id && x.BggId == bggId
+                && (x.Owner.TelegramUserId == telegramUserId || x.Requesters.Any(r => r.Participant.TelegramUserId == telegramUserId)))
+                .OrderBy(x => x.Id).Select(x => x.SnapshotJson).FirstOrDefaultAsync(ct);
+            if (requested != null) return CollectionItemSnapshotSerializer.Deserialize(requested).ToCollectionGame(bggId) with { Expansions = [] };
+        }
+        throw new KeyNotFoundException("Игра больше не представлена в спросе сообщества. Выберите игру заново.");
     }
 
     public async Task<GameCatalogResponse> ListAsync(string communityKey, BotMode mode, long telegramUserId,

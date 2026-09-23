@@ -1,4 +1,5 @@
 import { PlayedHistory } from "./PlayedHistory";
+import { CampWishlist } from "../games/CampWishlist";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
@@ -17,6 +18,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   const schedule = useAsync(() => profile.data ? api<ProfileGathering[]>("/profile/gatherings", { cache: "no-store" }) : Promise.resolve([]), [community?.key, Boolean(profile.data)]);
   const [tab, setTab] = useState("collection");
   const [showChangelog, setShowChangelog] = useState(false);
+  const [campProfile, setCampProfile] = useState(false);
   useEffect(() => { if (editRequest > 0) { setTab("settings"); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
@@ -35,12 +37,14 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   }
 
   if (showChangelog) return <ChangelogPage back={() => setShowChangelog(false)} />;
+  if (campProfile && community?.mode === "Camp") return <Page title="Мой профиль на кэмпе" subtitle={community.name}><CampWishlist key={community.key} community={community} bggAvailable={bggAvailable} initialPersonId="" back={() => setCampProfile(false)} openGathering={id => openGathering(community.key, id)} /></Page>;
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
   if (profile.error) return <Page title="Профиль"><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
   return <Page title="Профиль">
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
     <ProfileTabs active={tab} select={setTab} />
+    {community?.mode === "Camp" && <button onClick={() => setCampProfile(true)}>Мой профиль на кэмпе · Игры и хотелки</button>}
     {tab === "collection" && <ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} />}
     {tab === "settings" && <>
     {!profile.data.botStartRequired && <Notice kind="success">Личный чат с ботом открыт</Notice>}
