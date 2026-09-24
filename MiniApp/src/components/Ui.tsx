@@ -3,8 +3,8 @@ import { successEventName } from "../telegram/webApp";
 import { telegram } from "../telegram/webApp";
 import type { BadgeTone } from "../app/semanticTones";
 
-export function Page({ as: Element = "main", title, titleHref, subtitle, actions, children }: { as?: "main" | "section"; title?: string; titleHref?: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
-  useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [title]);
+export function Page({ as: Element = "main", title, titleHref, subtitle, actions, children, preserveScroll = false }: { as?: "main" | "section"; title?: string; titleHref?: string; subtitle?: string; actions?: ReactNode; children: ReactNode; preserveScroll?: boolean }) {
+  useEffect(() => { if (!preserveScroll) window.scrollTo({ top: 0, behavior: "auto" }); }, [title, preserveScroll]);
   const hasHeading = Boolean(title || subtitle);
   return <Element className="page">{(hasHeading || actions) && <header className={`page-header${hasHeading ? "" : " actions-only"}`}>{hasHeading && <div>{title && <h1>{titleHref ? <a className="page-title-link" href={titleHref} target="_blank" rel="noreferrer">{title}</a> : title}</h1>}{subtitle && <p>{subtitle}</p>}</div>}{actions}</header>}{children}</Element>;
 }

@@ -189,7 +189,7 @@ public sealed class CampContributionSelectionService(
     }
 
     public async Task SetCommitmentAsync(long campId, long participantId, long bggId,
-        CollectionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken, DateTimeOffset? gatheringStartsAt = null, DateOnly[]? availableDates = null)
+        CollectionItemType itemType, CampBringCommitment commitment, CancellationToken cancellationToken, DateTimeOffset? gatheringStartsAt = null, DateOnly[]? availableDates = null, bool allAttendanceDays = false)
     {
         if (!Enum.IsDefined(itemType) || !Enum.IsDefined(commitment))
             throw new ArgumentException("Неизвестный тип игры или отметка доступности.");
@@ -225,7 +225,10 @@ public sealed class CampContributionSelectionService(
                 SnapshotJson = owned.SnapshotJson, Source = owned.Source, CreatedAt = timeProvider.GetUtcNow() };
             dbContext.CampGameContributions.Add(contribution);
         }
-        if (availableDates != null)
+        if (allAttendanceDays && availableDates != null)
+            throw new ArgumentException("Выберите все дни участия или отдельные даты.");
+        if (allAttendanceDays) contribution.AvailableDates = null;
+        else if (availableDates != null)
         {
             var registration = await participationPolicy.RequireCompleteRegistrationAsync(campId, participantId, cancellationToken);
             if (availableDates.Length == 0 || availableDates.Except(registration.Registration.SelectedDays.Select(x => x.Date)).Any())

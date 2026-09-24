@@ -35,7 +35,8 @@ it("restores the account from the server without local storage and refreshes wit
   expect(JSON.parse(String(request[1]?.body))).toEqual({});
   await act(async () => button("К моей коллекции").click());
   expect(host.textContent).toContain("saved-player");
-  expect(localStorage.getItem("oyinq-profile-import")).toBeNull();
+  expect(localStorage.getItem("oyinq-profile-import")).toBe("refresh");
+  expect(host.textContent).toContain("ошибка — требуется повтор");
 });
 
 it("prefills account changes and keeps the saved account visible during a provider outage", async () => {

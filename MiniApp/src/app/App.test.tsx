@@ -35,6 +35,39 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
+it("opens own box management in the unified profile and returns to the same wishlist detail", async () => {
+  sessionStorage.clear(); history.replaceState({}, "", "/?community=camp&tab=games&wishlist=1");
+  const community = { key: "camp", name: "Кэмп", mode: "Camp" as const, timeZoneId: "UTC" };
+  discovery = async () => ({ communities: [community], canOpenAdminPanel: false, isSuperAdmin: false });
+  const previous = vi.mocked(api).getMockImplementation()!;
+  const item = { game: { bggId: 42, name: "Немезида", expansions: [] }, isOwned: true, isWished: true, interestedParticipants: 1, otherInterested: 1, scheduledGatherings: 0, confirmed: false };
+  vi.mocked(api).mockImplementation(async (path, options) => {
+    const url = new URL(path, "https://test");
+    if (path.startsWith("/camp/registration")) return { startDate: "2026-09-26", endDate: "2026-09-27", registration: { registered: true } };
+    if (path.startsWith("/catalog")) return { items: [], filters: { types: [], categories: [], providers: [] } };
+    if (path.startsWith("/gatherings")) return { items: [] };
+    if (path.startsWith("/camp-wishlist")) {
+      if (url.searchParams.get("view") === "settings") return { canAct: true, shareCollection: false, shareWishes: false, myDates: ["2026-09-26"], declinedGameIds: [], suggestedGameIds: [] };
+      if (url.searchParams.has("view")) return [];
+      if (url.searchParams.has("game")) return { item, interested: [], owners: [], requests: [], canAct: true, myDates: ["2026-09-26"] };
+      return { items: [item], total: 1, canAct: true, myDates: ["2026-09-26"], updatedAt: "2026-09-24" };
+    }
+    return previous(path, options);
+  });
+  await act(async () => root.render(<App />));
+  await act(async () => host.querySelector<HTMLButtonElement>(".wish-game-heading")!.click());
+  const link = host.querySelector<HTMLAnchorElement>('a[data-profile-nav]')!;
+  expect(link.textContent).toBe("Управлять коробкой в профиле");
+  await act(async () => link.click());
+  expect(link.closest("[hidden]")).not.toBeNull();
+  expect(host.querySelector(".camp-privacy")).not.toBeNull();
+  const back = [...host.querySelectorAll<HTMLButtonElement>(".page-back")].find(x => !x.closest("[hidden]"))!;
+  await act(async () => back.click());
+  expect(link.isConnected).toBe(true); expect(link.closest("[hidden]")).toBeNull();
+  expect(location.search).toContain("tab=games");
+  expect(vi.mocked(api).mock.calls.some(c => c[1]?.method === "POST")).toBe(false);
+});
+
 it("keeps the real personal collection available when community discovery fails", async () => {
   await act(async () => root.render(<App />));
   expect(host.textContent).toContain("Моя игра");

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 const hooks = vi.hoisted(() => ({ data: [] as unknown }));
 vi.mock("../../hooks/useAsync", () => ({ useAsync: () => ({ data: hooks.data, loading: false, reload: vi.fn() }) }));
 vi.mock("../../telegram/webApp", () => ({ telegram: {}, successEventName: "success" }));
+vi.mock("../games/CampWishlist", async original => ({ ...await original<object>(), Incoming: () => null }));
 import { GlobalProfileShell } from "../../app/App";
 import { ProfileCollectionPage } from "./ProfileCollectionPage";
 import { ProfileTabs } from "./ProfilePage";
@@ -13,7 +14,7 @@ describe("глобальный профиль", () => {
       <ProfileTabs active="collection" select={() => {}} />
     </GlobalProfileShell>);
     expect(markup).toContain("Сообщества"); expect(markup).toContain("Профиль");
-    expect(markup).toContain("Моя коллекция"); expect(markup).toContain("Календарь"); expect(markup).toContain("Настройки");
+    expect(markup).toContain("Игры"); expect(markup).toContain("Хотелки"); expect(markup).toContain("Календарь"); expect(markup).toContain("Настройки");
     expect(markup).not.toContain("Нет сообществ");
   });
   it("сохраняет вход в профиль на экране выбора сообщества", () => {
@@ -22,6 +23,7 @@ describe("глобальный профиль", () => {
   });
   it("показывает личную коллекцию и BGG без контекстных действий кэмпа", () => {
     vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
     vi.stubGlobal("localStorage", { getItem: () => null });
     hooks.data = [{ bggId: 42, itemType: "BaseGame", snapshot: { name: "Моя игра" } }];
     const markup = renderToStaticMarkup(<ProfileCollectionPage bggAvailable />);
@@ -31,6 +33,7 @@ describe("глобальный профиль", () => {
   });
   it("прячет дополнения под базой и сохраняет отдельное управление доступностью", () => {
     vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("sessionStorage", { getItem: () => null });
     vi.stubGlobal("localStorage", { getItem: () => null });
     hooks.data = [
       { bggId: 1, itemType: "BaseGame", snapshot: { name: "Базовая игра" } },
@@ -39,7 +42,7 @@ describe("глобальный профиль", () => {
     ];
     const markup = renderToStaticMarkup(<ProfileCollectionPage bggAvailable community={{ key: "camp", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" }} />);
     expect(markup).toContain('<details class="collection-expansions"><summary>Дополнения (1)</summary>');
-    expect(markup.slice(markup.indexOf('<details'), markup.indexOf('</details>'))).toContain('Привезёте Дополнение базы?');
+    expect(markup.slice(markup.indexOf('<details class="collection-expansions"'), markup.lastIndexOf('</details>'))).toContain('Привезёте Дополнение базы?');
     expect(markup.indexOf('Отдельное дополнение')).toBeGreaterThan(markup.indexOf('</details>'));
     vi.unstubAllGlobals();
   });

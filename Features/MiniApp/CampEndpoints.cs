@@ -17,7 +17,8 @@ internal sealed record QueueCampImportRequest(string CommunityKey, string BggInp
 internal sealed record ConfirmCampImportRequest(string CommunityKey,
     IReadOnlyCollection<long> SelectedBaseGameIds, IReadOnlyCollection<long> SelectedExpansionIds);
 internal sealed record CampMutationRequest(string CommunityKey);
-internal sealed record CampCommitmentRequest(string CommunityKey, CampBringCommitment Commitment);
+internal sealed record CampCommitmentRequest(string CommunityKey, CampBringCommitment Commitment,
+    DateOnly[]? AvailableDates = null, bool AllAttendanceDays = false);
 internal sealed record ResolveCampImportRequest(string CommunityKey, CampImportOverrideResolution Resolution);
 internal sealed record AddManualContributionRequest(string CommunityKey, string BggInput,
     IReadOnlyCollection<long>? ExpansionBggIds);
@@ -258,6 +259,7 @@ internal static class CampEndpoints
             .SingleOrDefaultAsync(x => x.CampId == owned.CampId && x.ParticipantId == owned.ParticipantId, cancellationToken);
         return Results.Ok(values.Select(x => new { x.BggId, ItemType = x.ItemType.ToString(),
             x.ParentBggId, Source = x.Source.ToString(), Commitment = x.Commitment.ToString(), Snapshot = x.ReadSnapshot(),
+            AllAttendanceDays = x.AvailableDates == null, SelectedDates = x.AvailableDates,
             AvailableDates = registration == null ? [] : CampContributionSelectionService.EffectiveDates(x, registration) }));
     }
 
@@ -315,7 +317,7 @@ internal static class CampEndpoints
         try
         {
             await contributions.SetCommitmentAsync(owned.CampId, owned.ParticipantId, bggId, parsedType,
-                body.Commitment, cancellationToken);
+                body.Commitment, cancellationToken, availableDates: body.AvailableDates, allAttendanceDays: body.AllAttendanceDays);
             return Results.NoContent();
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }

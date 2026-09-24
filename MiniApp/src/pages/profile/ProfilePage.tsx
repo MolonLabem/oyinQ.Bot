@@ -1,24 +1,31 @@
+import { CampPrivacy, CampProfileProvider } from "./CampProfileContext";
+import { WishlistPanel } from "../../components/Wishlist";
 import { PlayedHistory } from "./PlayedHistory";
-import { CampWishlist } from "../games/CampWishlist";
+import { CampPersonalWishes } from "../games/CampWishlist";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
 import { useEffect, useState } from "react";
 import { api, json, download } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
-import { Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
+import { BackButton, Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
 import { BotStartNotice } from "../../components/BotStartNotice";
 import { ProfileCollectionPage, CampRegistrationSettings } from "./ProfileCollectionPage";
 import { ProfileScheduleList, profileScheduleEmptyText } from "./ProfileScheduleList";
 
-export function ProfilePage({ community, communities, openGathering, bggAvailable, editRequest = 0, onEditRequestConsumed }: { community?: Community; communities: Community[]; bggAvailable: boolean; editRequest?: number; onEditRequestConsumed?: () => void; openGathering: (communityKey: string, gatheringId: string) => void }) {
+type ProfileProps = { initialTab?: string; initialGameId?: number; back?: () => void; community?: Community; communities: Community[]; bggAvailable: boolean; editRequest?: number; onEditRequestConsumed?: () => void; openGathering: (communityKey: string, gatheringId: string) => void };
+export function ProfilePage(props: ProfileProps) {
+  return props.community?.mode === "Camp" ? <CampProfileProvider key={props.community.key} community={props.community}><ProfileContent {...props} /></CampProfileProvider> : <ProfileContent key={props.community?.key ?? "global"} {...props} />;
+}
+function ProfileContent({ community, communities, openGathering, bggAvailable, editRequest = 0, onEditRequestConsumed, initialTab, initialGameId, back }: ProfileProps) {
   const profile = useAsync(() => api<Profile>("/profile"), [community?.key]);
   const schedule = useAsync(() => profile.data ? api<ProfileGathering[]>("/profile/gatherings", { cache: "no-store" }) : Promise.resolve([]), [community?.key, Boolean(profile.data)]);
-  const [tab, setTab] = useState("collection");
+  const [tab, setTab] = useState(() => initialTab ?? new URLSearchParams(location.search).get("profileTab") ?? sessionStorage.getItem(`oyinq-profile-tab:${community?.key ?? "global"}`) ?? "collection");
+  useEffect(() => telegram.back(Boolean(back), () => back?.()), [back]);
   const [showChangelog, setShowChangelog] = useState(false);
-  const [campProfile, setCampProfile] = useState(false);
+  useEffect(() => { sessionStorage.setItem(`oyinq-profile-tab:${community?.key ?? "global"}`, tab); }, [tab, community?.key]);
   useEffect(() => { if (editRequest > 0) { setTab("settings"); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
@@ -37,15 +44,16 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
   }
 
   if (showChangelog) return <ChangelogPage back={() => setShowChangelog(false)} />;
-  if (campProfile && community?.mode === "Camp") return <Page title="Мой профиль на кэмпе" subtitle={community.name}><CampWishlist key={community.key} community={community} bggAvailable={bggAvailable} initialPersonId="" back={() => setCampProfile(false)} openGathering={id => openGathering(community.key, id)} /></Page>;
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
   if (profile.error) return <Page title="Профиль"><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
   return <Page title="Профиль">
+    {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
     <ProfileTabs active={tab} select={setTab} />
-    {community?.mode === "Camp" && <button onClick={() => setCampProfile(true)}>Мой профиль на кэмпе · Игры и хотелки</button>}
-    {tab === "collection" && <ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} />}
+    {community?.mode === "Camp" && (tab === "collection" || tab === "wishes") && <CampPrivacy community={community} />}
+    <div hidden={tab !== "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => setTab("settings")} /></div>
+    {tab === "wishes" && (community ? community.mode === "Camp" ? <CampPersonalWishes key={community.key} community={community} bggAvailable={bggAvailable} openGathering={id => openGathering(community.key, id)} /> : <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <Empty>Выберите сообщество, чтобы посмотреть свои хотелки. <a href="?tab=communities">Выбрать сообщество</a></Empty>)}
     {tab === "settings" && <>
     {!profile.data.botStartRequired && <Notice kind="success">Личный чат с ботом открыт</Notice>}
     <NotificationSettings />
@@ -73,7 +81,7 @@ export function ProfilePage({ community, communities, openGathering, bggAvailabl
 
 export function ProfileTabs({ active, select }: { active: string; select: (tab: string) => void }) {
   return <Tabs className="profile-tabs" label="Разделы профиля" active={active} onChange={select} items={[
-    { id: "collection", label: "Моя коллекция" }, { id: "calendar", label: "Календарь" },
+    { id: "collection", label: "Игры" }, { id: "wishes", label: "Хотелки" }, { id: "calendar", label: "Календарь" },
     { id: "settings", label: "Настройки" }
   ]} />;
 }

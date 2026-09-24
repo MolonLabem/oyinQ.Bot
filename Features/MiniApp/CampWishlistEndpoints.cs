@@ -35,6 +35,7 @@ internal static class CampWishlistEndpoints
         if (actor == null) return Results.Forbid();
         try
         {
+            if (view == "settings") return Results.Ok(await service.SettingsAsync(community, actor.Value, ct));
             if (view == "profile") return Results.Ok(await service.ProfileAsync(community, actor.Value, person, search, mode, page ?? 1, ct));
             if (view == "participants") return Results.Ok(await service.ParticipantsAsync(community, actor.Value, search, page ?? 1, ct));
             if (view == "incoming") return Results.Ok(await service.IncomingAsync(community, actor.Value, ct));

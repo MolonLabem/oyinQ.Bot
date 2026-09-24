@@ -22,6 +22,8 @@ public sealed record CampWishDetails(CampWishGame Item, IReadOnlyList<CampWishPe
     IReadOnlyList<CampWishPerson> AskedMe);
 public sealed record CampIncoming(long BggId, string Name, IReadOnlyList<CampWishPerson> Requesters, string State);
 public sealed record CampOutgoing(long BggId, string Name, CampWishPerson Owner, DateOnly[] Dates, string State, bool CanCancel);
+public sealed record CampProfileSettings(bool CanAct, bool ShareCollection, bool ShareWishes,
+    DateOnly[] MyDates, long[] DeclinedGameIds, long[] SuggestedGameIds);
 
 // Request-local projection only. Ownership and availability remain in their canonical stores.
 public sealed class CampWishlistService(AppDbContext db, CampContributionSelectionService contributions, TimeProvider clock)
@@ -87,6 +89,16 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
                 && c.Registrations.Single(r => r.ParticipantId == x.ParticipantId).SelectedDays.Any(d => myDates.Contains(d.Date))),
             wishes.Any(x => x.ParticipantId == c.Me.ParticipantId), owned != null, confirmed.Length > 0, summary,
             c.Gatherings.GetValueOrDefault(id), declined ? "declined" : mine?.Commitment.ToString());
+    }
+
+    public async Task<CampProfileSettings> SettingsAsync(string key, long actor, CancellationToken ct)
+    {
+        var c = await LoadAsync(key, actor, ct);
+        return new(c.CanAct(clock.GetUtcNow()), c.Me.ShareCollection, c.Me.ShareWishes, c.Person(c.Me).Dates,
+            c.Requests.Where(x => x.OwnerParticipantId == actor && x.Declined).Select(x => x.BggId).ToArray(),
+            c.Wishes.Select(x => x.BggId).Distinct().Select(id => Project(c, id))
+                .Where(x => x.IsOwned && x.OtherInterested > 0 && x.MyStatus != "declined")
+                .OrderBy(x => x.Confirmed).ThenByDescending(x => x.OtherInterested).Select(x => x.Game.BggId).ToArray());
     }
 
     public async Task<CampWishPage> ListAsync(string key, long actor, CampWishQuery query, CancellationToken ct)
@@ -237,7 +249,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
                 var chosen = (dates ?? c.Person(c.Me).Dates).Distinct().Order().ToArray();
                 if (chosen.Length == 0 || chosen.Except(c.Person(c.Me).Dates).Any()) throw new ArgumentException("Выберите дни из своей регистрации.");
                 await contributions.SetCommitmentAsync(campId, actor, id, CollectionItemType.BaseGame,
-                    action == "confirm" ? CampBringCommitment.Bringing : CampBringCommitment.Available, ct, availableDates: chosen);
+                    action == "confirm" ? CampBringCommitment.Bringing : CampBringCommitment.Available, ct, availableDates: dates == null ? null : chosen);
             }
             await db.SaveChangesAsync(ct);
             if (action == "decline") await new CampWishlistNotifications(db, clock).DeclinedAsync(campId, actor, id, ct);

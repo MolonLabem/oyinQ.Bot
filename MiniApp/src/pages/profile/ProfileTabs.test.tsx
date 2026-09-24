@@ -12,10 +12,10 @@ describe("профиль", () => {
     const select = vi.fn();
     const view = ProfileTabs({ active: "calendar", select });
     const markup = renderToStaticMarkup(view);
-    expect(markup).toContain("Моя коллекция");
+    expect(markup).toContain("Игры"); expect(markup).toContain("Хотелки");
     expect(markup).toContain("Календарь");
     expect(markup).toContain("Настройки");
-    expect(markup.match(/role="tab"/g)).toHaveLength(3);
+    expect(markup.match(/role="tab"/g)).toHaveLength(4);
     expect(markup).toContain('aria-selected="true"');
   });
 

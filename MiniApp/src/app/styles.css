@@ -491,3 +491,28 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
   .catalog-dialog { --catalog-panel-height: min(100dvh, var(--catalog-viewport-height, 100dvh)); border-radius: 0; }
   .catalog-dialog header { padding-block: 8px; }
 }
+/* Profile owns collection editing; Camp controls stay compact and scoped. */
+.camp-privacy { padding: 12px; border: var(--surface-border); border-radius: 12px; margin-block: 12px; }
+.camp-privacy h2 { font-size: 1rem; margin: 0; }
+.camp-privacy p { margin-block: 6px; }
+.camp-privacy .check { min-height: 44px; align-items: center; }
+.profile-collection { min-width: 0; }
+.collection-heading { justify-content: space-between; flex-wrap: wrap; }
+.collection-heading h2 { margin: 0; }
+.collection-item { display: grid; gap: 8px; min-width: 0; }
+.collection-item .media { align-items: center; min-width: 0; }
+.collection-item .media > div { min-width: 0; }
+.collection-item h3 { overflow-wrap: anywhere; margin: 0 0 4px; font-size: 1rem; }
+.collection-item .cover { width: 48px; height: 60px; flex: 0 0 48px; }
+.box-control { display: grid; gap: 6px; min-width: 0; }
+.box-control select { width: 100%; max-width: 100%; min-height: 44px; }
+.collection-menu summary, .box-date-options summary, .import-options summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; }
+.collection-menu { justify-self: end; }
+.box-date-options .check { min-height: 44px; }
+.profile-collection[hidden], .profile-collection [hidden] { display: none !important; }
+.profile-collection .card { padding: 12px; }
+.camp-privacy, .profile-collection { overflow-wrap: anywhere; }
+
+.profile-tabs.page-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-inline: 0; gap: 0; }
+.profile-tabs.page-tabs button { padding-inline: 4px; font-size: 14px; }
+.camp-privacy summary { min-height: 44px; align-content: center; cursor: pointer; }

@@ -13,6 +13,58 @@ namespace oyinQ.Bot.Tests;
 public sealed class CampWishlistTests
 {
     [Fact]
+    public async Task AttendanceModeFollowsRegistrationWhileExplicitDatesSurviveStatusChanges()
+    {
+        await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);
+        var writer = new CampContributionSelectionService(f.Db, new(f.Db, f.Clock), f.Clock);
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Bringing, default, allAttendanceDays: true);
+        var box = Assert.Single(f.Db.CampGameContributions);
+        var registration = await f.Db.CampRegistrations.Include(x => x.SelectedDays).SingleAsync(x => x.ParticipantId == s.Owner.Id);
+        Assert.Null(box.AvailableDates);
+        Assert.Equal(2, CampContributionSelectionService.EffectiveDates(box, registration).Length);
+        registration.SelectedDays.Add(new() { Date = s.Day.AddDays(2) }); await f.Db.SaveChangesAsync();
+        Assert.Equal(3, CampContributionSelectionService.EffectiveDates(box, registration).Length);
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Bringing, default, availableDates: [s.Day]);
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Available, default);
+        Assert.Equal([s.Day], box.AvailableDates!);
+        var removed = registration.SelectedDays.Single(x => x.Date == s.Day);
+        registration.SelectedDays.Remove(removed); f.Db.CampRegistrationDays.Remove(removed); await f.Db.SaveChangesAsync();
+        Assert.Empty(CampContributionSelectionService.EffectiveDates(box, registration));
+        Assert.Empty(await writer.GetEffectiveContributionsAsync(s.Camp.Id, default));
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Bringing, default, allAttendanceDays: true);
+        Assert.Null(box.AvailableDates);
+        Assert.Equal([s.Day.AddDays(1), s.Day.AddDays(2)], CampContributionSelectionService.EffectiveDates(box, registration));
+        await Assert.ThrowsAsync<ArgumentException>(() => writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42,
+            CollectionItemType.BaseGame, CampBringCommitment.Bringing, default, availableDates: [s.Day.AddDays(5)]));
+    }
+
+    [Fact]
+    public async Task ProfileSettingsKeepPrivateDecisionsScopedAndPrivacyDoesNotChangeBox()
+    {
+        await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);
+        var service = s.Service(f.Db, f.Clock);
+        var settings = await service.SettingsAsync("camp-wishes", s.Owner.Id, default);
+        Assert.False(settings.ShareCollection); Assert.False(settings.ShareWishes);
+        Assert.Equal([42L], settings.SuggestedGameIds);
+        Assert.Empty((await service.SettingsAsync("camp-wishes", s.A.Id, default)).SuggestedGameIds);
+        await s.Act(f.Db, f.Clock, s.Owner.Id, "decline");
+        Assert.Equal(new long[] { 42 }, (await service.SettingsAsync("camp-wishes", s.Owner.Id, default)).DeclinedGameIds);
+        Assert.Empty((await service.SettingsAsync("camp-wishes", s.A.Id, default)).DeclinedGameIds);
+        await s.Act(f.Db, f.Clock, s.Owner.Id, "confirm", dates: [s.Day]);
+        var notices = await f.Db.Notifications.CountAsync();
+        await s.Act(f.Db, f.Clock, s.Owner.Id, "privacy", share: true);
+        Assert.Equal([s.Day], Assert.Single(f.Db.CampGameContributions).AvailableDates!);
+        Assert.Equal(notices, await f.Db.Notifications.CountAsync());
+        await service.SettingsAsync("camp-wishes", s.Owner.Id, default);
+        Assert.Equal(notices, await f.Db.Notifications.CountAsync());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.SettingsAsync("camp-wishes", 999999, default));
+    }
+
+    [Fact]
     public async Task PrivateOwnershipSuggestsOnlyToOwnerAndOldWishesStayAnonymous()
     {
         await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);

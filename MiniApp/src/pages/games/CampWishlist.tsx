@@ -17,20 +17,20 @@ type ListResult = { items: WishGame[]; total: number; suggestions: number; hasMo
 type Outgoing = { bggId: number; name: string; owner: Person; dates: string[]; state: string; canCancel: boolean };
 type Detail = { item: WishGame; interested: Person[]; anonymousCount: number; owners: Owner[]; canAct: boolean; myDates: string[]; requests: Outgoing[]; askedMe?: Person[] };
 type Frame = { type: "game" | "profile" | "participants"; id?: string; scroll: number; section?: string };
-type Props = { community: Community; bggAvailable: boolean; initialGameId?: number; initialPersonId?: string; back?: () => void; create?: (id: number) => void; openGathering?: (id: string) => void };
+type Props = { personal?: boolean; community: Community; bggAvailable: boolean; initialGameId?: number; initialPersonId?: string; back?: () => void; create?: (id: number) => void; openGathering?: (id: string) => void };
 type Selection = { mode: string; search: string; needsBox: boolean; withoutGathering: boolean; owned: boolean; sort: string; page: number; showDeclined: boolean };
 const defaults: Selection = { mode: "all", search: "", needsBox: false, withoutGathering: false, owned: false, sort: "demand", page: 1, showDeclined: false };
 function restore(key: string): Selection { try { return { ...defaults, ...JSON.parse(sessionStorage.getItem(key) ?? "{}") }; } catch { return defaults; } }
 const days = (dates: string[]) => dates.map(d => new Date(`${d}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" })).join(", ");
 const endpoint = (key: string, params = "") => `/camp-wishlist?community=${encodeURIComponent(key)}${params}`;
-function useRefresh(reload: () => void) {
+export function useRefresh(reload: () => void) {
   useEffect(() => {
     const refresh = () => { if (document.visibilityState !== "hidden") reload(); };
     window.addEventListener(successEventName, refresh); window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);
     return () => { window.removeEventListener(successEventName, refresh); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [reload]);
 }
-function useAction(key: string) {
+export function useAction(key: string) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   async function act(body: object) {
@@ -42,16 +42,18 @@ function useAction(key: string) {
   return { act, busy, error };
 }
 
-export function CampWishlist(props: Props) {
-  const key = `oyinq-camp-wishlist:${props.community.key}`;
-  const [selection, setSelection] = useState(() => restore(key));
+export function CampWishlist(props: Props) { return <CampWishBrowser {...props} />; }
+export function CampPersonalWishes(props: Props) { return <CampWishBrowser {...props} personal />; }
+function CampWishBrowser(props: Props) {
+  const key = `oyinq-camp-wishlist:${props.community.key}${props.personal ? ":personal" : ""}`;
+  const [selection, setSelection] = useState(() => ({ ...restore(key), ...(props.personal ? { mode: "mine" } : {}) }));
   const [frames, setFrames] = useState<Frame[]>(() => props.initialPersonId !== undefined ? [{ type: "profile", id: props.initialPersonId, scroll: 0 }] : props.initialGameId ? [{ type: "game", id: String(props.initialGameId), scroll: 0 }] : []);
   const [adding, setAdding] = useState(false);
   const rootScroll = useRef(0); const restoreScroll = useRef<number | undefined>(undefined);
   const search = useDebouncedValue(selection.search, 300);
   const params = new URLSearchParams(Object.entries({ ...selection, search }).map(([k, v]) => [k, String(v)])).toString();
-  const state = useAsync(async () => ({ params, result: await api<ListResult>(endpoint(props.community.key, `&${params}`)) }), [props.community.key, params]);
-  const result = state.data?.params === params ? state.data.result : undefined;
+  const state = useAsync(async () => ({ params, communityKey: props.community.key, result: await api<ListResult>(endpoint(props.community.key, `&${params}`)) }), [props.community.key, params]);
+  const result = state.data?.params === params && state.data.communityKey === props.community.key ? state.data.result : undefined;
   useRefresh(state.reload);
   useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(selection)); } catch { /* Optional storage. */ } }, [selection, key]);
   useEffect(() => { if (restoreScroll.current !== undefined) { window.scrollTo(0, restoreScroll.current); restoreScroll.current = undefined; } }, [frames]);
@@ -64,9 +66,9 @@ export function CampWishlist(props: Props) {
     <div hidden={frames.length > 0}>
       <p>Отмечайте, во что хотите сыграть. Владельцы смогут предложить коробку, а вы — собрать партию.</p>
       <p className="muted">Хотелки только для кэмпа «{props.community.name}».</p>
-      <Tabs label="Хотелки кэмпа" active={selection.mode} onChange={mode => change({ mode })} items={[{ id: "all", label: "Все" }, { id: "mine", label: "Мои" }, { id: "bring", label: "Что привезти" }]} />
-      {!!result?.suggestions && selection.mode !== "bring" && <Notice>У вас есть игры из хотелок участников: {result.suggestions}. <button onClick={() => change({ mode: "bring" })}>Посмотреть, что привезти</button></Notice>}
-      <div className="row"><button className="primary" disabled={!result?.canAct} onClick={() => setAdding(true)}>Добавить игру</button><button onClick={() => push("participants")}>Участники кэмпа</button></div>
+      {!props.personal && <Tabs label="Хотелки кэмпа" active={selection.mode} onChange={mode => change({ mode })} items={[{ id: "all", label: "Все" }, { id: "mine", label: "Мои" }, { id: "bring", label: "Что привезти" }]} />}
+      {!props.personal && !!result?.suggestions && selection.mode !== "bring" && <Notice>У вас есть игры из хотелок участников: {result.suggestions}. <button onClick={() => change({ mode: "bring" })}>Посмотреть, что привезти</button></Notice>}
+      <div className="row"><button className="primary" disabled={!result?.canAct} onClick={() => setAdding(true)}>Добавить игру</button>{!props.personal && <button onClick={() => push("participants")}>Участники кэмпа</button>}</div>
       {selection.mode === "bring" && <Incoming communityKey={props.community.key} open={openGame} openProfile={id => push("profile", id)} />}
       {selection.mode === "mine" && <OutgoingRequests communityKey={props.community.key} open={openGame} openProfile={id => push("profile", id)} canAct={result?.canAct ?? false} />}
       <Field label="Поиск игры"><input type="search" value={selection.search} onChange={e => change({ search: e.target.value })} placeholder="Название или оригинальное название" /></Field>
@@ -79,11 +81,11 @@ export function CampWishlist(props: Props) {
       {state.error && <ErrorState message={state.error} retry={state.reload} />}
       {result && <>{!result.items.length ? <Empty>Таких игр пока нет. Добавьте хотелку или измените фильтры.</Empty> : <div className="stack">{result.items.map(item => <WishCard key={item.game.bggId} item={item} open={section => openGame(item.game.bggId, section)} />)}</div>}
         <Paging page={selection.page} hasMore={result.hasMore} change={page => change({ page })} />
-        <details className="content-section"><summary>Видимость в этом кэмпе</summary><Privacy communityKey={props.community.key} data={result} changed={state.reload} /></details>
+        {!props.personal && selection.mode === "mine" && <p className="muted">{result.shareWishes ? "Ваши хотелки видны с именем." : "Ваши хотелки учитываются без имени."} <a data-profile-nav href={`?community=${encodeURIComponent(props.community.key)}&tab=profile&profileTab=wishes#camp-privacy`}>Изменить</a></p>}
       </>}
     </div>
     {frames.map((frame, i) => <div key={`${i}:${frame.type}:${frame.id}`} hidden={i !== frames.length - 1}><BackButton onClick={back} />
-      {frame.type === "game" ? <WishDetail {...props} id={Number(frame.id)} section={frame.section} openProfile={id => push("profile", id)} /> : frame.type === "profile" ? <><CampPerson communityKey={props.community.key} person={frame.id!} open={openGame} />{frame.id === "" && result && <Privacy communityKey={props.community.key} data={result} changed={state.reload} />}</> : <CampPeople communityKey={props.community.key} open={id => push("profile", id)} />}
+      {frame.type === "game" ? <WishDetail {...props} id={Number(frame.id)} section={frame.section} openProfile={id => push("profile", id)} /> : frame.type === "profile" ? <><CampPerson communityKey={props.community.key} person={frame.id!} open={openGame} /></> : <CampPeople communityKey={props.community.key} open={id => push("profile", id)} />}
     </div>)}
     {adding && <AddWish {...props} close={() => { setAdding(false); state.reload(); }} />}
   </section>;
@@ -97,13 +99,6 @@ function WishCard({ item, open }: { item: WishGame; open: (section?: string) => 
     <button onClick={() => open(item.isOwned ? "box" : item.scheduledGatherings ? "gatherings" : item.confirmed ? "create" : "owners")}>{item.isOwned ? "Предложить или подтвердить коробку" : item.scheduledGatherings ? "Посмотреть сборы" : item.confirmed ? "Организовать сбор" : "Найти коробку"}</button>
     <button className="ghost" onClick={() => open("interested")}>Кто хочет сыграть · Все {item.interestedParticipants}</button>
   </Card>;
-}
-
-function Privacy({ communityKey, data, changed }: { communityKey: string; data: ListResult; changed: () => void }) {
-  const action = useAction(communityKey);
-  return <div className="stack"><p>По умолчанию другие участники видят только игры, которые вы уже предложили для кэмпа. Скрытые хотелки учитываются в количестве желающих без вашего имени.</p>
-    <label className="check"><input type="checkbox" disabled={action.busy || !data.canAct} checked={data.shareCollection} onChange={async e => { if (await action.act({ action: "privacy", shareCollection: e.target.checked })) changed(); }} />Показывать мою коллекцию участникам этого кэмпа</label>
-    <label className="check"><input type="checkbox" disabled={action.busy || !data.canAct} checked={data.shareWishes} onChange={async e => { if (await action.act({ action: "privacy", shareWishes: e.target.checked })) changed(); }} />Показывать мои хотелки и имя участникам этого кэмпа</label>{action.error && <Notice kind="danger">{action.error}</Notice>}</div>;
 }
 
 function AddWish({ community, bggAvailable, close }: Props & { close: () => void }) {
@@ -126,7 +121,8 @@ function WishDetail({ community, id, create, openGathering, openProfile, section
     {state.error && <ErrorState message={state.error} retry={state.reload} />}
     {data.canAct && <WishButton communityKey={community.key} bggId={id} initial={item.isWished} changed={state.reload} />}
     {!!data.askedMe?.length && <section><h3>Вас попросили привезти · {data.askedMe.length}</h3><PeopleRequests people={data.askedMe} open={openProfile} /></section>}
-    {(item.isOwned || !!data.askedMe?.length) && <OwnerActions communityKey={community.key} id={id} dates={data.myDates} currentDates={data.owners.find(x => x.isMe)?.dates} canAct={data.canAct} changed={state.reload} requested={!!data.askedMe?.length} owns={item.isOwned} />}
+    {!item.isOwned && !!data.askedMe?.length && <Notice>Игры больше нет в вашей коллекции. Отказ доступен во входящих просьбах профиля; для подтверждения сначала добавьте игру.</Notice>}
+    {(item.isOwned || !!data.askedMe?.length) && <section data-wish-section="box"><a data-profile-nav className="button primary-link" href={`?community=${encodeURIComponent(community.key)}&tab=profile&profileTab=collection&box=${id}`}>Управлять коробкой в профиле</a></section>}
     {!data.canAct && <Notice>Кэмп завершён или закрыт для изменений.</Notice>}
     {data.requests?.length > 0 && <section><h3>Ваши просьбы</h3>{data.requests.map(r => <RequestResult key={r.owner.id} communityKey={community.key} request={r} canAct={data.canAct} changed={state.reload} openProfile={openProfile} />)}</section>}
     <section data-wish-section="interested"><h3>Кто хочет сыграть · {item.interestedParticipants}</h3>{data.interested.slice(0, limit).map(p => <button className="person-link" key={p.id} onClick={() => openProfile(p.id)}>{p.name}</button>)}{data.anonymousCount > 0 && <p className="muted">Ещё {data.anonymousCount} без показа имени.</p>}{data.interested.length > limit && <button onClick={() => setLimit(limit + 12)}>Показать ещё</button>}</section>
@@ -139,11 +135,6 @@ function WishDetail({ community, id, create, openGathering, openProfile, section
 }
 
 function DateChoices({ dates, chosen, set }: { dates: string[]; chosen: string[]; set: (dates: string[]) => void }) { return <fieldset className="wish-dates"><legend>Дни</legend>{dates.map(date => <label key={date}><input type="checkbox" checked={chosen.includes(date)} onChange={e => set(e.target.checked ? [...chosen, date].sort() : chosen.filter(d => d !== date))} />{days([date])}</label>)}</fieldset>; }
-function OwnerActions({ communityKey, id, dates, currentDates, canAct, changed, requested, owns }: { communityKey: string; id: number; dates: string[]; currentDates?: string[]; canAct: boolean; changed: () => void; requested?: boolean; owns: boolean }) {
-  const action = useAction(communityKey); const [chosen, setChosen] = useState(currentDates?.length ? currentDates : dates);
-  async function save(value: string) { if (await action.act({ action: value, bggId: id, dates: chosen })) changed(); }
-  return <details className="card" data-wish-section="box" open><summary>Ваша коробка</summary>{!owns && <Notice>Игры больше нет в вашей коллекции. Можно ответить на просьбу отказом; для подтверждения сначала добавьте игру.</Notice>}<DateChoices dates={dates} chosen={chosen} set={setChosen} /><div className="wish-actions"><button className="primary" disabled={!owns || !canAct || action.busy || !chosen.length} onClick={() => void save("confirm")}>{requested ? "Привезу" : "Точно привезу"}</button><button disabled={!owns || !canAct || action.busy || !chosen.length} onClick={() => void save("offer")}>Могу привезти</button><button disabled={!canAct || action.busy} onClick={() => void save("decline")}>{requested ? "Не смогу" : "Не повезу на этот кэмп"}</button><button disabled={!canAct || action.busy} onClick={() => void save("withdraw")}>Снять предложение</button></div>{action.error && <Notice kind="danger">{action.error}</Notice>}</details>;
-}
 function OwnerRow({ community, id, gameName, owner, canAct, myDates, openProfile, changed }: { community: Community; id: number; gameName: string; owner: Owner; canAct: boolean; myDates: string[]; openProfile: (id: string) => void; changed: () => void }) {
   const action = useAction(community.key); const [confirm, setConfirm] = useState(false); const common = myDates.filter(d => owner.person.dates.includes(d)); const [chosen, setChosen] = useState(common); const [sent, setSent] = useState(false);
   const already = owner.status === "Bringing" && chosen.length > 0 && chosen.every(d => owner.dates.includes(d));
@@ -155,10 +146,10 @@ function OwnerRow({ community, id, gameName, owner, canAct, myDates, openProfile
   </Card>;
 }
 
-function Incoming({ communityKey, open, openProfile }: { communityKey: string; open: (id: number) => void; openProfile: (id: string) => void }) {
+export function Incoming({ communityKey, open, openProfile, allowDecline = false }: { allowDecline?: boolean; communityKey: string; open: (id: number) => void; openProfile: (id: string) => void }) {
   const state = useAsync(() => api<{ bggId: number; name: string; requesters: Person[]; state: string }[]>(endpoint(communityKey, "&view=incoming")), [communityKey]); useRefresh(state.reload);
   const [limit, setLimit] = useState(10);
-  return <details className="content-section"><summary>Вас попросили привезти · {state.data?.length ?? 0}</summary>{state.error && <ErrorState message={state.error} retry={state.reload} />}{state.data?.slice(0, limit).map(r => <Card key={r.bggId}><strong>{r.name}</strong><p>Попросили: {r.requesters.length}</p><p>{r.state === "declined" ? "Вы ответили, что не сможете" : r.state === "found" ? "Коробка уже найдена" : r.state === "unavailable" ? "Нет общих дней участия" : "Ожидают вашего ответа"}</p><PeopleRequests people={r.requesters} open={openProfile} /><button onClick={() => open(r.bggId)}>Посмотреть и ответить</button></Card>)}{(state.data?.length ?? 0) > limit && <button onClick={() => setLimit(limit + 10)}>Показать ещё</button>}</details>;
+  return <details className="content-section"><summary>Вас попросили привезти · {state.data?.length ?? 0}</summary>{state.error && <ErrorState message={state.error} retry={state.reload} />}{state.data?.slice(0, limit).map(r => <Card key={r.bggId}><strong>{r.name}</strong><p>Попросили: {r.requesters.length}</p><p>{r.state === "declined" ? "Вы ответили, что не сможете" : r.state === "found" ? "Коробка уже найдена" : r.state === "unavailable" ? "Нет общих дней участия" : "Ожидают вашего ответа"}</p><PeopleRequests people={r.requesters} open={openProfile} /><button onClick={() => open(r.bggId)}>Посмотреть и ответить</button>{allowDecline && r.state === "pending" && <DeclineRequest communityKey={communityKey} id={r.bggId} changed={state.reload} />}</Card>)}{(state.data?.length ?? 0) > limit && <button onClick={() => setLimit(limit + 10)}>Показать ещё</button>}</details>;
 }
 
 function PeopleRequests({ people, open }: { people: Person[]; open: (id: string) => void }) {
@@ -179,11 +170,16 @@ function CampPerson({ communityKey, person, open }: { communityKey: string; pers
   const [tab, setTab] = useState("games"); const [search, setSearch] = useState(""); const [page, setPage] = useState(1); const query = useDebouncedValue(search, 300);
   const params = `&view=profile${person ? `&person=${encodeURIComponent(person)}` : ""}&mode=${tab}&search=${encodeURIComponent(query)}&page=${page}`;
   const state = useAsync(async () => ({ params, data: await api<{ person: Person; isMe: boolean; wishesVisible: boolean; items: WishGame[]; total: number; hasMore: boolean }>(endpoint(communityKey, params)) }), [communityKey, params]); useRefresh(state.reload); const data = state.data?.params === params ? state.data.data : undefined;
-  return <div className="stack"><h2>{data?.person.name ?? "Участник кэмпа"}</h2>{data && <p>Дни участия: {days(data.person.dates)}</p>}<Tabs label="Профиль участника" active={tab} onChange={v => { setTab(v); setPage(1); }} items={[{ id: "games", label: "Игры" }, { id: "wishes", label: "Хотелки" }]} /><Field label="Поиск игры"><input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></Field>{state.error && <ErrorState message={state.error} retry={state.reload} />}{!data && state.loading && <Loading />}{data && <>{tab === "wishes" && !data.wishesVisible && <Notice>Участник пока не открыл свои хотелки для просмотра.</Notice>}<p>Найдено игр: {data.total}</p>{data.items.map(item => <WishCard key={item.game.bggId} item={item} open={section => open(item.game.bggId, section)} />)}{!data.items.length && <Empty>Нет игр для показа.</Empty>}<Paging page={page} hasMore={data.hasMore} change={setPage} /></>}</div>;
+  return <div className="stack"><h2>{data?.person.name ?? "Участник кэмпа"}</h2>{data?.isMe && <a data-profile-nav href={`?community=${encodeURIComponent(communityKey)}&tab=profile&profileTab=collection`}>Управлять моими играми в профиле</a>}{data && <p>Дни участия: {days(data.person.dates)}</p>}<Tabs label="Профиль участника" active={tab} onChange={v => { setTab(v); setPage(1); }} items={[{ id: "games", label: "Игры" }, { id: "wishes", label: "Хотелки" }]} /><Field label="Поиск игры"><input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></Field>{state.error && <ErrorState message={state.error} retry={state.reload} />}{!data && state.loading && <Loading />}{data && <>{tab === "wishes" && !data.wishesVisible && <Notice>Участник пока не открыл свои хотелки для просмотра.</Notice>}<p>Найдено игр: {data.total}</p>{data.items.map(item => <WishCard key={item.game.bggId} item={item} open={section => open(item.game.bggId, section)} />)}{!data.items.length && <Empty>Нет игр для показа.</Empty>}<Paging page={page} hasMore={data.hasMore} change={setPage} /></>}</div>;
 }
 function CampPeople({ communityKey, open }: { communityKey: string; open: (id: string) => void }) {
   const [search, setSearch] = useState(""); const [page, setPage] = useState(1); const query = useDebouncedValue(search, 300);
   const params = `&view=participants&search=${encodeURIComponent(query)}&page=${page}`;
   const state = useAsync(async () => ({ params, data: await api<{ items: Person[]; total: number; hasMore: boolean }>(endpoint(communityKey, params)) }), [communityKey, params]); const data = state.data?.params === params ? state.data.data : undefined;
   return <div className="stack"><h2>Участники кэмпа</h2><Field label="Поиск участника"><input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></Field>{state.error && <ErrorState message={state.error} retry={state.reload} />}{!data && state.loading && <Loading />}{data && <><p>Участников: {data.total}</p>{data.items.map(p => <button className="card" key={p.id} onClick={() => open(p.id)}>{p.name}<small>{days(p.dates)}</small></button>)}<Paging page={page} hasMore={data.hasMore} change={setPage} /></>}</div>;
+}
+
+function DeclineRequest({ communityKey, id, changed }: { communityKey: string; id: number; changed: () => void }) {
+  const action = useAction(communityKey);
+  return <><button disabled={action.busy} onClick={async () => { if (await action.act({ action: "decline", bggId: id })) changed(); }}>Не смогу</button>{action.error && <Notice kind="danger">{action.error}</Notice>}</>;
 }

@@ -22,6 +22,20 @@ export function App() {
   const bootstrap = discovery.error || discovery.loading ? undefined : discovery.data;
   const capabilities = capabilityState.data;
   const [communityKey, setCommunityKey] = useState(() => launchContext.communityKey ?? localStorage.getItem("oyinq-community") ?? ""); const [tab, setTab] = useState(() => new URLSearchParams(location.search).get("tab") ?? "gatherings");
+  useEffect(() => {
+    const openProfile = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[data-profile-nav]") : null;
+      if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+      const url = new URL(link.href);
+      if (url.searchParams.get("community") !== communityKey) return;
+      event.preventDefault();
+      setProfileVisit(current => ({ tab: url.searchParams.get("profileTab") ?? "collection", game: positiveGameId(url.searchParams.get("box")), scroll: current?.scroll ?? window.scrollY }));
+      window.scrollTo(0, 0);
+    };
+    document.addEventListener("click", openProfile);
+    return () => document.removeEventListener("click", openProfile);
+  }, [communityKey]);
+  useEffect(() => { setProfileVisit(undefined); }, [communityKey]);
   const adminMode = new URLSearchParams(location.search).get("admin") === "1";
   const [initialGatheringId, setInitialGatheringId] = useState(() => launchContext.gatheringId);
   const [creationGameId, setCreationGameId] = useState<number | undefined>(() => positiveGameId(new URLSearchParams(location.search).get("createGame")));
@@ -29,6 +43,7 @@ export function App() {
   const [collectionReturnGatheringId, setCollectionReturnGatheringId] = useState<string>();
   const [profileReturnCommunityKey, setProfileReturnCommunityKey] = useState<string>();
   const [registrationEditRequest, setRegistrationEditRequest] = useState(0);
+  const [profileVisit, setProfileVisit] = useState<{ tab: string; game?: number; scroll: number }>();
   const [fullscreen, setFullscreen] = useState(telegram.isFullscreen);
   useEffect(() => { if (!communityKey && bootstrap?.communities.length === 1) setCommunityKey(bootstrap.communities[0].key); }, [bootstrap]);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
@@ -59,11 +74,11 @@ export function App() {
   const editRegistration = () => { setRegistrationEditRequest(value => value + 1); setTab("profile"); };
   const openCollection = (bggId: number, gatheringId: string) => { const visit = collectionVisitFromGathering(bggId, gatheringId); setInitialCollectionGameId(visit.bggId); setCollectionReturnGatheringId(visit.returnGatheringId); setTab("games"); };
   const backToGathering = collectionReturnGatheringId ? () => { setInitialGatheringId(collectionReturnGatheringId); setCollectionReturnGatheringId(undefined); setTab("gatherings"); } : undefined;
-  const openProfileGathering = (targetCommunityKey: string, gatheringId: string) => { setProfileReturnCommunityKey(community.key); setCommunityKey(targetCommunityKey); setInitialGatheringId(gatheringId); setTab("gatherings"); };
+  const openProfileGathering = (targetCommunityKey: string, gatheringId: string) => { setProfileVisit(undefined); setProfileReturnCommunityKey(community.key); setCommunityKey(targetCommunityKey); setInitialGatheringId(gatheringId); setTab("gatherings"); };
   const backToProfile = profileReturnCommunityKey !== undefined ? () => { setCommunityKey(profileReturnCommunityKey); setProfileReturnCommunityKey(undefined); setTab("profile"); } : undefined;
   const content = activeTab === "gatherings" ? <GatheringsPage initialGameId={creationGameId} onGameConsumed={() => setCreationGameId(undefined)} key={community.key} community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} openCollection={openCollection} backFromInitial={backToProfile} /> : activeTab === "games" ? <GamesPage createGathering={id => { setCreationGameId(id); setInitialGatheringId(undefined); setTab("gatherings"); }} openGathering={id => { setInitialGatheringId(id); setTab("gatherings"); }} bggAvailable={capabilities.boardGameGeekAvailable} community={community} initialGameId={initialCollectionGameId} onInitialConsumed={() => setInitialCollectionGameId(undefined)} backToGathering={backToGathering} /> : <ProfilePage community={community} communities={bootstrap.communities} openGathering={openProfileGathering} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
   const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} canOpenAdminPanel={bootstrap.canOpenAdminPanel}>{content}</CampRegistrationGate> : content;
-  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} /><span className="context-name">{community.name}</span><span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}{telegram.canFullscreen && <button type="button" className="fullscreen-action" aria-label={fullscreenActionLabel} title={fullscreenActionLabel} aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}><FullscreenIcon fullscreen={fullscreen} /></button>}</div></header><div className="content">{gatedContent}</div><Navigation tabs={tabs} active={activeTab} onChange={setTab} /></div>;
+  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} /><span className="context-name">{community.name}</span><span aria-hidden>⌄</span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}{telegram.canFullscreen && <button type="button" className="fullscreen-action" aria-label={fullscreenActionLabel} title={fullscreenActionLabel} aria-pressed={fullscreen} onClick={() => fullscreen ? telegram.exitFullscreen() : void telegram.requestFullscreen()}><FullscreenIcon fullscreen={fullscreen} /></button>}</div></header><div className="content"><div hidden={Boolean(profileVisit)}>{gatedContent}</div>{profileVisit && <ProfilePage key={`${profileVisit.tab}:${profileVisit.game ?? ""}`} community={community} communities={bootstrap.communities} bggAvailable={capabilities.boardGameGeekAvailable} openGathering={openProfileGathering} initialTab={profileVisit.tab} initialGameId={profileVisit.game} back={() => { const scroll = profileVisit.scroll; setProfileVisit(undefined); requestAnimationFrame(() => window.scrollTo(0, scroll)); }} />}</div><Navigation tabs={tabs} active={profileVisit ? "profile" : activeTab} onChange={next => { setProfileVisit(undefined); setTab(next); }} /></div>;
 }
 
 export function GlobalProfileShell({ profile, select, communities, children }: {
