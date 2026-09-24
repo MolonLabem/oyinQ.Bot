@@ -18,6 +18,7 @@ async function click(text: string) { const button = visible("button").find(x => 
 async function mount() { await act(async () => root.render(<CampWishlist community={community} bggAvailable={false} />)); }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); sessionStorage.clear();
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); }; HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   HTMLElement.prototype.scrollIntoView = vi.fn(); vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.mocked(api).mockImplementation(async path => {
     const u = new URL(path, "https://test");
@@ -32,8 +33,8 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi
 
 it("defaults to all, keeps picker closed, sends filters and pagination to the server", async () => {
   await mount(); expect(visible('[aria-selected="true"]')[0].textContent).toBe("Все");
-  expect(host.querySelector("dialog")).toBeNull(); expect(host.textContent).toContain("Найдено игр: 48");
-  await click("Нужна коробка"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("needsBox=true"));
+  expect(host.querySelector("dialog")).toBeNull(); expect(host.textContent).toContain("Игры: 48");
+  await applyFilter("Нужна коробка"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("needsBox=true"));
   await click("Дальше"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("page=2"));
   await click("Мои"); expect(api).toHaveBeenCalledWith(expect.stringContaining("mode=mine"));
   expect(api).toHaveBeenCalledWith(expect.stringContaining("view=outgoing"));
@@ -42,19 +43,19 @@ it("defaults to all, keeps picker closed, sends filters and pagination to the se
 it("keeps loaded cards through refresh and error, and never posts during reads", async () => {
   await mount(); let reject!: (e: Error) => void;
   vi.mocked(api).mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
-  await click("↻ Обновить список"); expect(host.textContent).toContain(game.game.name); expect(host.textContent).toContain("Обновляем…");
+  await click("↻ Обновить"); expect(host.textContent).toContain(game.game.name); expect(host.textContent).toContain("Обновляем…");
   await act(async () => reject(new Error("Нет сети")));
   expect(host.textContent).toContain(game.game.name); expect(host.textContent).toContain("Нет сети");
   expect(vi.mocked(api).mock.calls.every(call => !call[1])).toBe(true);
 });
 
 it("game to participant to game and back retains list mode and filters", async () => {
-  await mount(); await click("Нужна коробка"); await click(game.game.name);
+  await mount(); await applyFilter("Нужна коробка"); await click(game.game.name);
   expect(visible("h2")[0].textContent).toBe(game.game.name);
   await click("Виктор"); expect(visible("h2")[0].textContent).toBe("Виктор");
   await click(game.game.name); await click("← Назад"); expect(visible("h2")[0].textContent).toBe("Виктор");
   await click("← Назад"); await click("← Назад");
-  expect(visible('[aria-pressed="true"]')[0].textContent).toContain("Нужна коробка");
+  expect(visible('[aria-label="Убрать: Нужна коробка"]')[0].textContent).toContain("Нужна коробка");
   expect(visible('[aria-selected="true"]')[0].textContent).toBe("Все");
 });
 
@@ -64,5 +65,31 @@ it("switching Camp cannot display an old delayed response", async () => {
   await mount();
   await act(async () => root.render(<CampWishlist key="next" community={{ ...community, key: "next", name: "Другой кэмп" }} bggAvailable={false} />));
   await act(async () => old({ ...result, items: [{ ...game, game: { ...game.game, name: "Чужая игра" } }] }));
-  expect(host.textContent).not.toContain("Чужая игра"); expect(host.textContent).toContain("Другой кэмп");
+  expect(host.textContent).not.toContain("Чужая игра"); expect(api).toHaveBeenCalledWith(expect.stringContaining("community=next"));
+});
+
+async function toggleFilter(label: string) { const input = [...host.querySelectorAll<HTMLInputElement>("dialog input")].find(x => x.parentElement?.textContent === label)!; expect(input).toBeTruthy(); await act(async () => input.click()); }
+async function applyFilter(label: string) { await click(visible("button").some(x => x.textContent === "Фильтры •") ? "Фильтры •" : "Фильтры"); await toggleFilter(label); await click("Применить"); }
+
+it("keeps draft filters unapplied on dismiss, shows chips after apply and clears hidden mode filters", async () => {
+  await mount(); const requests = vi.mocked(api).mock.calls.length;
+  await click("Фильтры"); await toggleFilter("Нужна коробка");
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Закрыть без применения"]')!.click());
+  expect(vi.mocked(api).mock.calls.length).toBe(requests);
+  expect(host.querySelector('[aria-label="Убрать: Нужна коробка"]')).toBeNull();
+  await applyFilter("Есть у меня"); expect(host.querySelector('[aria-label="Убрать: Есть у меня"]')).not.toBeNull();
+  await click("Что взять"); expect(api).toHaveBeenCalledWith(expect.stringMatching(/mode=bring.*owned=false/));
+  await click("Фильтры"); expect([...host.querySelectorAll("dialog label")].some(x => x.textContent === "Есть у меня")).toBe(false);
+  await toggleFilter("Включая те, что не беру"); await click("Применить");
+  await click("Все"); expect(api).toHaveBeenCalledWith(expect.stringMatching(/mode=all.*showDeclined=false/));
+});
+
+it("resets filter draft and sorting only when applied and allows removing individual chips", async () => {
+  await mount(); await applyFilter("Нужна коробка");
+  await click("Фильтры •"); const select = host.querySelector<HTMLSelectElement>("dialog select")!;
+  await act(async () => { select.value = "name"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  await click("Применить"); expect(host.textContent).toContain("По названию ×");
+  await click("Нужна коробка ×"); expect(api).toHaveBeenCalledWith(expect.stringMatching(/needsBox=false.*sort=name/));
+  await click("Фильтры •"); await click("Сбросить"); expect(host.textContent).toContain("По названию ×");
+  await click("Применить"); expect(host.querySelector('[aria-label="Убрать сортировку по названию"]')).toBeNull();
 });

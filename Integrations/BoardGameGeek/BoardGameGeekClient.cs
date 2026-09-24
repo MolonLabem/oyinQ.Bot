@@ -443,18 +443,6 @@ public sealed class BoardGameGeekClient(
             resolvedName.OriginalName, complexity.Weight, complexity.Level);
     }
 
-    private static IReadOnlyList<string> ReadTags(XElement item, string linkType,
-        Func<string, string>? normalize = null) => item.Elements("link")
-        .Where(link => string.Equals((string?)link.Attribute("type"), linkType,
-            StringComparison.OrdinalIgnoreCase))
-        .Select(link => ((string?)link.Attribute("value"))?.Trim())
-        .Where(value => !string.IsNullOrWhiteSpace(value))
-        .Select(value => normalize is null ? value! : normalize(value!))
-        .Where(value => !string.IsNullOrWhiteSpace(value))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Order(StringComparer.OrdinalIgnoreCase)
-        .ToArray();
-
     private static IReadOnlyList<GameTaxonomyItem> ReadTaxonomy(XElement item, string linkType) => item.Elements("link")
         .Where(link => string.Equals((string?)link.Attribute("type"), linkType, StringComparison.OrdinalIgnoreCase))
         .Select(link => new { Id = ReadLongAttribute(link, "id"), Name = ((string?)link.Attribute("value"))?.Trim() })

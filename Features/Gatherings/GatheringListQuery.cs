@@ -82,11 +82,12 @@ public static class GatheringListQuery
     public static IQueryable<GameGathering> Apply(
         IQueryable<GameGathering> query,
         GatheringListScope scope,
-        DateTimeOffset now)
+        DateTimeOffset now, string? seats = null)
     {
         now = now.ToUniversalTime();
         if (scope == GatheringListScope.Upcoming)
         {
+            if (seats is "available" or "full") query = GatheringCapacity.FilterSeats(query, seats == "available");
             return query.Where(x => x.StartsAtUtc > now
                     && GatheringLifecycle.ScheduledStatuses.Contains(x.Status))
                 .OrderBy(x => x.StartsAtUtc).ThenBy(x => x.Id);

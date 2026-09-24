@@ -80,10 +80,6 @@ export function dismissGamePickerSearch(input: Pick<HTMLInputElement, "blur"> | 
   input?.blur();
 }
 
-export function uniqueByBggId<T extends { bggId: number }>(values: T[]) {
-  return [...new Map(values.map(value => [value.bggId, value])).values()];
-}
-
 // Provider omissions must not erase saved metadata or attached expansions.
 export function mergeExpansions(saved: Expansion[], additions: Expansion[]): Expansion[] {
   const merged = new Map<number, Expansion>();

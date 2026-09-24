@@ -177,9 +177,6 @@ public sealed class CampParticipantAdminService(
         return new(sent, roster.Participants.Count);
     }
 
-    public static IReadOnlyList<string> BuildMessages(CampAdminParticipants value) =>
-        CampParticipantMessages.Build(value).Select(x => x.Text).ToArray();
-
     private CampParticipantDeliveryException DeliveryFailure(Exception exception, long campId, int sent, int participantsSent)
     {
         // Avoid participant contents and raw transport exceptions, whose URLs may contain a token.

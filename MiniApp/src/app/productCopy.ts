@@ -7,4 +7,3 @@ export const wishlistCopy = {
   want: "♡ Хочу сыграть",
   empty: "Пока нет хотелок. Найдите игру выше и нажмите «Хочу сыграть».",
 };
-export const campCommitmentLabels = { Available: "Могу привезти", Bringing: "Точно привезу" };

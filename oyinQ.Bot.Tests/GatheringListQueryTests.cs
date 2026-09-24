@@ -9,6 +9,34 @@ public sealed class GatheringListQueryTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 31, 12, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData("club")]
+    [InlineData("camp")]
+    public void SeatsUseMaximumGuestsAndMainRosterBeforePagination(string community)
+    {
+        var ready = Item(10, GatheringStatus.Ready, Now.AddHours(1));
+        ready.MinimumPlayers = 2; ready.DesiredPlayers = 2; ready.MaximumPlayers = 4;
+        ready.Participants.Add(new() { ParticipantId = 42, Status = GatheringParticipationStatus.Confirmed });
+        ready.Participants.Add(new() { ParticipantId = 43, Status = GatheringParticipationStatus.Waitlisted });
+        var full = Item(11, GatheringStatus.Full, Now.AddHours(2)); full.MaximumPlayers = 3;
+        full.Guests.Add(new() { DisplayName = "Гость 1" }); full.Guests.Add(new() { DisplayName = "Гость 2" });
+        full.Participants.Add(new() { Status = GatheringParticipationStatus.Waitlisted });
+        var closed = Item(12, GatheringStatus.Closed, Now.AddHours(3)); closed.MaximumPlayers = 5;
+        var later = Item(13, GatheringStatus.Recruiting, Now.AddHours(4)); later.MaximumPlayers = 4;
+        var cancelled = Item(14, GatheringStatus.Cancelled, Now.AddHours(5)); cancelled.MaximumPlayers = 1;
+        var source = new[] { ready, full, closed, later, cancelled };
+        foreach (var item in source) item.CommunityKey = community;
+        var query = source.AsQueryable().Where(x => x.CommunityKey == community);
+        Assert.Equal(2, GatheringCapacity.OccupiedSeats(ready));
+        Assert.Equal(3, GatheringCapacity.OccupiedSeats(full));
+        Assert.Equal([10L, 13L], GatheringListQuery.Apply(query, GatheringListScope.Upcoming, Now, "available").Select(x => x.Id));
+        Assert.Equal([13L], GatheringListQuery.Apply(query, GatheringListScope.Upcoming, Now, "available").Skip(1).Take(1).Select(x => x.Id));
+        Assert.Equal([11L], GatheringListQuery.Apply(query, GatheringListScope.Upcoming, Now, "full").Select(x => x.Id));
+        Assert.Equal(4, GatheringListQuery.Apply(query, GatheringListScope.Upcoming, Now).Count());
+        Assert.Equal([14L], GatheringListQuery.Apply(query, GatheringListScope.History, Now, "available").Select(x => x.Id));
+        Assert.Equal([14L], GatheringListQuery.Apply(query, GatheringListScope.Cancelled, Now, "full").Select(x => x.Id));
+    }
+
     [Fact]
     public void Upcoming_ContainsOnlyFutureScheduledStatusesAndSortsNearestFirst()
     {
@@ -83,6 +111,23 @@ public sealed class GatheringListQueryTests
         Assert.Contains("ORDER BY g.\"StartsAtUtc\" DESC, g.\"Id\" DESC", sql, StringComparison.Ordinal);
         Assert.Contains("OFFSET", sql, StringComparison.Ordinal);
         Assert.Contains("LIMIT", sql, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("available")]
+    [InlineData("full")]
+    public void SeatFilterTranslatesToSqlBeforePagination(string seats)
+    {
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=oyinq_translation_test;Username=test;Password=test").Options);
+        var sql = GatheringListQuery.Apply(db.GameGatherings, GatheringListScope.Upcoming, Now, seats)
+            .Skip(20).Take(21).ToQueryString();
+        Assert.Contains("GameGatheringGuests", sql);
+        Assert.Contains("GameGatheringParticipants", sql);
+        Assert.Contains("MaximumPlayers", sql);
+        Assert.Contains("count(*)", sql);
+        Assert.True(sql.IndexOf("MaximumPlayers", StringComparison.Ordinal) < sql.IndexOf("LIMIT", StringComparison.Ordinal));
+        Assert.Contains("ORDER BY", sql);
     }
 
     [Fact]

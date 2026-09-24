@@ -32,7 +32,7 @@ export function CampBoxControl({ communityKey, item, contribution, disabled, cha
         communityKey, commitment: next,
         ...(changeDates ? allDays ? { allAttendanceDays: true } : { availableDates: dates } : !contribution ? { allAttendanceDays: true } : {})
       }));
-      changed(); profile?.reload(); telegram.success("Отметка привоза сохранена");
+      changed(); profile?.reload(); telegram.success("Решение сохранено");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -46,7 +46,7 @@ export function CampBoxControl({ communityKey, item, contribution, disabled, cha
     {contribution && <details className="box-date-options"><summary>Другие дни</summary>
       <label className="check"><input type="radio" checked={allDays} onChange={() => setAllDays(true)} />Все дни моего участия</label>
       <label className="check"><input type="radio" checked={!allDays} onChange={() => setAllDays(false)} />Выбранные дни</label>
-      {!allDays && <fieldset className="wish-dates"><legend>Дни привоза</legend>{settings?.myDates.map(date => <label key={date}><input type="checkbox" checked={dates.includes(date)} onChange={e => setDates(e.target.checked ? [...dates, date].sort() : dates.filter(d => d !== date))} />{attendanceLabel([date])}</label>)}</fieldset>}
+      {!allDays && <fieldset className="wish-dates"><legend>Когда будет игра</legend>{settings?.myDates.map(date => <label key={date}><input type="checkbox" checked={dates.includes(date)} onChange={e => setDates(e.target.checked ? [...dates, date].sort() : dates.filter(d => d !== date))} />{attendanceLabel([date])}</label>)}</fieldset>}
       {!allDays && dates.some(d => !settings?.myDates.includes(d)) && <Notice kind="warning">Часть старых дат больше не входит в регистрацию. Выберите дни заново или верните все дни участия.</Notice>}
       <button disabled={locked || (!allDays && (!dates.length || dates.some(d => !settings?.myDates.includes(d))))} onClick={() => void save(contribution.commitment, true)}>Сохранить дни</button>
       {!allDays && dates.some(d => !settings?.myDates.includes(d)) && <button onClick={() => setDates(dates.filter(d => settings?.myDates.includes(d)))}>Оставить дни регистрации</button>}

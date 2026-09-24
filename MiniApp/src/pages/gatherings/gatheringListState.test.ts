@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringHistoryFilter, gatheringListView, type GatheringListState } from "./gatheringListState";
+import { changeGatheringSeats, buildGatheringListQuery, changeGatheringHistoryFilter, changeGatheringView, gatheringHistoryFilter, gatheringListView, type GatheringListState } from "./gatheringListState";
 
 describe("gathering list state", () => {
   it("keeps the selected history filter in paged requests", () => {
@@ -35,4 +35,13 @@ describe("gathering list state", () => {
     expect(gatheringHistoryFilter("cancelled")).toBe("cancelled");
   });
 
+});
+
+it("resets pagination for seats and keeps selection without applying it to history", () => {
+  const next = changeGatheringSeats({ scope: "upcoming", page: 4 }, "available");
+  expect(next.page).toBe(1);
+  expect(new URLSearchParams(buildGatheringListQuery("club", next)).get("seats")).toBe("available");
+  const history = changeGatheringView(next, "history");
+  expect(new URLSearchParams(buildGatheringListQuery("club", history)).has("seats")).toBe(false);
+  expect(changeGatheringView(history, "upcoming").seats).toBe("available");
 });

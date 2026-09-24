@@ -65,7 +65,7 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
   if (selectedPerson && community.mode === "Camp") return <Page title="Участник кэмпа" subtitle={community.name}><CampWishlist community={community} bggAvailable={bggAvailable} initialPersonId={selectedPerson} back={() => setSelectedPerson(undefined)} create={createGathering} openGathering={openGathering} /></Page>;
   if (selected && community.mode === "Camp" && section === "wishlist") return <Page title="Хотелки" subtitle={community.name}><CampWishlist community={community} bggAvailable={bggAvailable} initialGameId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} create={createGathering} openGathering={openGathering} /></Page>;
   if (selected) return <GameDetail createGathering={createGathering} openGathering={openGathering} attendanceDate={applied.attendanceDate} community={community} bggId={selected} back={() => { setSelected(undefined); initialBackToGathering?.(); }} openCampWishlist={() => setSection("wishlist")} openPerson={setSelectedPerson} />;
-  return <Page title="Игры" subtitle={community.name}>
+  return <Page title="Игры">
     <Tabs label="Разделы игр" active={section} onChange={setSection} items={[{ id: "catalog", label: "Каталог" }, { id: "wishlist", label: wishlistCopy.title }]} />
     {section === "wishlist" ? community.mode === "Camp" ? <CampWishlist community={community} bggAvailable={bggAvailable} create={createGathering} openGathering={openGathering} /> : <><WishlistPanel community={community} bggAvailable={bggAvailable} /><CommunityDemand communityKey={community.key} create={createGathering} /></> : <>
       <div className="catalog-browse-toolbar">

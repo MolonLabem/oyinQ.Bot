@@ -60,6 +60,7 @@ internal static class GatheringEndpoints
         [FromQuery(Name = "status")] string? status,
         [FromQuery(Name = "page")] int? page,
         [FromQuery(Name = "bggId")] long? bggId,
+        [FromQuery(Name = "seats")] string? seats,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
         TimeProvider timeProvider,
@@ -68,6 +69,8 @@ internal static class GatheringEndpoints
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
         if (access is null) return Results.Forbid();
         if (bggId is <= 0) return MiniAppEndpointSupport.Problem("validation", "Некорректный BGG ID.");
+        if (seats is not (null or "all" or "available" or "full"))
+            return MiniAppEndpointSupport.Problem("validation", "Неизвестный фильтр мест.");
         if (!GatheringListQuery.TryParse(scope, view, status, out var parsedScope))
             return MiniAppEndpointSupport.Problem("invalid_gathering_scope",
                 "Поддерживаются scope=upcoming, history, completed или cancelled.", 400);
@@ -77,7 +80,7 @@ internal static class GatheringEndpoints
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         var query = GatheringListQuery.ForGame(dbContext, community, bggId).AsNoTracking()
             .Include(x => x.Participants).Include(x => x.Guests).Include(x => x.OrganizerParticipant);
-        var values = await GatheringListQuery.Apply(query, parsedScope, timeProvider.GetUtcNow())
+        var values = await GatheringListQuery.Apply(query, parsedScope, timeProvider.GetUtcNow(), seats)
             .Skip((pageNumber - 1) * GatheringPageSize)
             .Take(GatheringPageSize + 1)
             .ToArrayAsync(cancellationToken);

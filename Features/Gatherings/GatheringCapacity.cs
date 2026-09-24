@@ -1,12 +1,26 @@
 using oyinQ.Bot.Data.Entities;
+using System.Linq.Expressions;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
 public static class GatheringCapacity
 {
-    public static int OccupiedSeats(GameGathering gathering) =>
-        1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed)
-          + gathering.Guests.Count;
+    private static readonly Expression<Func<GameGathering, int>> OccupiedSeatsQuery = gathering =>
+        1 + gathering.Participants.Count(x => x.Status == GatheringParticipationStatus.Confirmed) + gathering.Guests.Count;
+    private static readonly Func<GameGathering, int> CountOccupiedSeats = OccupiedSeatsQuery.Compile();
+    public static int OccupiedSeats(GameGathering gathering) => CountOccupiedSeats(gathering);
+
+    // Build SQL predicates from the same count used by mutations and presentation.
+    public static IQueryable<GameGathering> FilterSeats(IQueryable<GameGathering> query, bool available)
+    {
+        var parameter = OccupiedSeatsQuery.Parameters[0];
+        var maximum = Expression.Property(parameter, nameof(GameGathering.MaximumPlayers));
+        Expression condition = available ? Expression.LessThan(OccupiedSeatsQuery.Body, maximum)
+            : Expression.GreaterThanOrEqual(OccupiedSeatsQuery.Body, maximum);
+        if (available) condition = Expression.AndAlso(condition,
+            Expression.NotEqual(Expression.Property(parameter, nameof(GameGathering.Status)), Expression.Constant(GatheringStatus.Closed)));
+        return query.Where(Expression.Lambda<Func<GameGathering, bool>>(condition, parameter));
+    }
 
     public static bool HasAvailableSeat(GameGathering gathering) =>
         OccupiedSeats(gathering) < gathering.MaximumPlayers;

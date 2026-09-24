@@ -128,11 +128,11 @@ public sealed class CommunityDeletionServiceTests
             index, $"Игрок {index}", "Алматы", [new DateOnly(2026, 9, 1)], index % 2 == 0,
             $"player{index}", $"https://t.me/player{index}")).ToArray();
 
-        var messages = CampParticipantAdminService.BuildMessages(new(1, "Большой кэмп", participants));
+        var messages = CampParticipantMessages.Build(new(1, "Большой кэмп", participants));
 
         Assert.True(messages.Count > 1);
-        Assert.All(messages, message => Assert.InRange(message.Length, 1, 3900));
-        Assert.Contains("250. Игрок 250", string.Join("\n", messages));
+        Assert.All(messages, message => Assert.InRange(message.Text.Length, 1, 3900));
+        Assert.Contains("250. Игрок 250", string.Join("\n", messages.Select(message => message.Text)));
     }
 
     private static GameGathering Gathering(OyinQCommunity community, Participant participant,

@@ -1,8 +1,10 @@
+export type GatheringSeatFilter = "all" | "available" | "full";
 export type GatheringListView = "upcoming" | "history";
 export type GatheringHistoryFilter = "all" | "completed" | "cancelled";
 export type GatheringListScope = "upcoming" | "history" | "completed" | "cancelled";
 
 export type GatheringListState = {
+  seats?: GatheringSeatFilter;
   scope: GatheringListScope;
   page: number;
 };
@@ -18,7 +20,7 @@ export function changeGatheringView(
 ): GatheringListState {
   const scope: GatheringListScope = view === "upcoming" ? "upcoming" : "history";
   if (state.scope === scope) return state;
-  return { scope, page: 1 };
+  return { ...state, scope, page: 1 };
 }
 
 export function changeGatheringHistoryFilter(
@@ -27,7 +29,7 @@ export function changeGatheringHistoryFilter(
 ): GatheringListState {
   const scope: GatheringListScope = historyFilter === "all" ? "history" : historyFilter;
   if (state.scope === scope) return state;
-  return { scope, page: 1 };
+  return { ...state, scope, page: 1 };
 }
 
 export function gatheringListView(scope: GatheringListScope): GatheringListView {
@@ -49,5 +51,8 @@ export function buildGatheringListQuery(communityKey: string, state: GatheringLi
   });
   // Keep equivalent legacy parameters while cached Mini Apps and rolling backend instances coexist.
   if (view === "history" && historyFilter !== "all") query.set("status", historyFilter);
+  if (view === "upcoming" && state.seats && state.seats !== "all") query.set("seats", state.seats);
   return query.toString();
 }
+
+export function changeGatheringSeats(state: GatheringListState, seats: GatheringSeatFilter): GatheringListState { return { ...state, seats, page: 1 }; }

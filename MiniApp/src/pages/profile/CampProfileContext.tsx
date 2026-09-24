@@ -3,7 +3,8 @@ import { api } from "../../api/client";
 import type { Community } from "../../api/types";
 import { useAsync } from "../../hooks/useAsync";
 import { ErrorState, Loading, Notice } from "../../components/Ui";
-import { useAction, useRefresh } from "../games/CampWishlist";
+import { useCampWishlistAction } from "../../hooks/useCampWishlistAction";
+import { useRefresh } from "../../hooks/useRefreshOnActivity";
 
 export type CampProfileSettings = { canAct: boolean; shareCollection: boolean; shareWishes: boolean; myDates: string[]; declinedGameIds: number[]; suggestedGameIds: number[] };
 type State = ReturnType<typeof useAsync<CampProfileSettings>>;
@@ -18,7 +19,7 @@ export function CampProfileProvider({ community, children }: { community: Commun
 
 export function CampPrivacy({ community }: { community: Community }) {
   const state = useCampProfile();
-  const action = useAction(community.key);
+  const action = useCampWishlistAction(community.key);
   const data = state?.data;
   return <section className="camp-privacy" id="camp-privacy" aria-label="Видимость для участников кэмпа">
     <h2>Видимость для участников кэмпа</h2><p className="muted">Только для участников «{community.name}».</p>

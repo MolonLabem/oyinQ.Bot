@@ -81,6 +81,9 @@ Forum posting configuration is scoped to one `OyinQCommunity`/Telegram chat. `Po
 
 ## Club, Camp, and gatherings
 
+- Upcoming seat filters use `GatheringCapacity`'s shared count expression before pagination: organizer + confirmed participants + guests, excluding waitlists. Available also requires open signups; Full compares with MaximumPlayers, never desired/minimum or per-user CanJoin. History ignores seat filters. Wishlist filter dialogs keep a draft until Apply; normalize mode-specific hidden fields before querying or restoring state.
+
+
 - Admin camp rosters, human-readable CSV/XLSX and private Telegram delivery share `CampParticipantAdminService.GetAsync`: exact registration `SelectedDays`, nullable accommodation, stable display-name ordering and server-side filters over the complete matching roster. Every request rechecks `IAdminAuthorizationService` for the target camp. Technical CSV contracts remain separate. Exports go only to the authenticated actor, are generated in memory, and downloads are non-cacheable. Rich-message fallback retries only definitively rejected chunks; partial/unknown delivery never replays the entire roster automatically. See `docs/camp-participants.md`.
 
 `OyinQCommunity` is the managed Telegram binding. `Club` and `Camp` are mode-qualified one-to-one rows with composite foreign keys and mode checks. Create subtype and community together.
@@ -227,7 +230,7 @@ BG Stats — только документированная HTTPS-ссылка,
 - Mini App использует `catalogFilters` и `CatalogFilters`: scoped sessionStorage по mode/key, нормализация актуальными вариантами, draft/apply/cancel, счётчик групп без сортировки. Предпросмотр дебаунсится и защищён от устаревших ответов. На возврате в каталог, focus/visibility и локальных успешных изменениях каталог перечитывается; постоянной фоновой синхронизации нет.
 - Карта применимости, потребители, миграция, свежесть открытого экрана и ручная приёмка: `docs/catalog-filters-shared-collections.md`.
 
-Пользовательские тексты: «сбор» — договорённость об игре и запись участников, «партия» — фактически сыгранная игра. Общие подписи хотелок и обещаний привезти коробку — `MiniApp/src/app/productCopy.ts`; внутренние wishlist/Available/Bringing, маршруты и ключи хранения не переименовывать. Писать действия прямо, в пустом состоянии подсказывать следующий шаг; технические слова оставлять только там, где они нужны пользователю. `ProductFooter` сохраняет BGG attribution и ссылку автора через `ContactLink`/`telegram.openContact`. Регистрация кэмпа остаётся в Mini App, общие команды Telegram не заводят отдельный сценарий регистрации. Инструкции описывают фактический путь в интерфейсе: хотелки сейчас находятся в «Игры», а не в профиле.
+Пользовательские тексты: «сбор» — договорённость об игре и запись участников, «партия» — фактически сыгранная игра. Общие подписи хотелок — `MiniApp/src/app/productCopy.ts`; внутренние wishlist/Available/Bringing, маршруты и ключи хранения не переименовывать. Писать действия прямо, в пустом состоянии подсказывать следующий шаг; технические слова оставлять только там, где они нужны пользователю. `ProductFooter` сохраняет BGG attribution и ссылку автора через `ContactLink`/`telegram.openContact`. Регистрация кэмпа остаётся в Mini App, общие команды Telegram не заводят отдельный сценарий регистрации. Инструкции описывают фактический путь в интерфейсе: общий спрос — «Игры → Хотелки», собственные хотелки — «Профиль → Хотелки» для выбранного сообщества.
 
 
 ## Поддержка и проверка структуры
@@ -236,4 +239,5 @@ BG Stats — только документированная HTTPS-ссылка,
 - `MiniAppEndpointSupport.FromException` сохраняет общий контракт конфликтов коллекции (`stale_revision`, 409, currentRevision). Не дублировать его в отдельных Club endpoints.
 - `AdminPage` управляет контекстом и навигацией; коллекция и участники кэмпа — отдельные `ClubCollection` и `CampParticipants`. `useMobileDialog` владеет native dialog lifecycle, keyboard viewport, scroll/focus restore и приоритетом Telegram Back для фильтров и добавления игры. Правила сохранения и черновики остаются в соответствующих компонентах.
 - TypeScript проверяет unused locals/parameters. CI запускает PostgreSQL-тесты, проверку embedded release inputs, frontend и Docker build. .NET и Docker исключают `output/`, `.playwright-cli/`, `.codegraph/`; `docs/releases/**` остаётся исходным ресурсом.
+- Общие хуки `useRefresh` и `useCampWishlistAction` находятся в `MiniApp/src/hooks`; профиль импортирует их напрямую, а не через модуль экрана хотелок. Формирование rich/plain сообщений списка участников принадлежит `CampParticipantMessages.Build`; тесты используют этот же форматтер без отдельной обёртки сервиса.
 - Обзор точек входа, сохранённая совместимость и границы проверки: `docs/cleanup-audit.md`. Не удалять Camp snapshots/imports, JSON compatibility или owner bootstrap fallback без проверки существующих данных.

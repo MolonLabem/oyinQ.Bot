@@ -110,7 +110,7 @@ public sealed class CampParticipantExportTests
         Assert.Equal(CampParticipantExport.Headers, csvRows[0]);
         using var workbook = new XLWorkbook(new MemoryStream((await f.Service.ExportAsync(42, 1, "xlsx", default)).Content));
         var sheet = workbook.Worksheet(1);
-        var textMessages = CampParticipantAdminService.BuildMessages(roster);
+        var textMessages = CampParticipantMessages.Build(roster).Select(message => message.Text).ToArray();
         for (var i = 0; i < roster.Participants.Count; i++)
         {
             var person = roster.Participants[i];

@@ -125,7 +125,7 @@ public sealed class CampWishlistNotifications(AppDbContext db, TimeProvider cloc
                 if (valid.All(p => request.Requesters.Single(r => r.ParticipantId == p.ParticipantId).Dates
                     .Where(d => p.SelectedDays.Any(s => s.Date == d)).All(covered.Contains))) return false;
             }
-            row.Text = $"Вас попросили привезти «{game}» на {camp.Name}. К просьбе присоединились: {valid.Length}. Откройте хотелки, чтобы посмотреть дни и ответить. Привоз коробки не обязывает организовывать партию или объяснять правила.";
+            row.Text = $"Вас попросили привезти «{game}» на {camp.Name}. К просьбе присоединились: {valid.Length}. Откройте хотелки, чтобы посмотреть дни и ответить. Если вы берёте коробку, это не обязывает вести партию или объяснять правила.";
             return true;
         }
         var author = request?.Requesters.SingleOrDefault(x => x.ParticipantId == row.ParticipantId && x.Active);
