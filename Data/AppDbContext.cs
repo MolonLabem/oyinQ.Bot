@@ -26,6 +26,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<Camp> Camps => Set<Camp>();
     public DbSet<CampRegistration> CampRegistrations => Set<CampRegistration>();
+    public DbSet<CampParticipantVisibility> CampParticipantVisibilities => Set<CampParticipantVisibility>();
     public DbSet<CampRegistrationDay> CampRegistrationDays => Set<CampRegistrationDay>();
     public DbSet<CampGameContribution> CampGameContributions => Set<CampGameContribution>();
     public DbSet<GameGathering> GameGatherings => Set<GameGathering>();
@@ -251,6 +252,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<CampRegistration>(entity =>
         {
             entity.ToTable("CampRegistrations");
+            // Retained migration input; runtime visibility lives in CampParticipantVisibilities.
+            entity.Property<bool>("ShareCollection");
+            entity.Property<bool>("ShareWishes");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.CampId, x.ParticipantId }).IsUnique();
             entity.Property(x => x.DisplayName).HasMaxLength(128);
@@ -263,6 +267,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithMany(x => x.CampRegistrations)
                 .HasForeignKey(x => x.ParticipantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CampParticipantVisibility>(entity =>
+        {
+            entity.ToTable("CampParticipantVisibilities");
+            entity.HasKey(x => new { x.CampId, x.ParticipantId });
+            entity.HasOne<Camp>().WithMany().HasForeignKey(x => x.CampId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Participant>().WithMany().HasForeignKey(x => x.ParticipantId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<CampRegistrationDay>(entity =>

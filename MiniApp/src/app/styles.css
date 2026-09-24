@@ -514,7 +514,6 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 
 .profile-tabs.page-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-inline: 0; gap: 0; }
 .profile-tabs.page-tabs button { padding-inline: 4px; font-size: 14px; }
-.camp-privacy summary { min-height: 44px; align-content: center; cursor: pointer; }
 
 .wish-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 10px; }
 .wish-toolbar button { min-height: 44px; flex: 1 1 auto; padding-inline: 10px; }

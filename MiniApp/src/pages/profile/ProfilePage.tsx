@@ -51,10 +51,10 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
     {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
     <ProfileTabs active={tab} select={setTab} />
-    {community?.mode === "Camp" && (tab === "collection" || tab === "wishes") && <CampPrivacy community={community} />}
     <div hidden={tab !== "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => setTab("settings")} /></div>
     {tab === "wishes" && (community ? community.mode === "Camp" ? <CampPersonalWishes key={community.key} community={community} bggAvailable={bggAvailable} openGathering={id => openGathering(community.key, id)} /> : <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <Empty>Выберите сообщество, чтобы посмотреть свои хотелки. <a href="?tab=communities">Выбрать сообщество</a></Empty>)}
     {tab === "settings" && <>
+    {community?.mode === "Camp" && <CampPrivacy community={community} />}
     {!profile.data.botStartRequired && <Notice kind="success">Личный чат с ботом открыт</Notice>}
     <NotificationSettings />
     <section className="content-section form-grid">

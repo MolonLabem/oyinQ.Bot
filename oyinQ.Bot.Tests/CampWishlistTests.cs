@@ -48,7 +48,7 @@ public sealed class CampWishlistTests
         await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);
         var service = s.Service(f.Db, f.Clock);
         var settings = await service.SettingsAsync("camp-wishes", s.Owner.Id, default);
-        Assert.False(settings.ShareCollection); Assert.False(settings.ShareWishes);
+        Assert.True(settings.ShareCollection); Assert.True(settings.ShareWishes);
         Assert.Equal([42L], settings.SuggestedGameIds);
         Assert.Empty((await service.SettingsAsync("camp-wishes", s.A.Id, default)).SuggestedGameIds);
         await s.Act(f.Db, f.Clock, s.Owner.Id, "decline");
@@ -65,9 +65,11 @@ public sealed class CampWishlistTests
     }
 
     [Fact]
-    public async Task PrivateOwnershipSuggestsOnlyToOwnerAndOldWishesStayAnonymous()
+    public async Task HiddenOwnershipSuggestsOnlyToOwnerAndHiddenWishesStayAnonymous()
     {
         await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);
+        await s.Act(f.Db, f.Clock, s.Owner.Id, "privacy", share: false);
+        await s.Service(f.Db, f.Clock).ActAsync("camp-wishes", s.A.Id, 0, "privacy", null, null, null, false, default);
         var service = s.Service(f.Db, f.Clock);
         var mine = await service.ListAsync("camp-wishes", s.Owner.Id, new("bring"), default);
         Assert.Equal(42, Assert.Single(mine.Items).Game.BggId); Assert.Equal(1, mine.Suggestions);

@@ -19,7 +19,7 @@ internal static class CatalogEndpoints
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver, GameCatalogService service, CancellationToken ct)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, ct);
-        if (access is null) return Results.Forbid();
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         return Results.Ok(await service.DemandAsync(community, access.Community.Mode, access.Identity.TelegramUserId, ct));
     }
 
@@ -27,7 +27,7 @@ internal static class CatalogEndpoints
         TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver, GameCatalogService service, CancellationToken ct)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, ct);
-        if (access == null) return Results.Forbid();
+        if (access == null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         try { return Results.Ok(await service.DemandGameAsync(community, access.Community.Mode, access.Identity.TelegramUserId, bggId, ct)); }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
@@ -41,7 +41,7 @@ internal static class CatalogEndpoints
         GameCatalogService service, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var countMode = playerCountMode switch
         {
             null or "supported" => CatalogPlayerCountMode.Supported,
@@ -75,7 +75,7 @@ internal static class CatalogEndpoints
         GameCatalogService service, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         try { return Results.Ok(await service.DetailsAsync(community, access.Community.Mode,
             access.Identity.TelegramUserId, bggId, cancellationToken, attendanceDate)); }
         catch (GameNotInCollectionException exception)

@@ -30,8 +30,11 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
 {
     private sealed record Context(Camp Camp, CampRegistration Me, CampRegistration[] Registrations,
         GameWish[] Wishes, ParticipantCollectionItem[] Owned, CampGameContribution[] Contributions,
-        CampBringRequest[] Requests, Dictionary<long, int> Gatherings, ClubCollectionGame[] BaseGames)
+        CampBringRequest[] Requests, Dictionary<long, int> Gatherings, ClubCollectionGame[] BaseGames,
+        Dictionary<long, CampParticipantVisibility> Visibility)
     {
+        public bool ShareCollection(long participantId) => Visibility.GetValueOrDefault(participantId)?.ShareCollection != false;
+        public bool ShareWishes(long participantId) => Visibility.GetValueOrDefault(participantId)?.ShareWishes != false;
         public bool CanAct(DateTimeOffset now) => Camp.Status == CampStatus.Active && Camp.EndsAtUtc > now;
         public CampWishPerson Person(CampRegistration r) => new(r.Participant.PublicId,
             r.DisplayName ?? r.Participant.PreferredDisplayName ?? r.Participant.DisplayName,
@@ -48,7 +51,10 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         var me = registrations.SingleOrDefault(x => x.ParticipantId == actor)
             ?? throw new UnauthorizedAccessException("Сначала завершите регистрацию на этот кэмп.");
         var ids = registrations.Select(x => x.ParticipantId).ToArray();
-        var visibleIds = registrations.Where(x => x.ShareCollection || x.ParticipantId == actor).Select(x => x.ParticipantId).ToArray();
+        var visibility = await db.CampParticipantVisibilities.AsNoTracking().Where(x => x.CampId == camp.Id)
+            .ToDictionaryAsync(x => x.ParticipantId, ct);
+        var visibleIds = registrations.Where(x => visibility.GetValueOrDefault(x.ParticipantId)?.ShareCollection != false || x.ParticipantId == actor)
+            .Select(x => x.ParticipantId).ToArray();
         var wishes = await db.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key && ids.Contains(x.ParticipantId)).ToArrayAsync(ct);
         var owned = await db.ParticipantCollectionItems.AsNoTracking().Where(x => visibleIds.Contains(x.ParticipantId) && x.ItemType == CollectionItemType.BaseGame).ToArrayAsync(ct);
         var offered = await db.CampGameContributions.AsNoTracking().Where(x => x.CampId == camp.Id && ids.Contains(x.ParticipantId) && x.ItemType == CollectionItemType.BaseGame).ToArrayAsync(ct);
@@ -61,7 +67,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         var gatherings = snapshots.Select(x => GatheringGameSnapshotSerializer.Deserialize(x).BggId).OfType<long>()
             .GroupBy(x => x).ToDictionary(x => x.Key, x => x.Count());
         var baseGames = (await new SharedCollectionReader(db).ForCampAsync(camp, ct)).Games.ToArray();
-        return new(camp, me, registrations, wishes, owned, offered, requests, gatherings, baseGames);
+        return new(camp, me, registrations, wishes, owned, offered, requests, gatherings, baseGames, visibility);
     }
 
     private static CampWishGame Project(Context c, long id)
@@ -94,7 +100,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
     public async Task<CampProfileSettings> SettingsAsync(string key, long actor, CancellationToken ct)
     {
         var c = await LoadAsync(key, actor, ct);
-        return new(c.CanAct(clock.GetUtcNow()), c.Me.ShareCollection, c.Me.ShareWishes, c.Person(c.Me).Dates,
+        return new(c.CanAct(clock.GetUtcNow()), c.ShareCollection(actor), c.ShareWishes(actor), c.Person(c.Me).Dates,
             c.Requests.Where(x => x.OwnerParticipantId == actor && x.Declined).Select(x => x.BggId).ToArray(),
             c.Wishes.Select(x => x.BggId).Distinct().Select(id => Project(c, id))
                 .Where(x => x.IsOwned && x.OtherInterested > 0 && x.MyStatus != "declined")
@@ -115,7 +121,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         var result = items.ToArray();
         var page = Math.Max(1, query.Page);
         return new(result.Skip((page - 1) * 20).Take(20).ToArray(), result.Length, suggestions, page * 20 < result.Length,
-            c.CanAct(clock.GetUtcNow()), c.Me.ShareCollection, c.Me.ShareWishes, c.Person(c.Me).Dates, clock.GetUtcNow());
+            c.CanAct(clock.GetUtcNow()), c.ShareCollection(actor), c.ShareWishes(actor), c.Person(c.Me).Dates, clock.GetUtcNow());
     }
 
     public static IEnumerable<CampWishGame> Filter(IEnumerable<CampWishGame> items, CampWishQuery q)
@@ -135,7 +141,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         if (!c.Wishes.Any(x => x.BggId == id) && !c.Owned.Any(x => x.BggId == id) && !c.Contributions.Any(x => x.BggId == id) && !c.BaseGames.Any(x => x.BggId == id) && !c.Requests.Any(x => x.BggId == id))
             throw new KeyNotFoundException("Игра недоступна в этом кэмпе.");
         var interestedIds = c.Wishes.Where(x => x.BggId == id).Select(x => x.ParticipantId).ToHashSet();
-        var interested = c.Registrations.Where(x => interestedIds.Contains(x.ParticipantId) && (x.ShareWishes || x.ParticipantId == actor)).Select(c.Person).ToArray();
+        var interested = c.Registrations.Where(x => interestedIds.Contains(x.ParticipantId) && (c.ShareWishes(x.ParticipantId) || x.ParticipantId == actor)).Select(c.Person).ToArray();
         var owners = c.Owned.Where(x => x.BggId == id).Select(x => x.ParticipantId)
             .Concat(c.Contributions.Where(x => x.BggId == id).Select(x => x.ParticipantId)).Distinct().Select(owner => {
                 var registration = c.Registrations.Single(x => x.ParticipantId == owner);
@@ -177,7 +183,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         var target = person == null ? c.Me : c.Registrations.SingleOrDefault(x => x.Participant.PublicId == person)
             ?? throw new KeyNotFoundException("Участник не найден в этом кэмпе.");
         var self = actor == target.ParticipantId;
-        var ids = tab == "wishes" ? c.Wishes.Where(x => x.ParticipantId == target.ParticipantId && (self || target.ShareWishes)).Select(x => x.BggId)
+        var ids = tab == "wishes" ? c.Wishes.Where(x => x.ParticipantId == target.ParticipantId && (self || c.ShareWishes(target.ParticipantId))).Select(x => x.BggId)
             : c.Contributions.Where(x => x.ParticipantId == target.ParticipantId).Select(x => x.BggId)
                 .Concat(c.Owned.Where(x => x.ParticipantId == target.ParticipantId).Select(x => x.BggId));
         var games = Filter(ids.Distinct().Select(id => {
@@ -187,7 +193,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
             var summary = contribution == null ? "Есть в коллекции — можно попросить" : contribution.Commitment == CampBringCommitment.Bringing ? "Точно привезёт" : "Может привезти — пока без подтверждения";
             return item with { BoxSummary = summary + (contribution == null ? "" : " · " + string.Join(", ", EffectiveDates(contribution, target).Select(d => d.ToString("dd.MM")))) };
         }), new(Search: search, Sort: "name")).ToArray();
-        return new { Person = c.Person(target), IsMe = self, WishesVisible = self || target.ShareWishes,
+        return new { Person = c.Person(target), IsMe = self, WishesVisible = self || c.ShareWishes(target.ParticipantId),
             Items = games.Skip((Math.Max(1, page) - 1) * 20).Take(20), Total = games.Length, HasMore = Math.Max(1, page) * 20 < games.Length };
     }
 
@@ -227,9 +233,14 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         CampParticipationPolicy.EnsureAcceptsMutations(c.Camp, community.TimeZoneId, clock.GetUtcNow());
         if (action == "privacy")
         {
-            var registration = await db.CampRegistrations.SingleAsync(x => x.Id == c.Me.Id, ct);
-            if (shareCollection.HasValue) registration.ShareCollection = shareCollection.Value;
-            if (shareWishes.HasValue) registration.ShareWishes = shareWishes.Value;
+            var visibility = await db.CampParticipantVisibilities.SingleOrDefaultAsync(x => x.CampId == campId && x.ParticipantId == actor, ct);
+            if (visibility == null)
+            {
+                visibility = new() { CampId = campId, ParticipantId = actor };
+                db.CampParticipantVisibilities.Add(visibility);
+            }
+            if (shareCollection.HasValue) visibility.ShareCollection = shareCollection.Value;
+            if (shareWishes.HasValue) visibility.ShareWishes = shareWishes.Value;
         }
         else if (action is "offer" or "confirm" or "decline" or "withdraw")
         {

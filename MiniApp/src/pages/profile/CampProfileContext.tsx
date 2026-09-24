@@ -21,16 +21,16 @@ export function CampPrivacy({ community }: { community: Community }) {
   const state = useCampProfile();
   const action = useCampWishlistAction(community.key);
   const data = state?.data;
-  return <section className="camp-privacy" id="camp-privacy" aria-label="Видимость для участников кэмпа">
-    <h2>Видимость для участников кэмпа</h2><p className="muted">Только для участников «{community.name}».</p>
+  return <section className="camp-privacy" id="camp-privacy" aria-label="Видимость в этом кэмпе">
+    <h2>Видимость в этом кэмпе</h2><p className="muted">Только для участников «{community.name}».</p>
     {!data && state?.loading && <Loading />}
     {state?.error && <ErrorState message={state.error} retry={state.reload} />}
     {data && <>{([
-      ["shareCollection", "Показывать всю мою коллекцию"],
-      ["shareWishes", "Показывать мои хотелки с именем"]
-    ] as const).map(([field, label]) => <label className="check" key={field}><input type="checkbox" checked={data[field]} disabled={!data.canAct || action.busy || state?.loading} onChange={async event => {
-      if (await action.act({ action: "privacy", [field]: event.target.checked })) state?.reload();
-    }} />{label}</label>)}<details><summary>Что видят участники</summary><p className="muted">Предложенные игры уже видны. Остальная коллекция — с вашего разрешения; скрытые хотелки учитываются без имени. Эта настройка не скрывает имя в сборах и списке участников.</p></details></>}
+      ["shareCollection", "Скрыть мою коллекцию"],
+      ["shareWishes", "Скрыть авторство моих хотелок"]
+    ] as const).map(([field, label]) => <label className="check" key={field}><input type="checkbox" checked={!data[field]} disabled={!data.canAct || action.busy || state?.loading} onChange={async event => {
+      if (await action.act({ action: "privacy", [field]: !event.target.checked })) state?.reload();
+    }} />{label}</label>)}<p className="muted">Предложенные и обещанные коробки остаются видимыми. Скрытые хотелки учитываются без имени и не показываются в вашем профиле. Имя в сборах и списке участников остаётся видимым.</p></>}
     {action.busy && <p role="status">Сохраняем…</p>}{action.error && <Notice kind="danger">{action.error}</Notice>}
   </section>;
 }

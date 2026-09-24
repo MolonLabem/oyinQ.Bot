@@ -83,7 +83,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         {
             var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == key, ct);
             var registrations = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
-                .Where(x => x.CampId == camp.Id && x.ShareCollection).ToArrayAsync(ct);
+                .Where(x => x.CampId == camp.Id && !dbContext.CampParticipantVisibilities.Any(v => v.CampId == camp.Id
+                    && v.ParticipantId == x.ParticipantId && !v.ShareCollection)).ToArrayAsync(ct);
             var ids = registrations.Where(x => CampParticipationPolicy.IsRegistrationComplete(x, camp)).Select(x => x.ParticipantId).ToArray();
             var visible = await dbContext.ParticipantCollectionItems.AsNoTracking().Where(x => x.BggId == bggId && x.ItemType == CollectionItemType.BaseGame
                 && (x.Participant.TelegramUserId == telegramUserId || ids.Contains(x.ParticipantId))).OrderBy(x => x.ParticipantId).FirstOrDefaultAsync(ct);

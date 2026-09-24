@@ -70,6 +70,8 @@ internal static class CampEndpoints
             .SingleOrDefaultAsync(cancellationToken);
         var participantDisplayName = CampParticipantPresentation.RegistrationDisplayName(registration?.DisplayName,
             storedParticipantDisplayName, access.Identity.DisplayName);
+        var visibility = await dbContext.CampParticipantVisibilities.AsNoTracking().SingleOrDefaultAsync(x => x.CampId == camp.Id
+            && dbContext.Participants.Any(p => p.Id == x.ParticipantId && p.TelegramUserId == access.Identity.TelegramUserId), cancellationToken);
         var availableDates = camp.StartDate is { } start && camp.EndDate is { } end
             ? Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Select(start.AddDays).ToArray() : [];
         var selectedDates = registration?.Row.SelectedDays.Select(x => x.Date).Order().ToArray() ?? [];
@@ -78,6 +80,7 @@ internal static class CampEndpoints
                 ? availableDates : [];
         var baseGameIds = (await new SharedCollectionReader(dbContext).ForCampAsync(camp, cancellationToken)).Games.Select(x => x.BggId).Order().ToArray();
         return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate, camp.StartsAtUtc, camp.EndsAtUtc,
+            ShareCollection = visibility?.ShareCollection != false, ShareWishes = visibility?.ShareWishes != false,
             DateLabels = CampOperatingWindow.AttendanceLabels(camp),
             AvailableDates = availableDates, BaseGameIds = baseGameIds, DisplayName = participantDisplayName,
             Registration = registration is null ? null : new

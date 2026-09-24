@@ -2,8 +2,6 @@ namespace oyinQ.Bot.Data.Entities;
 
 public sealed class CampRegistration
 {
-    public bool ShareCollection { get; set; }
-    public bool ShareWishes { get; set; }
     public long Id { get; set; }
     public long CampId { get; set; }
     public long ParticipantId { get; set; }

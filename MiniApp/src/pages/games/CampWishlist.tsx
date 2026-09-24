@@ -63,7 +63,6 @@ function CampWishBrowser(props: Props) {
       {result && <>{!result.items.length ? <Empty>Таких игр пока нет. Добавьте хотелку или измените фильтры.</Empty> : <div className="stack">{result.items.map(item => <WishCard key={item.game.bggId} item={item} open={section => openGame(item.game.bggId, section)} />)}</div>}
         <details className="wish-help"><summary>Как это работает</summary><p>Хотелки относятся к текущему кэмпу. Отмечайте игры, предлагайте коробки и собирайте партии. Хотелка не записывает вас на сбор.</p></details>
         <Paging page={selection.page} hasMore={result.hasMore} change={page => change({ page })} />
-        {!props.personal && selection.mode === "mine" && <p className="muted">{result.shareWishes ? "Ваши хотелки видны с именем." : "Ваши хотелки учитываются без имени."} <a data-profile-nav href={`?community=${encodeURIComponent(props.community.key)}&tab=profile&profileTab=wishes#camp-privacy`}>Изменить</a></p>}
       </>}
     </div>
     {frames.map((frame, i) => <div key={`${i}:${frame.type}:${frame.id}`} hidden={i !== frames.length - 1}><BackButton onClick={back} />

@@ -108,7 +108,9 @@ public sealed class CampWishlistNotifications(AppDbContext db, TimeProvider cloc
         var name = owner!.DisplayName ?? owner.Participant.PreferredDisplayName ?? owner.Participant.DisplayName;
         if (row.Kind == NotificationKind.CampBringRequested)
         {
-            if (request == null || request.Declined || !request.Requesters.Any(x => x.Active) || (contribution == null && !owner.ShareCollection)) return false;
+            if (request == null || request.Declined || !request.Requesters.Any(x => x.Active)) return false;
+            if (contribution == null && await db.CampParticipantVisibilities.AnyAsync(x => x.CampId == camp.Id
+                && x.ParticipantId == owner.ParticipantId && !x.ShareCollection, ct)) return false;
             var activeIds = request.Requesters.Where(x => x.Active).Select(x => x.ParticipantId).ToArray();
             var current = await db.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays).Where(x => x.CampId == camp.Id && activeIds.Contains(x.ParticipantId)).ToArrayAsync(ct);
             var valid = current.Where(x => CampParticipationPolicy.IsRegistrationComplete(x, camp) && request.Requesters.Any(r => r.ParticipantId == x.ParticipantId && r.Active && r.Dates.Any(d => x.SelectedDays.Any(s => s.Date == d) && owner.SelectedDays.Any(s => s.Date == d)))).ToArray();

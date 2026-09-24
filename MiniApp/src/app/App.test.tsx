@@ -60,7 +60,9 @@ it("opens own box management in the unified profile and returns to the same wish
   expect(link.textContent).toBe("Управлять коробкой в профиле");
   await act(async () => link.click());
   expect(link.closest("[hidden]")).not.toBeNull();
-  expect(host.querySelector(".camp-privacy")).not.toBeNull();
+  expect(host.querySelector(".camp-privacy")).toBeNull();
+  expect(host.querySelector(".profile-collection")?.closest("[hidden]")).toBeNull();
+  expect(host.querySelector(".profile-collection")).not.toBeNull();
   const back = [...host.querySelectorAll<HTMLButtonElement>(".page-back")].find(x => !x.closest("[hidden]"))!;
   await act(async () => back.click());
   expect(link.isConnected).toBe(true); expect(link.closest("[hidden]")).toBeNull();

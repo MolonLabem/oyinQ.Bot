@@ -32,7 +32,7 @@ internal static class CampWishlistEndpoints
         AppDbContext db, CampWishlistService service, CancellationToken ct)
     {
         var actor = await Authorize(request, community, auth, resolver, db, ct);
-        if (actor == null) return Results.Forbid();
+        if (actor == null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         try
         {
             if (view == "settings") return Results.Ok(await service.SettingsAsync(community, actor.Value, ct));
@@ -51,7 +51,7 @@ internal static class CampWishlistEndpoints
         TelegramMiniAppAuthenticator auth, CommunityContextResolver resolver, AppDbContext db, CampWishlistService service, CancellationToken ct)
     {
         var actor = await Authorize(request, community, auth, resolver, db, ct);
-        if (actor == null) return Results.Forbid();
+        if (actor == null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         try { await service.ActAsync(community, actor.Value, body.BggId, body.Action, body.Owner, body.Dates,
             body.ShareCollection, body.ShareWishes, ct); return Results.Ok(new { Saved = true }); }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
