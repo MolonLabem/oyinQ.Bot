@@ -1,3 +1,4 @@
+import { useBackButton, BackButtonScope } from "../../hooks/useBackButton";
 import { CampPrivacy, CampProfileProvider } from "./CampProfileContext";
 import { WishlistPanel } from "../../components/Wishlist";
 import { PlayedHistory } from "./PlayedHistory";
@@ -23,7 +24,7 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   const profile = useAsync(() => api<Profile>("/profile"), [community?.key]);
   const schedule = useAsync(() => profile.data ? api<ProfileGathering[]>("/profile/gatherings", { cache: "no-store" }) : Promise.resolve([]), [community?.key, Boolean(profile.data)]);
   const [tab, setTab] = useState(() => initialTab ?? new URLSearchParams(location.search).get("profileTab") ?? sessionStorage.getItem(`oyinq-profile-tab:${community?.key ?? "global"}`) ?? "collection");
-  useEffect(() => telegram.back(Boolean(back), () => back?.()), [back]);
+  useBackButton(Boolean(back), () => back?.());
   const [showChangelog, setShowChangelog] = useState(false);
   useEffect(() => { sessionStorage.setItem(`oyinq-profile-tab:${community?.key ?? "global"}`, tab); }, [tab, community?.key]);
   useEffect(() => { if (editRequest > 0) { setTab("settings"); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
@@ -43,15 +44,15 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
     finally { setBusy(false); }
   }
 
-  if (showChangelog) return <ChangelogPage back={() => setShowChangelog(false)} />;
+  if (showChangelog) return <BackButtonScope><ChangelogPage back={() => setShowChangelog(false)} /></BackButtonScope>;
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
   if (profile.error) return <Page title="Профиль"><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
-  return <Page title="Профиль">
+  return <BackButtonScope><Page title="Профиль">
     {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
     <ProfileTabs active={tab} select={setTab} />
-    <div hidden={tab !== "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => setTab("settings")} /></div>
+    <div hidden={tab !== "collection"}><BackButtonScope active={tab === "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => setTab("settings")} /></BackButtonScope></div>
     {tab === "wishes" && (community ? community.mode === "Camp" ? <CampPersonalWishes key={community.key} community={community} bggAvailable={bggAvailable} openGathering={id => openGathering(community.key, id)} /> : <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <Empty>Выберите сообщество, чтобы посмотреть свои хотелки. <a href="?tab=communities">Выбрать сообщество</a></Empty>)}
     {tab === "settings" && <>
     {community?.mode === "Camp" && <CampPrivacy community={community} />}
@@ -76,7 +77,7 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
     </section>}
     <button className="ghost" onClick={() => setShowChangelog(true)}>Что нового?</button>
     <ProductFooter />
-  </Page>;
+  </Page></BackButtonScope>;
 }
 
 export function ProfileTabs({ active, select }: { active: string; select: (tab: string) => void }) {

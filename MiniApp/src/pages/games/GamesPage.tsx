@@ -1,3 +1,4 @@
+import { useBackButton } from "../../hooks/useBackButton";
 import { CommunityDemand } from "./CommunityDemand";
 import { CampWishlist } from "./CampWishlist";
 import { GameGatherings } from "./GameGatherings";
@@ -9,7 +10,7 @@ import { ApiError, api } from "../../api/client";
 import type { CatalogResponse, Community, GameDetails, GameListItem } from "../../api/types";
 import { BackButton, Badge, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page, Tabs } from "../../components/Ui";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
-import { successEventName, telegram } from "../../telegram/webApp";
+import { successEventName } from "../../telegram/webApp";
 import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, gameCount, normalizeFilters, restoreFilters, type FilterOptions } from "../../app/catalogFilters";
 import { CatalogFilters } from "./CatalogFilters";
 import { collectionMissingMessage } from "../../app/collectionNavigation";
@@ -102,7 +103,7 @@ function GameCard({ game, open }: { game: GameListItem; open: () => void }) {
 
 function GameDetail({ community, bggId, attendanceDate, back, createGathering, openGathering, openCampWishlist, openPerson }: { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggId: number; attendanceDate?: string; back: () => void; openCampWishlist?: () => void; openPerson?: (id: string) => void }) {
   const state = useAsync(() => api<GameDetails>(`/catalog/${bggId}?community=${encodeURIComponent(community.key)}${attendanceDate ? `&attendanceDate=${encodeURIComponent(attendanceDate)}` : ""}`), [community.key, bggId, attendanceDate]);
-  useEffect(() => telegram.back(true, back), [back]);
+  useBackButton(true, back);
   if (state.loading) return <Page title="Игра"><Loading /></Page>;
   if (state.failure instanceof ApiError && state.failure.code === "game_not_in_collection") return <Page title="Игра" subtitle={community.name} actions={<BackButton onClick={back} />}><Notice kind="warning">{collectionMissingMessage(community)}</Notice></Page>;
   if (state.error || !state.data) return <Page title="Игра" actions={<BackButton onClick={back} />}><ErrorState message={state.error ?? "Игра не найдена"} retry={state.reload} /></Page>;

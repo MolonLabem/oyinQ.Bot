@@ -1,20 +1,23 @@
+import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import { useCampWishlistAction } from "../../hooks/useCampWishlistAction";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
-import type { ClubGame, Community } from "../../api/types";
+import type { ClubGame, Community, Contribution } from "../../api/types";
 import { BackButton, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Tabs } from "../../components/Ui";
 import { WishButton } from "../../components/Wishlist";
 import { GamePicker } from "../../components/GamePicker";
 import { ComplexityBadge } from "../../components/ComplexityBadge";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { useMobileDialog } from "../../hooks/useMobileDialog";
-import { successEventName, telegram } from "../../telegram/webApp";
+import { successEventName } from "../../telegram/webApp";
 import { GameGatherings } from "./GameGatherings";
+import { CampBoxControl } from "../../components/CampBoxControl";
+import { useListAnchor } from "../../hooks/useListAnchor";
 
 type Person = { id: string; name: string; dates: string[] };
 type Owner = { person: Person; status: string; dates: string[]; requestState: string; isMe: boolean };
-export type WishGame = { game: ClubGame; interestedParticipants: number; otherInterested: number; isWished: boolean; isOwned: boolean; confirmed: boolean; boxSummary: string; scheduledGatherings: number; myStatus?: string };
+export type WishGame = { game: ClubGame; interestedParticipants: number; otherInterested: number; isWished: boolean; isOwned: boolean; confirmed: boolean; boxSummary: string; scheduledGatherings: number; myStatus?: string; myAllAttendanceDays?: boolean; myAvailableDates?: string[] };
 type ListResult = { items: WishGame[]; total: number; suggestions: number; hasMore: boolean; canAct: boolean; shareCollection: boolean; shareWishes: boolean; myDates: string[]; updatedAt: string };
 type Outgoing = { bggId: number; name: string; owner: Person; dates: string[]; state: string; canCancel: boolean };
 type Detail = { item: WishGame; interested: Person[]; anonymousCount: number; owners: Owner[]; canAct: boolean; myDates: string[]; requests: Outgoing[]; askedMe?: Person[] };
@@ -27,8 +30,8 @@ function normalizeSelection(value: Selection): Selection { return { ...value, ow
 const filterLabels = { needsBox: "Нужна коробка", withoutGathering: "Без сбора", owned: "Есть у меня", showDeclined: "Включая те, что не беру" } as const;
 const days = (dates: string[]) => dates.map(d => new Date(`${d}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" })).join(", ");
 const endpoint = (key: string, params = "") => `/camp-wishlist?community=${encodeURIComponent(key)}${params}`;
-export function CampWishlist(props: Props) { return <CampWishBrowser {...props} />; }
-export function CampPersonalWishes(props: Props) { return <CampWishBrowser {...props} personal />; }
+export function CampWishlist(props: Props) { return <CampWishBrowser key={props.community.key} {...props} />; }
+export function CampPersonalWishes(props: Props) { return <CampWishBrowser key={props.community.key} {...props} personal />; }
 function CampWishBrowser(props: Props) {
   const key = `oyinq-camp-wishlist:${props.community.key}${props.personal ? ":personal" : ""}`;
   const [selection, setSelection] = useState(() => normalizeSelection({ ...restore(key), ...(props.personal ? { mode: "mine" } : {}) }));
@@ -39,12 +42,13 @@ function CampWishBrowser(props: Props) {
   const params = new URLSearchParams(Object.entries({ ...selection, search }).map(([k, v]) => [k, String(v)])).toString();
   const state = useAsync(async () => ({ params, communityKey: props.community.key, result: await api<ListResult>(endpoint(props.community.key, `&${params}`)) }), [props.community.key, params]);
   const result = state.data?.params === params && state.data.communityKey === props.community.key ? state.data.result : undefined;
+  const anchor = useListAnchor(result);
   useRefresh(state.reload);
   useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(selection)); } catch { /* Optional storage. */ } }, [selection, key]);
   useEffect(() => { if (restoreScroll.current !== undefined) { window.scrollTo(0, restoreScroll.current); restoreScroll.current = undefined; } }, [frames]);
   function push(type: Frame["type"], id?: string, section?: string) { if (!frames.length) rootScroll.current = window.scrollY; restoreScroll.current = 0; setFrames(current => [...current.map((f, i) => i === current.length - 1 ? { ...f, scroll: window.scrollY } : f), { type, id, scroll: 0, section }]); }
   function back() { if (frames.length === 1 && (props.initialGameId || props.initialPersonId !== undefined) && props.back) { props.back(); return; } restoreScroll.current = frames.length > 1 ? frames[frames.length - 2].scroll : rootScroll.current; setFrames(frames.slice(0, -1)); state.reload(); window.dispatchEvent(new Event(successEventName)); }
-  useEffect(() => telegram.back(frames.length > 0, back), [frames]);
+  useBackButton(frames.length > 0, back);
   const change = (patch: Partial<Selection>) => setSelection(s => normalizeSelection({ ...s, ...patch, page: patch.page ?? 1 }));
   const openGame = (id: number, section?: string) => push("game", String(id), section);
   return <section className="camp-wishlist">
@@ -60,7 +64,8 @@ function CampWishBrowser(props: Props) {
       {selection.mode === "mine" && <OutgoingRequests communityKey={props.community.key} open={openGame} openProfile={id => push("profile", id)} canAct={result?.canAct ?? false} />}
       {!result && state.loading && <Loading />}
       {state.error && <ErrorState message={state.error} retry={state.reload} />}
-      {result && <>{!result.items.length ? <Empty>Таких игр пока нет. Добавьте хотелку или измените фильтры.</Empty> : <div className="stack">{result.items.map(item => <WishCard key={item.game.bggId} item={item} open={section => openGame(item.game.bggId, section)} />)}</div>}
+      {result && <><div className="stack" ref={anchor.list}>{!result.items.length ? <Empty>Таких игр пока нет. Добавьте хотелку или измените фильтры.</Empty> : result.items.map(item => <WishCard key={item.game.bggId} communityKey={props.community.key} canAct={result.canAct} changed={state.reload} beforeChange={() => anchor.capture(String(item.game.bggId))} item={item} open={section => openGame(item.game.bggId, section)} />)}</div>
+        {anchor.notice && <p role="status">{anchor.notice}</p>}
         <details className="wish-help"><summary>Как это работает</summary><p>Хотелки относятся к текущему кэмпу. Отмечайте игры, предлагайте коробки и собирайте партии. Хотелка не записывает вас на сбор.</p></details>
         <Paging page={selection.page} hasMore={result.hasMore} change={page => change({ page })} />
       </>}
@@ -74,12 +79,17 @@ function CampWishBrowser(props: Props) {
 }
 
 function Paging({ page, hasMore, change }: { page: number; hasMore: boolean; change: (page: number) => void }) { return page > 1 || hasMore ? <div className="row"><button disabled={page <= 1} onClick={() => change(page - 1)}>Назад</button><span>Страница {page}</span><button disabled={!hasMore} onClick={() => change(page + 1)}>Дальше</button></div> : null; }
-function WishCard({ item, open }: { item: WishGame; open: (section?: string) => void }) {
-  return <Card className="wish-card"><button className="wish-game-heading" onClick={() => open()}><Cover name={item.game.name} src={item.game.thumbnailImageUrl} /><span><strong>{item.game.name}</strong><ComplexityBadge info={item.game.complexityInfo} />{item.isOwned && <small>Есть у вас</small>}</span></button>
+function WishCard({ item, open, ...box }: { item: WishGame; open: (section?: string) => void; communityKey: string; canAct: boolean; changed: () => Promise<boolean>; beforeChange?: () => (() => void) | undefined }) {
+  return <div data-box-game={item.game.bggId}><Card className="wish-card"><button className="wish-game-heading" onClick={() => open()}><Cover name={item.game.name} src={item.game.thumbnailImageUrl} /><span><strong>{item.game.name}</strong><ComplexityBadge info={item.game.complexityInfo} />{item.isOwned && <small>Есть у вас</small>}</span></button>
     <button className="person-link" onClick={() => open("interested")}>Хотят сыграть: {item.interestedParticipants}{item.isWished ? " · Вы тоже" : ""}</button><p>{item.boxSummary}</p><p>{item.scheduledGatherings ? `Предстоящих сборов: ${item.scheduledGatherings}` : "Сборов пока нет"}</p>
-    {item.myStatus === "declined" && <p>Вы не берёте эту игру</p>}
-    <button onClick={() => open(item.isOwned ? "box" : item.scheduledGatherings ? "gatherings" : item.confirmed ? "create" : "owners")}>{item.isOwned ? item.myStatus ? "Изменить решение" : "Предложить свою игру" : item.scheduledGatherings ? "Посмотреть сборы" : item.confirmed ? "Организовать сбор" : "Попросить привезти"}</button>
-  </Card>;
+    {item.isOwned ? <WishBoxControl item={item} {...box} /> : <button onClick={() => open(item.scheduledGatherings ? "gatherings" : item.confirmed ? "create" : "owners")}>{item.scheduledGatherings ? "Посмотреть сборы" : item.confirmed ? "Организовать сбор" : "Попросить привезти"}</button>}
+  </Card></div>;
+}
+
+function WishBoxControl({ item, canAct, ...props }: { item: WishGame; canAct: boolean; communityKey: string; changed: () => Promise<boolean>; beforeChange?: () => (() => void) | undefined }) {
+  const contribution: Pick<Contribution, "commitment" | "allAttendanceDays" | "availableDates"> | undefined = item.myStatus === "Available" || item.myStatus === "Bringing"
+    ? { commitment: item.myStatus, allAttendanceDays: item.myAllAttendanceDays, availableDates: item.myAvailableDates } : undefined;
+  return <CampBoxControl {...props} item={{ bggId: item.game.bggId, itemType: "BaseGame", snapshot: item.game }} contribution={contribution} declined={item.myStatus === "declined"} disabled={!canAct} />;
 }
 
 function AddWish({ community, bggAvailable, close }: Props & { close: () => void }) {
@@ -103,7 +113,7 @@ function WishDetail({ community, id, create, openGathering, openProfile, section
     {data.canAct && <WishButton communityKey={community.key} bggId={id} initial={item.isWished} changed={state.reload} />}
     {!!data.askedMe?.length && <section><h3>Вас попросили привезти · {data.askedMe.length}</h3><PeopleRequests people={data.askedMe} open={openProfile} /></section>}
     {!item.isOwned && !!data.askedMe?.length && <Notice>Игры больше нет в вашей коллекции. Отказ доступен во входящих просьбах профиля; для подтверждения сначала добавьте игру.</Notice>}
-    {(item.isOwned || !!data.askedMe?.length) && <section data-wish-section="box"><a data-profile-nav className="button primary-link" href={`?community=${encodeURIComponent(community.key)}&tab=profile&profileTab=collection&box=${id}`}>Управлять коробкой в профиле</a></section>}
+    {(item.isOwned || !!data.askedMe?.length) && <section data-wish-section="box">{item.isOwned && <WishBoxControl item={item} canAct={data.canAct} communityKey={community.key} changed={state.reload} />}<a data-profile-nav href={`?community=${encodeURIComponent(community.key)}&tab=profile&profileTab=collection&box=${id}`}>Другие дни и коллекция в профиле</a></section>}
     {!data.canAct && <Notice>Кэмп завершён или закрыт для изменений.</Notice>}
     {data.requests?.length > 0 && <section><h3>Ваши просьбы</h3>{data.requests.map(r => <RequestResult key={r.owner.id} communityKey={community.key} request={r} canAct={data.canAct} changed={state.reload} openProfile={openProfile} />)}</section>}
     <section data-wish-section="interested"><h3>Кто хочет сыграть · {item.interestedParticipants}</h3>{data.interested.slice(0, limit).map(p => <button className="person-link" key={p.id} onClick={() => openProfile(p.id)}>{p.name}</button>)}{data.anonymousCount > 0 && <p className="muted">Ещё {data.anonymousCount} без показа имени.</p>}{data.interested.length > limit && <button onClick={() => setLimit(limit + 12)}>Показать ещё</button>}</section>
@@ -152,8 +162,9 @@ function OutgoingRequests({ communityKey, open, openProfile, canAct }: { communi
 function CampPerson({ communityKey, person, open }: { communityKey: string; person: string; open: (id: number, section?: string) => void }) {
   const [tab, setTab] = useState("games"); const [search, setSearch] = useState(""); const [page, setPage] = useState(1); const query = useDebouncedValue(search, 300);
   const params = `&view=profile${person ? `&person=${encodeURIComponent(person)}` : ""}&mode=${tab}&search=${encodeURIComponent(query)}&page=${page}`;
-  const state = useAsync(async () => ({ params, data: await api<{ person: Person; isMe: boolean; wishesVisible: boolean; items: WishGame[]; total: number; hasMore: boolean }>(endpoint(communityKey, params)) }), [communityKey, params]); useRefresh(state.reload); const data = state.data?.params === params ? state.data.data : undefined;
-  return <div className="stack"><h2>{data?.person.name ?? "Участник кэмпа"}</h2>{data?.isMe && <a data-profile-nav href={`?community=${encodeURIComponent(communityKey)}&tab=profile&profileTab=collection`}>Управлять моими играми в профиле</a>}{data && <p>Дни участия: {days(data.person.dates)}</p>}<Tabs label="Профиль участника" active={tab} onChange={v => { setTab(v); setPage(1); }} items={[{ id: "games", label: "Игры" }, { id: "wishes", label: "Хотелки" }]} /><Field label="Поиск игры"><input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></Field>{state.error && <ErrorState message={state.error} retry={state.reload} />}{!data && state.loading && <Loading />}{data && <>{tab === "wishes" && !data.wishesVisible && <Notice>Участник пока не открыл свои хотелки для просмотра.</Notice>}<p>Найдено игр: {data.total}</p>{data.items.map(item => <WishCard key={item.game.bggId} item={item} open={section => open(item.game.bggId, section)} />)}{!data.items.length && <Empty>Нет игр для показа.</Empty>}<Paging page={page} hasMore={data.hasMore} change={setPage} /></>}</div>;
+  const state = useAsync(async () => ({ params, data: await api<{ person: Person; isMe: boolean; canAct: boolean; wishesVisible: boolean; items: WishGame[]; total: number; hasMore: boolean }>(endpoint(communityKey, params)) }), [communityKey, params]); useRefresh(state.reload); const data = state.data?.params === params ? state.data.data : undefined;
+  const anchor = useListAnchor(data);
+  return <div className="stack" ref={anchor.list}><h2>{data?.person.name ?? "Участник кэмпа"}</h2>{data?.isMe && <a data-profile-nav href={`?community=${encodeURIComponent(communityKey)}&tab=profile&profileTab=collection`}>Управлять моими играми в профиле</a>}{data && <p>Дни участия: {days(data.person.dates)}</p>}<Tabs label="Профиль участника" active={tab} onChange={v => { setTab(v); setPage(1); }} items={[{ id: "games", label: "Игры" }, { id: "wishes", label: "Хотелки" }]} /><Field label="Поиск игры"><input type="search" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></Field>{state.error && <ErrorState message={state.error} retry={state.reload} />}{!data && state.loading && <Loading />}{data && <>{tab === "wishes" && !data.wishesVisible && <Notice>Участник пока не открыл свои хотелки для просмотра.</Notice>}<p>Найдено игр: {data.total}</p>{data.items.map(item => <WishCard key={item.game.bggId} item={item} communityKey={communityKey} canAct={data.canAct} changed={state.reload} beforeChange={() => anchor.capture(String(item.game.bggId))} open={section => open(item.game.bggId, section)} />)}{anchor.notice && <p role="status">{anchor.notice}</p>}{!data.items.length && <Empty>Нет игр для показа.</Empty>}<Paging page={page} hasMore={data.hasMore} change={setPage} /></>}</div>;
 }
 function CampPeople({ communityKey, open }: { communityKey: string; open: (id: string) => void }) {
   const [search, setSearch] = useState(""); const [page, setPage] = useState(1); const query = useDebouncedValue(search, 300);

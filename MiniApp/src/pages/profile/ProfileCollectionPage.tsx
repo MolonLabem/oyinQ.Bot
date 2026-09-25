@@ -1,7 +1,9 @@
+import { useBackButton } from "../../hooks/useBackButton";
 import { registrationSubmitEnabled, toggleRegistrationDate } from "../camp/registrationLogic";
-import { CampBoxControl, attendanceLabel } from "./CampBoxControl";
+import { CampBoxControl, attendanceLabel } from "../../components/CampBoxControl";
 import { useCampProfile } from "./CampProfileContext";
 import { CampWishlist, Incoming } from "../games/CampWishlist";
+import { useListAnchor } from "../../hooks/useListAnchor";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { groupCollectionItems } from "../../app/collectionGroups";
@@ -73,15 +75,16 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
     return groupCollectionItems(values, item => (!listQuery.trim() || matches.has(item.bggId)) &&
       (community?.mode !== "Camp" || filter === "all" || filter === "demand" && Boolean(profile?.data?.suggestedGameIds.includes(item.bggId)) || Boolean(campState.data?.some(c => c.bggId === item.bggId && c.itemType === item.itemType && c.commitment === filter))));
   }, [state.data, listQuery, filter, campState.data, profile?.data, community?.mode]);
-  useEffect(() => telegram.back(Boolean(importId && importOpen), () => setImportOpen(false)), [importId, importOpen]);
+  const anchor = useListAnchor(collectionGroups);
+  useBackButton(Boolean(importId && importOpen && !detail), () => setImportOpen(false));
   async function startImport(input?: string) { setError(undefined); try { const result = await api<{ publicId: string }>("/profile/collection/imports", json("POST", { bggInput: input })); setLegacyImport(false); localStorage.setItem("oyinq-profile-import", result.publicId); setImportId(result.publicId); setImportOpen(true); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
   async function addManual() { if (adding || !chosen) return; setAdding(true); setError(undefined); try { await api("/profile/collection/manual", json("POST", { communityKey: community?.key, bggInput: String(chosen.bggId), expansionBggIds: selectedExpansions })); setChosen(undefined); setSelectedExpansions([]); telegram.success("Игра и данные BGG добавлены"); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setAdding(false); } }
   async function remove(item: PersonalCollectionItem) { if (!await telegram.confirm(`Удалить «${item.snapshot.name}» из личной коллекции во всех сообществах? Если вы обещали взять игру на кэмп, сначала снимите это обещание.`)) return; setError(undefined); try { await api(`/profile/collection/${item.itemType}/${item.bggId}`, { method: "DELETE" }); telegram.success("Игра удалена"); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
   const renderItem = (item: PersonalCollectionItem) => {
     const contribution = campState.data?.find(x => x.bggId === item.bggId && x.itemType === item.itemType);
-    return <div className="collection-item" id={`owned-game-${item.bggId}`}>
+    return <div className="collection-item" data-box-game={`${item.itemType}:${item.bggId}`} id={`owned-game-${item.bggId}`}>
       <div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h3>{item.snapshot.name}</h3><GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} compact /></div></div>
-      {community?.mode === "Camp" && <CampBoxControl communityKey={community.key} item={item} contribution={contribution} disabled={campState.loading || Boolean(campState.error)} changed={campState.reload} />}
+      {community?.mode === "Camp" && <CampBoxControl communityKey={community.key} item={item} contribution={contribution} disabled={!profile?.data?.canAct || !campState.data || Boolean(campState.error)} declined={item.itemType === "BaseGame" && profile?.data?.declinedGameIds.includes(item.bggId)} attendanceDates={profile?.data?.myDates} beforeChange={() => anchor.capture(`${item.itemType}:${item.bggId}`)} changed={async () => (await Promise.all([campState.reload(), profile?.reload()])).every(Boolean)} />}
       <details className="collection-menu"><summary aria-label={`Действия с игрой ${item.snapshot.name}`}>Ещё</summary><button className="ghost" onClick={() => void remove(item)}>Удалить из коллекции</button></details>
     </div>;
   };
@@ -91,7 +94,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
       localStorage.removeItem(storageKey); setImportId(undefined); setLegacyImport(false); state.reload(); importSource.reload();
     }} /></div>}
     {detail && community && <CampWishlist community={community} bggAvailable={bggAvailable} initialGameId={detail.game} initialPersonId={detail.person} back={() => { restoreDetailScroll.current = true; setDetail(undefined); }} />}
-    <section className="profile-collection stack" hidden={Boolean(importId && importOpen) || Boolean(detail)}>
+    <section ref={anchor.list} className="profile-collection stack" hidden={Boolean(importId && importOpen) || Boolean(detail)}>
       <div className="row collection-heading"><h2>Игры · {state.data?.length ?? 0}</h2><button className="primary" aria-expanded={addOpen} aria-controls="collection-add" onClick={() => setAddOpen(!addOpen)}>{addOpen ? "Свернуть добавление ▴" : "Добавить ▾"}</button></div>
       <p className="muted">Личная коллекция общая для всех сообществ.</p>
       {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Сохранённые игры можно просматривать, отмечать и удалять.</Notice>}
@@ -117,6 +120,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
         {renderItem(group.item)}
         {group.expansions.length > 0 && <details className="collection-expansions" open={listQuery.trim() || filter !== "all" ? true : undefined}><summary>Дополнения ({group.expansions.length})</summary>{group.expansions.map(item => <div className="collection-expansion" key={item.bggId}>{renderItem(item)}</div>)}</details>}
       </Card>)}</div>)}
+      {anchor.notice && <p role="status">{anchor.notice}</p>}
     </section>
   </>;
 }

@@ -1,3 +1,4 @@
+import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import type { ExpansionLookup } from "../../components/gamePickerModel";
 import { useGatheringExpansions } from "./useGatheringExpansions";
@@ -32,7 +33,7 @@ export function GatheringsPage({ community, bggAvailable, initialGatheringId, in
   const [selected, setSelected] = useState<string | undefined>(initialGatheringId);
   const [initialBack] = useState<(() => void) | undefined>(() => initialGatheringId ? backFromInitial : undefined);
   const [listState, setListState] = useState<GatheringListState>(initialGatheringListState);
-  useEffect(() => telegram.back(screen !== "list", () => { if (screen === "detail" && initialBack) initialBack(); else { setScreen("list"); setSelected(undefined); } }), [screen, initialBack]);
+  useBackButton(screen !== "list", () => { if (screen === "detail" && initialBack) initialBack(); else { setScreen("list"); setSelected(undefined); } });
   useEffect(() => { if (initialGatheringId) onInitialConsumed(); if (initialGameId) onGameConsumed?.(); }, []);
   if (screen === "create") return <CreateGathering copy={copy} initialGameId={seedGameId} community={community} bggAvailable={bggAvailable} onDone={() => setScreen("list")} editRegistration={editRegistration} />;
   if (screen === "detail" && selected) return <GatheringDetails onCopy={value => { setCopy(value); setScreen("create"); }} key={`${community.key}-${selected}`} community={community} id={selected} onBack={() => { if (initialBack) initialBack(); else setScreen("list"); }} onCancelled={() => { setListState({ ...listState, scope: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} openCollection={bggId => openCollection(bggId, selected)} />;

@@ -6,9 +6,9 @@ export function useAsync<T>(loader: () => Promise<T>, dependencies: unknown[]) {
   const reload = useCallback(() => {
     const version = ++requestVersion.current;
     setLoading(true); setError(undefined); setFailure(undefined);
-    loader()
-      .then(value => { if (version === requestVersion.current) setData(value); })
-      .catch(e => { if (version === requestVersion.current) { setFailure(e); setError(e instanceof Error ? e.message : String(e)); } })
+    return loader()
+      .then(value => { if (version !== requestVersion.current) return false; setData(value); return true; })
+      .catch(e => { if (version === requestVersion.current) { setFailure(e); setError(e instanceof Error ? e.message : String(e)); } return false; })
       .finally(() => { if (version === requestVersion.current) setLoading(false); });
   }, dependencies);
   useEffect(() => {

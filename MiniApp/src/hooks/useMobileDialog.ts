@@ -1,12 +1,11 @@
 import { useEffect, useRef } from "react";
-import { telegram } from "../telegram/webApp";
+import { useBackButton } from "./useBackButton";
 
 // Shared native-dialog lifecycle: keep the sheet above the keyboard and restore
 // the underlying screen's scroll, focus and Telegram Back handler on dismissal.
 export function useMobileDialog(onClose: () => void) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const close = useRef(onClose);
-  close.current = onClose;
+  useBackButton(true, onClose, true);
   useEffect(() => {
     const node = dialog.current!;
     const opener = document.activeElement as HTMLElement | null;
@@ -20,10 +19,9 @@ export function useMobileDialog(onClose: () => void) {
     };
     resize(); viewport?.addEventListener("resize", resize); viewport?.addEventListener("scroll", resize);
     node.showModal();
-    const back = telegram.back(true, () => close.current(), 1);
     return () => {
       viewport?.removeEventListener("resize", resize); viewport?.removeEventListener("scroll", resize);
-      node.close(); back(); Object.assign(document.body.style, previous); window.scrollTo(0, scroll); opener?.focus();
+      node.close(); Object.assign(document.body.style, previous); window.scrollTo(0, scroll); opener?.focus();
     };
   }, []);
   return dialog;

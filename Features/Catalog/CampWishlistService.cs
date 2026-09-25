@@ -12,7 +12,8 @@ namespace oyinQ.Bot.Features.Catalog;
 public sealed record CampWishPerson(Guid Id, string Name, DateOnly[] Dates);
 public sealed record CampWishOwner(CampWishPerson Person, string Status, DateOnly[] Dates, string RequestState, bool IsMe);
 public sealed record CampWishGame(ClubCollectionGame Game, int InterestedParticipants, int OtherInterested,
-    bool IsWished, bool IsOwned, bool Confirmed, string BoxSummary, int ScheduledGatherings, string? MyStatus);
+    bool IsWished, bool IsOwned, bool Confirmed, string BoxSummary, int ScheduledGatherings, string? MyStatus,
+    bool MyAllAttendanceDays = true, DateOnly[]? MyAvailableDates = null);
 public sealed record CampWishQuery(string Mode = "all", string? Search = null, bool NeedsBox = false,
     bool WithoutGathering = false, bool Owned = false, string Sort = "demand", int Page = 1, bool ShowDeclined = false);
 public sealed record CampWishPage(IReadOnlyList<CampWishGame> Items, int Total, int Suggestions, bool HasMore,
@@ -31,7 +32,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
     private sealed record Context(Camp Camp, CampRegistration Me, CampRegistration[] Registrations,
         GameWish[] Wishes, ParticipantCollectionItem[] Owned, CampGameContribution[] Contributions,
         CampBringRequest[] Requests, Dictionary<long, int> Gatherings, ClubCollectionGame[] BaseGames,
-        Dictionary<long, CampParticipantVisibility> Visibility)
+        Dictionary<long, CampParticipantVisibility> Visibility, CampGameContribution[] MyContributions)
     {
         public bool ShareCollection(long participantId) => Visibility.GetValueOrDefault(participantId)?.ShareCollection != false;
         public bool ShareWishes(long participantId) => Visibility.GetValueOrDefault(participantId)?.ShareWishes != false;
@@ -58,6 +59,8 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         var wishes = await db.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key && ids.Contains(x.ParticipantId)).ToArrayAsync(ct);
         var owned = await db.ParticipantCollectionItems.AsNoTracking().Where(x => visibleIds.Contains(x.ParticipantId) && x.ItemType == CollectionItemType.BaseGame).ToArrayAsync(ct);
         var offered = await db.CampGameContributions.AsNoTracking().Where(x => x.CampId == camp.Id && ids.Contains(x.ParticipantId) && x.ItemType == CollectionItemType.BaseGame).ToArrayAsync(ct);
+        // The owner still needs to manage a saved decision whose dates no longer overlap attendance.
+        var mine = offered.Where(x => x.ParticipantId == actor).ToArray();
         offered = offered.Where(x => EffectiveDates(x, registrations.Single(r => r.ParticipantId == x.ParticipantId)).Length > 0).ToArray();
         // Requests are private to their owner and authors.
         var requests = await db.CampBringRequests.AsNoTracking().Include(x => x.Requesters).Include(x => x.Owner)
@@ -67,7 +70,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
         var gatherings = snapshots.Select(x => GatheringGameSnapshotSerializer.Deserialize(x).BggId).OfType<long>()
             .GroupBy(x => x).ToDictionary(x => x.Key, x => x.Count());
         var baseGames = (await new SharedCollectionReader(db).ForCampAsync(camp, ct)).Games.ToArray();
-        return new(camp, me, registrations, wishes, owned, offered, requests, gatherings, baseGames, visibility);
+        return new(camp, me, registrations, wishes, owned, offered, requests, gatherings, baseGames, visibility, mine);
     }
 
     private static CampWishGame Project(Context c, long id)
@@ -89,12 +92,13 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
             : $"{c.Person(c.Registrations.Single(r => r.ParticipantId == first.ParticipantId)).Name} "
               + (first.Commitment == CampBringCommitment.Bringing ? "точно привезёт" : "может привезти — пока без подтверждения")
               + " · " + string.Join(", ", EffectiveDates(first, c.Registrations.Single(r => r.ParticipantId == first.ParticipantId)).Select(d => d.ToString("dd.MM")));
-        var mine = offered.SingleOrDefault(x => x.ParticipantId == c.Me.ParticipantId);
+        var mine = c.MyContributions.SingleOrDefault(x => x.BggId == id);
         var declined = c.Requests.Any(x => x.BggId == id && x.OwnerParticipantId == c.Me.ParticipantId && x.Declined);
         return new(game, wishes.Length, wishes.Count(x => x.ParticipantId != c.Me.ParticipantId
                 && c.Registrations.Single(r => r.ParticipantId == x.ParticipantId).SelectedDays.Any(d => myDates.Contains(d.Date))),
             wishes.Any(x => x.ParticipantId == c.Me.ParticipantId), owned != null, confirmed.Length > 0, summary,
-            c.Gatherings.GetValueOrDefault(id), declined ? "declined" : mine?.Commitment.ToString());
+            c.Gatherings.GetValueOrDefault(id), declined ? "declined" : mine?.Commitment.ToString(),
+            mine?.AvailableDates == null, mine == null ? [] : EffectiveDates(mine, c.Me));
     }
 
     public async Task<CampProfileSettings> SettingsAsync(string key, long actor, CancellationToken ct)
@@ -193,7 +197,7 @@ public sealed class CampWishlistService(AppDbContext db, CampContributionSelecti
             var summary = contribution == null ? "Есть в коллекции — можно попросить" : contribution.Commitment == CampBringCommitment.Bringing ? "Точно привезёт" : "Может привезти — пока без подтверждения";
             return item with { BoxSummary = summary + (contribution == null ? "" : " · " + string.Join(", ", EffectiveDates(contribution, target).Select(d => d.ToString("dd.MM")))) };
         }), new(Search: search, Sort: "name")).ToArray();
-        return new { Person = c.Person(target), IsMe = self, WishesVisible = self || c.ShareWishes(target.ParticipantId),
+        return new { Person = c.Person(target), IsMe = self, WishesVisible = self || c.ShareWishes(target.ParticipantId), CanAct = c.CanAct(clock.GetUtcNow()),
             Items = games.Skip((Math.Max(1, page) - 1) * 20).Take(20), Total = games.Length, HasMore = Math.Max(1, page) * 20 < games.Length };
     }
 

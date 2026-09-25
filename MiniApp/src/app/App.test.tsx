@@ -5,9 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../api/types";
 
 vi.mock("../api/client", async original => ({ ...await original<object>(), api: vi.fn() }));
-vi.mock("../telegram/webApp", () => ({ telegram: {
-  onFullscreenChanged: () => () => {}, back: () => () => {}, success: vi.fn(),
-}, successEventName: "success" }));
+const nativeBack = vi.hoisted(() => ({ show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn() }));
+vi.mock("../telegram/webApp", async () => {
+  const { backButtonStack } = await import("../telegram/backButtonStack");
+  return { telegram: { onFullscreenChanged: () => () => {}, hasBackButton: true, back: backButtonStack(nativeBack), success: vi.fn() }, successEventName: "success" };
+});
 import { api } from "../api/client";
 import { App } from "./App";
 
@@ -18,6 +20,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   Element.prototype.scrollIntoView = vi.fn();
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   localStorage.clear();
   localStorage.setItem("oyinq-community", "camp");
@@ -33,7 +37,13 @@ beforeEach(() => {
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+
+async function telegramBack() { await act(async () => nativeBack.onClick.mock.calls.at(-1)![0]()); }
+async function profileTab(label: string) {
+  const tab = [...host.querySelectorAll<HTMLButtonElement>('.profile-tabs button')].find(x => x.textContent === label)!;
+  await act(async () => tab.click());
+}
 
 it("opens own box management in the unified profile and returns to the same wishlist detail", async () => {
   sessionStorage.clear(); history.replaceState({}, "", "/?community=camp&tab=games&wishlist=1");
@@ -57,17 +67,28 @@ it("opens own box management in the unified profile and returns to the same wish
   await act(async () => root.render(<App />));
   await act(async () => host.querySelector<HTMLButtonElement>(".wish-game-heading")!.click());
   const link = host.querySelector<HTMLAnchorElement>('a[data-profile-nav]')!;
-  expect(link.textContent).toBe("Управлять коробкой в профиле");
+  expect(link.textContent).toBe("Другие дни и коллекция в профиле");
   await act(async () => link.click());
   expect(link.closest("[hidden]")).not.toBeNull();
   expect(host.querySelector(".camp-privacy")).toBeNull();
   expect(host.querySelector(".profile-collection")?.closest("[hidden]")).toBeNull();
   expect(host.querySelector(".profile-collection")).not.toBeNull();
-  const back = [...host.querySelectorAll<HTMLButtonElement>(".page-back")].find(x => !x.closest("[hidden]"))!;
-  await act(async () => back.click());
+  await profileTab("Хотелки");
+  const filter = [...host.querySelectorAll<HTMLButtonElement>("button")].find(x => x.textContent === "Фильтры" && !x.closest("[hidden]"))!;
+  await act(async () => filter.click());
+  await telegramBack(); expect(host.querySelector("dialog")).toBeNull(); expect(link.closest("[hidden]")).not.toBeNull();
+  const heading = [...host.querySelectorAll<HTMLButtonElement>(".wish-game-heading")].find(x => !x.closest("[hidden]"))!;
+  await act(async () => heading.click());
+  await telegramBack(); // Child detail, not the parent profile visit.
+  expect(link.closest("[hidden]")).not.toBeNull(); expect(heading.closest("[hidden]")).toBeNull();
+  await profileTab("Игры");
+  await telegramBack();
   expect(link.isConnected).toBe(true); expect(link.closest("[hidden]")).toBeNull();
   expect(location.search).toContain("tab=games");
   expect(vi.mocked(api).mock.calls.some(c => c[1]?.method === "POST")).toBe(false);
+  await telegramBack(); // The retained original detail now handles Back again.
+  expect(link.isConnected).toBe(false);
+  expect(nativeBack.hide).toHaveBeenCalled();
 });
 
 it("keeps the real personal collection available when community discovery fails", async () => {
@@ -76,6 +97,7 @@ it("keeps the real personal collection available when community discovery fails"
   expect(host.textContent).toContain("Доступ к сообществам временно не проверен");
   expect(host.textContent).not.toContain("У вас пока нет доступа ни к одному");
   expect(vi.mocked(api).mock.calls.some(([path]) => path.startsWith("/camp/"))).toBe(false);
+  expect(nativeBack.onClick).not.toHaveBeenCalled(); // A root profile has no invented predecessor.
   const communities = [...host.querySelectorAll("button")].find(x => x.textContent === "Сообщества")!;
   await act(async () => communities.click());
   expect(host.textContent).toContain("Telegram временно недоступен");

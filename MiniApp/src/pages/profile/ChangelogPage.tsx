@@ -1,8 +1,10 @@
+import { useBackButton } from "../../hooks/useBackButton";
 import { api } from "../../api/client";
 import { Card, ErrorState, Loading, Page } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 
 export function ChangelogPage({ back }: { back: () => void }) {
+  useBackButton(true, back);
   const changelog = useAsync(() => api<{ markdown: string }>("/profile/changelog"), []);
   return <Page title="Что нового?" actions={<button onClick={back}>← В профиль</button>}>
     {changelog.loading ? <Loading /> : changelog.error ? <ErrorState message={changelog.error} retry={changelog.reload} />

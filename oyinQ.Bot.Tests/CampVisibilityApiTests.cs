@@ -67,6 +67,16 @@ public sealed class CampVisibilityApiTests
                 "/catalog/demand/99" + query];
             foreach (var url in urls) Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp" + url)).StatusCode);
             Login(seed.A.TelegramUserId);
+            // A supplied owner ID never delegates ownership mutations to another participant.
+            var forged = await client.PostAsJsonAsync("/api/miniapp/camp-wishlist" + query,
+                new { action = "confirm", bggId = 42, owner = seed.Owner.PublicId });
+            Assert.False(forged.IsSuccessStatusCode);
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                Assert.Empty(await db.CampGameContributions.ToArrayAsync());
+                Assert.Empty(await db.Notifications.ToArrayAsync());
+            }
             Assert.True((await Get("&view=settings")).GetProperty("shareCollection").GetBoolean());
             Assert.True((await Get("")).GetProperty("shareWishes").GetBoolean());
             Assert.Equal(1, (await Get("")).GetProperty("total").GetInt32());

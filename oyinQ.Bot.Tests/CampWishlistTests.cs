@@ -34,12 +34,55 @@ public sealed class CampWishlistTests
         registration.SelectedDays.Remove(removed); f.Db.CampRegistrationDays.Remove(removed); await f.Db.SaveChangesAsync();
         Assert.Empty(CampContributionSelectionService.EffectiveDates(box, registration));
         Assert.Empty(await writer.GetEffectiveContributionsAsync(s.Camp.Id, default));
+        var wishlist = s.Service(f.Db, f.Clock);
+        var myItem = Assert.Single((await wishlist.ListAsync("camp-wishes", s.Owner.Id, new("bring"), default)).Items);
+        Assert.Equal("Available", myItem.MyStatus);
+        Assert.False(myItem.MyAllAttendanceDays);
+        Assert.Empty(myItem.MyAvailableDates!);
+        Assert.False(myItem.Confirmed);
+        var detailItem = (await wishlist.DetailsAsync("camp-wishes", s.Owner.Id, 42, default)).Item;
+        Assert.Equal(myItem.MyStatus, detailItem.MyStatus);
+        Assert.False(detailItem.MyAllAttendanceDays); Assert.Empty(detailItem.MyAvailableDates!);
+        var visitorItem = (await wishlist.DetailsAsync("camp-wishes", s.A.Id, 42, default)).Item;
+        Assert.Null(visitorItem.MyStatus);
+        Assert.Empty(visitorItem.MyAvailableDates!);
+        Assert.False(visitorItem.Confirmed);
         await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
             CampBringCommitment.Bringing, default, allAttendanceDays: true);
         Assert.Null(box.AvailableDates);
         Assert.Equal([s.Day.AddDays(1), s.Day.AddDays(2)], CampContributionSelectionService.EffectiveDates(box, registration));
         await Assert.ThrowsAsync<ArgumentException>(() => writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42,
             CollectionItemType.BaseGame, CampBringCommitment.Bringing, default, availableDates: [s.Day.AddDays(5)]));
+    }
+
+    [Fact]
+    public async Task StatusSelectionUsesActorOwnershipAndPreservesOtherItemsDatesAndWish()
+    {
+        await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);
+        var writer = new CampContributionSelectionService(f.Db, new(f.Db, f.Clock), f.Clock);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => writer.SetCommitmentAsync(s.Camp.Id, s.A.Id,
+            42, CollectionItemType.BaseGame, CampBringCommitment.Bringing, default));
+        f.Db.ParticipantCollectionItems.Add(CampWishSeed.Owned(s.Owner, 99)); await f.Db.SaveChangesAsync();
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 99, CollectionItemType.BaseGame,
+            CampBringCommitment.Available, default, availableDates: [s.Day]);
+        await s.Act(f.Db, f.Clock, s.A.Id, "request", s.Owner.PublicId);
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Bringing, default, allAttendanceDays: true);
+        var notices = await f.Db.Notifications.CountAsync();
+        await writer.SetCommitmentAsync(s.Camp.Id, s.Owner.Id, 42, CollectionItemType.BaseGame,
+            CampBringCommitment.Bringing, default);
+        Assert.Equal(notices, await f.Db.Notifications.CountAsync());
+        Assert.Equal("found", Assert.Single(await s.Service(f.Db, f.Clock).OutgoingAsync("camp-wishes", s.A.Id, default)).State);
+        await s.Act(f.Db, f.Clock, s.Owner.Id, "decline");
+        await s.Act(f.Db, f.Clock, s.Owner.Id, "withdraw");
+        Assert.False(Assert.Single(f.Db.CampBringRequests).Declined);
+        Assert.Equal("pending", Assert.Single(await s.Service(f.Db, f.Clock).OutgoingAsync("camp-wishes", s.A.Id, default)).State);
+        var other = Assert.Single(f.Db.CampGameContributions);
+        Assert.Equal(99, other.BggId); Assert.Equal([s.Day], other.AvailableDates!);
+        Assert.Equal(CampBringCommitment.Available, other.Commitment);
+        Assert.Equal(2, await f.Db.ParticipantCollectionItems.CountAsync());
+        Assert.Single(f.Db.GameWishes); Assert.Empty(f.Db.GameGatheringParticipants);
+        Assert.Empty(f.Db.CampParticipantVisibilities);
     }
 
     [Fact]
