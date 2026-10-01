@@ -30,7 +30,7 @@ it.each(["Club", "Camp"] as const)("updates both targets in %s creation and edit
   await act(async () => toggle().click()); expect(values()).toEqual(["3", "8", "8"]);
   const detail = { startsAtLocal: "2026-09-12T12:00", minimumPlayers: 3, desiredPlayers: 8, maximumPlayers: 8,
     gameBaseMinimumPlayers: 3, gameBaseMaximumPlayers: 6, gameMinimumPlayers: 3, gameMaximumPlayers: 8,
-    selectedExpansionIds: [315895], knownExpansions: [expansion], canTeachRules: true } as GatheringDetail;
+    selectedExpansionIds: [315895], knownExpansions: [expansion], canTeachRules: true, confirmedParticipants: [], waitlistedParticipants: [] } as unknown as GatheringDetail;
   await act(async () => root.render(<EditGathering community={community} id="saved" value={detail} done={() => {}} cancel={() => {}} />));
   expect(values()).toEqual(["3", "8", "8"]);
   await act(async () => toggle().click()); expect(values()).toEqual(["3", "6", "6"]);

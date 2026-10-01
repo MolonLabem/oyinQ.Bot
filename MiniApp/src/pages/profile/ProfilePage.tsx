@@ -48,17 +48,15 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
   if (profile.error) return <Page title="Профиль"><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
-  return <BackButtonScope><Page title="Профиль">
+  return <BackButtonScope><div className="profile-screen"><Page title="Профиль" subtitle={profile.data.preferredDisplayName || profile.data.telegramDisplayName}>
     {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
     <ProfileTabs active={tab} select={setTab} />
     <div hidden={tab !== "collection"}><BackButtonScope active={tab === "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => setTab("settings")} /></BackButtonScope></div>
     {tab === "wishes" && (community ? community.mode === "Camp" ? <CampPersonalWishes key={community.key} community={community} bggAvailable={bggAvailable} openGathering={id => openGathering(community.key, id)} /> : <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <Empty>Выберите сообщество, чтобы посмотреть свои хотелки. <a href="?tab=communities">Выбрать сообщество</a></Empty>)}
     {tab === "settings" && <>
-    {community?.mode === "Camp" && <CampPrivacy community={community} />}
-    {!profile.data.botStartRequired && <Notice kind="success">Личный чат с ботом открыт</Notice>}
-    <NotificationSettings />
-    <section className="content-section form-grid">
+    <section className="content-section form-grid profile-identity">
+      <h2>Как вас показывать</h2>
       <Field label="Имя" hint="Так вас будут видеть в сборах, уведомлениях и других сообществах. Если оставить поле пустым, возьмём имя из Telegram.">
         <input maxLength={128} value={name} onChange={event => setName(event.target.value)} placeholder={profile.data.telegramDisplayName} />
       </Field>
@@ -66,6 +64,9 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
       {error && <Notice kind="danger">{error}</Notice>}
       <SaveButton busy={busy} label="Сохранить профиль" onClick={save} />
     </section>
+    {community?.mode === "Camp" && <CampPrivacy community={community} />}
+    {!profile.data.botStartRequired && <p className="profile-bot-status">Личный чат с ботом открыт</p>}
+    <NotificationSettings />
     {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}</>}
     {tab === "calendar" && <section className="profile-schedule"><h2>Моё расписание</h2>
       <button disabled={busy} onClick={async () => { setBusy(true); setError(undefined); try { await download("/profile/gatherings.ics", "oyinq-agenda.ics"); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }}>Скачать календарь (.ics)</button>
@@ -77,7 +78,7 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
     </section>}
     <button className="ghost" onClick={() => setShowChangelog(true)}>Что нового?</button>
     <ProductFooter />
-  </Page></BackButtonScope>;
+  </Page></div></BackButtonScope>;
 }
 
 export function ProfileTabs({ active, select }: { active: string; select: (tab: string) => void }) {

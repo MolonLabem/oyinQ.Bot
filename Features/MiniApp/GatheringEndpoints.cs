@@ -19,13 +19,15 @@ internal sealed record CreateGatheringRequest(string CommunityKey, string GameSo
 internal sealed record UpdateGatheringRequest(string CommunityKey, string StartsAtLocal,
     int MinimumPlayers, int DesiredPlayers, int MaximumPlayers, string? Description,
     bool CanTeachRules, IReadOnlyCollection<long>? SelectedExpansionIds, bool ConfirmScheduleConflict = false,
-    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null,
+    IReadOnlyCollection<GatheringParticipantNameChange>? ParticipantNames = null);
 internal sealed record GatheringActionRequest(string CommunityKey, string? Reason = null, bool ConfirmScheduleConflict = false);
 internal sealed record GatheringGuestRequest(string CommunityKey, string? DisplayName = null);
 internal sealed record GatheringListItemResponse(
     GatheringCardPresentation Card,
     string Status,
-    bool IsOrganizer);
+    bool IsOrganizer,
+    DateTimeOffset StartsAtUtc);
 internal sealed record GatheringListPageResponse(
     IReadOnlyCollection<GatheringListItemResponse> Items,
     int Page,
@@ -88,7 +90,8 @@ internal static class GatheringEndpoints
         var items = values.Take(GatheringPageSize).Select(x => new GatheringListItemResponse(
             presentation.BuildCard(x, access.Community),
             x.Status.ToString(),
-            x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId)).ToArray();
+            x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId,
+            x.StartsAtUtc)).ToArray();
         return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
     }
 
@@ -154,13 +157,18 @@ internal static class GatheringEndpoints
             CanJoin = hasMemberAccess && GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
             CanLeave = hasMemberAccess && GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
             WaitlistPosition = waitPosition,
-            ConfirmedParticipants = new[] { new { Name = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant), IsOrganizer = true,
+            ConfirmedParticipants = new[] { new { Id = gathering.OrganizerParticipant.PublicId,
+                    OriginalName = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant),
+                    DisplayNameOverride = gathering.OrganizerDisplayNameOverride,
+                    Name = GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant), IsOrganizer = true,
                     ContactUrl = ParticipantPresentation.GetContactUrl(gathering.OrganizerParticipant) } }
                 .Concat(gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed)
-                    .Select(x => new { Name = ParticipantPresentation.GetDisplayName(x.Participant),
+                    .Select(x => new { Id = x.Participant.PublicId, OriginalName = ParticipantPresentation.GetDisplayName(x.Participant),
+                        x.DisplayNameOverride, Name = GatheringParticipantNames.GetDisplayName(x),
                         IsOrganizer = false, ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) })),
             WaitlistedParticipants = waitlisted.Select((x, index) => new
-            { Name = ParticipantPresentation.GetDisplayName(x.Participant), Position = index + 1,
+            { Id = x.Participant.PublicId, OriginalName = ParticipantPresentation.GetDisplayName(x.Participant),
+                x.DisplayNameOverride, Name = GatheringParticipantNames.GetDisplayName(x), Position = index + 1,
                 ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) }),
             GuestParticipants = gathering.Guests.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
                 .Select(x => new { x.Id, x.DisplayName }),
@@ -228,7 +236,7 @@ internal static class GatheringEndpoints
             var result = await management.UpdateAsync(publicId, body.CommunityKey, access.Identity.TelegramUserId,
                 new(startsAt, body.MinimumPlayers, body.DesiredPlayers, body.MaximumPlayers,
                     body.Description, body.CanTeachRules, body.SelectedExpansionIds ?? [], body.ConfirmScheduleConflict,
-                    body.AddExpansionToCollectionIds, body.BringExpansionIds), cancellationToken);
+                    body.AddExpansionToCollectionIds, body.BringExpansionIds, body.ParticipantNames), cancellationToken);
             await publication.PublishAsync(publicId, cancellationToken);
             return Results.NoContent();
         }

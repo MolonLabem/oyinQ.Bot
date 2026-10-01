@@ -17,7 +17,7 @@ describe("catalog collection grouping", () => {
     ]} />);
     expect(markup.match(/class="card catalog-card"/g)).toHaveLength(2);
     expect(markup).toContain('catalog-game-group has-expansions');
-    expect(markup).toContain('Часть этой карточки');
+    expect(markup).toContain('В коллекции');
     expect(markup).toContain('<button class="catalog-expansion-option"');
     expect(markup).toContain('Открыть');
     expect(markup).toContain('Отдельное дополнение');

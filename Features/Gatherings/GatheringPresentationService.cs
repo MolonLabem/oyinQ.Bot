@@ -65,7 +65,7 @@ public sealed class GatheringPresentationService
             game.Name,
             game.ThumbnailImageUrl ?? game.ImageUrl,
             Truncate(gathering.Description, CardDescriptionLength),
-            ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant),
+            GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant),
             gathering.CanTeachRules,
             RulesText(gathering.CanTeachRules),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
@@ -89,7 +89,7 @@ public sealed class GatheringPresentationService
             gathering.Description,
             gathering.CanTeachRules,
             RulesText(gathering.CanTeachRules),
-            ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant),
+            GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             GatheringCapacity.OccupiedSeats(gathering),
             gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray(),
@@ -126,7 +126,7 @@ public sealed class GatheringPresentationService
             text.AppendLine($"⚖️ {complexity.DisplayName}");
         text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
         text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
-        text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null)}");
+        text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
         text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
 
         if (gathering.Expansions.Count > 0)
@@ -151,7 +151,7 @@ public sealed class GatheringPresentationService
             else
             {
                 foreach (var participant in confirmed)
-                    text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant)}");
+                    text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant, displayName: GatheringParticipantNames.GetDisplayName(participant))}");
                 foreach (var guest in gathering.Guests.OrderBy(value => value.CreatedAt).ThenBy(value => value.Id))
                     text.AppendLine($"• {WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>");
             }

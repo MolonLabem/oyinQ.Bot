@@ -32,7 +32,7 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi
 it.each((["Club", "Camp"] as const).flatMap(mode => ["create", "edit"].map(screen => ({ mode, screen }))))("$mode $screen supports multiple expansions and independent ownership", async ({ mode, screen }) => {
   const community = { key: mode.toLowerCase(), name: mode, mode, timeZoneId: "UTC", startsAtUtc: "2030-09-10T00:00:00Z", endsAtUtc: "2030-09-12T00:00:00Z" };
   const value = { startsAtLocal: "2030-09-10T18:00", minimumPlayers: 2, desiredPlayers: 4, maximumPlayers: 4,
-    gameBaseMinimumPlayers: 2, gameBaseMaximumPlayers: 4, knownExpansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }, { bggId: 21, name: "Второе" }], selectedExpansionIds: [], canTeachRules: true } as unknown as GatheringDetail;
+    gameBaseMinimumPlayers: 2, gameBaseMaximumPlayers: 4, knownExpansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }, { bggId: 21, name: "Второе" }], selectedExpansionIds: [], canTeachRules: true, confirmedParticipants: [], waitlistedParticipants: [] } as unknown as GatheringDetail;
   await act(async () => root.render(screen === "create"
     ? <CreateGathering community={community} bggAvailable onDone={() => {}} editRegistration={() => {}} />
     : <EditGathering community={community} id="g" value={value} done={() => {}} cancel={() => {}} />));
@@ -71,7 +71,7 @@ it.each(["create", "edit"])("%s offers and submits five players only with the ex
   const community = { key: "club", name: "Клуб", mode: "Club" as const, timeZoneId: "UTC" };
   const value = { startsAtLocal: "2030-09-10T18:00", minimumPlayers: 2, desiredPlayers: 4, maximumPlayers: 4,
     gameMinimumPlayers: 2, gameMaximumPlayers: 4, gameBaseMinimumPlayers: 2, gameBaseMaximumPlayers: 4,
-    knownExpansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }], selectedExpansionIds: [], canTeachRules: true } as unknown as GatheringDetail;
+    knownExpansions: [{ bggId: 20, name: "Дополнение", minPlayers: 2, maxPlayers: 5 }], selectedExpansionIds: [], canTeachRules: true, confirmedParticipants: [], waitlistedParticipants: [] } as unknown as GatheringDetail;
   await act(async () => root.render(screen === "create"
     ? <CreateGathering community={community} bggAvailable onDone={() => {}} editRegistration={() => {}} />
     : <EditGathering community={community} id="g" value={value} done={() => {}} cancel={() => {}} />));

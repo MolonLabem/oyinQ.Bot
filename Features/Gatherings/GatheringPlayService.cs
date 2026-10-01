@@ -5,11 +5,12 @@ using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
-public sealed record PlayPlayerChoice(Guid Id, string Name, long? ParticipantId);
+public sealed record PlayPlayerChoice(Guid Id, string Name, long? ParticipantId, string? OriginalName = null, string? DisplayNameOverride = null);
 public sealed record PlayPlayerResult(Guid PlayerId, decimal? Score, bool IsWinner);
 public sealed record RecordPlayCommand(bool WasPlayed, DateTimeOffset? EndedAtUtc, int? DurationMinutes,
     IReadOnlyCollection<PlayPlayerResult> Players, IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision,
-    bool HigherScoreWins = true, string? Location = null);
+    bool HigherScoreWins = true, string? Location = null,
+    IReadOnlyCollection<GatheringParticipantNameChange>? ParticipantNames = null);
 
 public sealed class GatheringPlayConflictException(string message) : InvalidOperationException(message);
 
@@ -18,7 +19,8 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
     public static IReadOnlyList<PlayPlayerChoice> PlayerChoices(GameGathering g) =>
         g.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed).Select(x => x.Participant)
             .Prepend(g.OrganizerParticipant).DistinctBy(x => x.Id)
-            .Select(x => new PlayPlayerChoice(x.PublicId, ParticipantPresentation.GetDisplayName(x), x.Id))
+            .Select(x => new PlayPlayerChoice(x.PublicId, GatheringParticipantNames.GetDisplayName(g, x), x.Id,
+                ParticipantPresentation.GetDisplayName(x), GatheringParticipantNames.GetOverride(g, x)))
             .Concat(g.Guests.Select(x => new PlayPlayerChoice(x.PublicId, x.DisplayName, null))).ToArray();
 
     public static IReadOnlyList<Guid> SuggestedPlayerIds(GameGathering gathering)
@@ -82,6 +84,14 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
             throw new ArgumentException("Выберите фактических игроков из состава сбора.");
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson);
         var selectedExpansions = GatheringExpansionSelection.Select(snapshot.SelectedExpansions, command.ExpansionIds);
+        if (command.ParticipantNames?.Any(x => !players.Any(p => p.ParticipantId is not null && p.Id == x.ParticipantId)) == true)
+            throw new ArgumentException("Имя можно изменить только для зарегистрированного игрока выбранного состава партии.");
+        if (GatheringParticipantNames.Apply(g, command.ParticipantNames))
+        {
+            GatheringPublication.Request(g);
+            g.UpdatedAt = now;
+            players = PlayerChoices(g).Where(x => results.ContainsKey(x.Id)).ToArray();
+        }
         if (record is null)
         {
             record = new() { GatheringId = g.Id, RecordedByParticipantId = participantId, RecordedAt = now };

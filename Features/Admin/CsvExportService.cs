@@ -113,7 +113,7 @@ public sealed class CsvExportService(
             {
                 value.Id, value.PublicId, value.CommunityKey, snapshot.Name,
                 value.OrganizerParticipantId, value.OrganizerParticipant.TelegramUserId,
-                ParticipantPresentation.GetDisplayName(value.OrganizerParticipant),
+                GatheringParticipantNames.GetDisplayName(value, value.OrganizerParticipant),
                 value.StartsAtUtc, value.MinimumPlayers, value.DesiredPlayers, value.MaximumPlayers,
                 value.Status,
                 value.Participants.Count(participant => participant.Status == Data.Entities.GatheringParticipationStatus.Confirmed),

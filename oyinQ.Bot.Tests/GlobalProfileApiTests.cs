@@ -48,6 +48,7 @@ public sealed class GlobalProfileApiTests
         builder.Services.AddScoped<GatheringPresentationService>(); builder.Services.AddScoped<CampBggImportCoordinator>();
         builder.Services.AddScoped<CampContributionSelectionService>(); builder.Services.AddScoped<CampParticipationPolicy>();
         builder.Services.AddScoped<GatheringPlayService>(); builder.Services.AddScoped<ExternalPlayReferenceService>();
+        builder.Services.AddScoped<GatheringPublicationService>();
         builder.Services.AddSingleton<IBoardGameGeekClient>(new NoBgg());
         using var botHttp = new HttpClient(new BotHandler());
         builder.Services.AddSingleton<ITelegramBotClient>(new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO", botHttp));

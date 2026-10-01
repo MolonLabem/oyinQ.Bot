@@ -6,15 +6,16 @@ import { currentLocalMinute } from "../../app/format";
 import { Card, ErrorState, Field, Loading, Notice } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
+import { ParticipantNameEditor } from "./ParticipantNameEditor";
 
-type PlayPlayer = { id: string; name: string; score?: number; isWinner: boolean };
+type PlayPlayer = { id: string; name: string; originalName?: string; displayNameOverride?: string | null; canRename?: boolean; score?: number; isWinner: boolean };
 type PlayState = { revision: number; wasPlayed?: boolean; endedAtUtc?: string; durationMinutes?: number;
   location?: string; higherScoreWins: boolean; canEdit: boolean; canShare: boolean;
   references: { id: number; url: string; author: string; canRemove: boolean }[];
   players: PlayPlayer[]; selectedPlayerIds?: string[]; expansions: Expansion[]; selectedExpansionIds?: number[] };
 type PlayExport = { bgStatsUrl: string };
 
-export function PlayPanel({ community, id }: { community: Community; id: string }) {
+export function PlayPanel({ community, id, onSaved }: { community: Community; id: string; onSaved?: () => void }) {
   const base = `/gatherings/${id}/play`; const query = `?community=${encodeURIComponent(community.key)}`;
   const state = useAsync(() => api<PlayState>(base + query), [id, community.key]);
   const [played, setPlayed] = useState<boolean>(); const [players, setPlayers] = useState<string[]>([]); const [expansions, setExpansions] = useState<number[]>([]);
@@ -22,8 +23,10 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
   const [end, setEnd] = useState(""); const [location, setLocation] = useState(""); const [external, setExternal] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [exported, setExported] = useState<PlayExport>(); const [copied, setCopied] = useState(false);
   const [endError, setEndError] = useState<string>();
+  const [names, setNames] = useState<Record<string, string | null>>({});
   useEffect(() => {
     const p = state.data; if (!p) return;
+    setNames({});
     const selected = p.selectedPlayerIds ?? p.players.map(x => x.id);
     setPlayed(p.wasPlayed ?? undefined); setPlayers(selected); setExpansions(p.selectedExpansionIds ?? p.expansions.map(x => x.bggId));
     setScores(Object.fromEntries(selected.map(playerId => [playerId, String(p.players.find(x => x.id === playerId)?.score ?? 0)])));
@@ -39,6 +42,9 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
       setScores(old => { const next = { ...old }; delete next[playerId]; return next; });
     } else setScores(old => ({ ...old, [playerId]: "0" }));
   }
+  function playerName(p: PlayPlayer) {
+    return Object.hasOwn(names, p.id) ? names[p.id] ?? p.originalName ?? p.name : p.name;
+  }
   async function save() {
     if (busy || !state.data || played === undefined) return;
     if (played && !end) { setEndError("Укажите дату и время окончания партии."); return; }
@@ -47,8 +53,10 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
       await api(base, json("PUT", { communityKey: community.key, wasPlayed: played, endedAtLocal: end,
         location: location.trim(),
         playerResults: players.map(playerId => ({ playerId, score: Number(scores[playerId] || 0), isWinner: winners.includes(playerId) })),
-        expansionIds: expansions, expectedRevision: state.data.revision, higherScoreWins }));
-      telegram.success("Запись о партии сохранена"); state.reload();
+        expansionIds: expansions, expectedRevision: state.data.revision, higherScoreWins,
+        participantNames: played ? Object.entries(names).filter(([playerId]) => players.includes(playerId))
+          .map(([participantId, displayNameOverride]) => ({ participantId, displayNameOverride })) : [] }));
+      telegram.success("Запись о партии сохранена"); state.reload(); onSaved?.();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   }
   async function prepareExport() { if (busy) return; setBusy(true); setError(undefined); try { setExported(await api<PlayExport>(base + "/export" + query)); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
@@ -65,10 +73,13 @@ export function PlayPanel({ community, id }: { community: Community; id: string 
       <Field label="Где играли"><input type="text" maxLength={160} value={location} onChange={e => setLocation(e.target.value)} placeholder={community.name} /></Field>
       <fieldset className="play-results"><legend>Кто играл и кто победил</legend><small>Можно выбрать несколько победителей. Для совместного поражения не отмечайте никого.</small>
         {state.data.players.map(p => <div className={`play-player-result${players.includes(p.id) ? " selected" : ""}`} key={p.id}>
-          <label className="check play-player-name"><input type="checkbox" checked={players.includes(p.id)} onChange={() => togglePlayer(p.id)} />{p.name}</label>
+          <label className="check play-player-name"><input type="checkbox" checked={players.includes(p.id)} onChange={() => togglePlayer(p.id)} />{playerName(p)}</label>
           {players.includes(p.id) && <div className="play-result-fields">
+            {p.canRename && <ParticipantNameEditor originalName={p.originalName ?? p.name} buttonLabel="Имя в этой партии"
+              displayNameOverride={Object.hasOwn(names, p.id) ? names[p.id] : p.displayNameOverride}
+              disabled={busy} onChange={name => setNames(old => ({ ...old, [p.id]: name }))} />}
             <label className="check winner-check"><input type="checkbox" checked={winners.includes(p.id)} onChange={() => setWinners(old => old.includes(p.id) ? old.filter(x => x !== p.id) : [...old, p.id])} />Победитель</label>
-            <label className="play-score"><span>Счёт</span><input aria-label={`Счёт: ${p.name}`} type="number" step="any" value={scores[p.id] ?? "0"} onChange={e => setScores(old => ({ ...old, [p.id]: e.target.value }))} /></label>
+            <label className="play-score"><span>Счёт</span><input aria-label={`Счёт: ${playerName(p)}`} type="number" step="any" value={scores[p.id] ?? "0"} onChange={e => setScores(old => ({ ...old, [p.id]: e.target.value }))} /></label>
           </div>}
         </div>)}
       </fieldset>

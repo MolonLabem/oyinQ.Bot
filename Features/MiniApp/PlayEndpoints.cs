@@ -10,7 +10,8 @@ namespace oyinQ.Bot.Features.MiniApp;
 internal sealed record SavePlayPlayerRequest(Guid PlayerId, decimal? Score, bool IsWinner);
 internal sealed record SavePlayRequest(string CommunityKey, bool WasPlayed, string? EndedAtLocal,
     int? DurationMinutes, IReadOnlyCollection<Guid>? PlayerIds, IReadOnlyCollection<SavePlayPlayerRequest>? PlayerResults,
-    IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision, bool? HigherScoreWins, string? Location);
+    IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision, bool? HigherScoreWins, string? Location,
+    IReadOnlyCollection<GatheringParticipantNameChange>? ParticipantNames = null);
 
 internal static class PlayEndpoints
 {
@@ -61,7 +62,8 @@ internal static class PlayEndpoints
                 Players = GatheringPlayService.PlayerChoices(g).Select(x =>
                 {
                     var saved = record?.Players.SingleOrDefault(p => p.SourcePlayerId == x.Id);
-                    return new { x.Id, x.Name, saved?.Score, IsWinner = saved?.IsWinner ?? false };
+                    return new { x.Id, x.Name, x.OriginalName, x.DisplayNameOverride, CanRename = x.ParticipantId is not null,
+                        saved?.Score, IsWinner = saved?.IsWinner ?? false };
                 }),
                 SelectedPlayerIds = record?.Players.Select(x => x.SourcePlayerId).ToArray() ?? GatheringPlayService.SuggestedPlayerIds(g),
                 Expansions = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson).SelectedExpansions,
@@ -74,6 +76,7 @@ internal static class PlayEndpoints
     private static async Task<IResult> SaveAsync(HttpRequest request, Guid id, SavePlayRequest body,
         TelegramMiniAppAuthenticator auth, CommunityContextResolver resolver, ICommunityStore communityStore,
         IAdminAuthorizationService authorization, AppDbContext db, GatheringPlayService service,
+        GatheringPublicationService publication,
         CancellationToken ct)
     {
         var identity = MiniAppEndpointSupport.Authenticate(request, auth);
@@ -93,7 +96,8 @@ internal static class PlayEndpoints
                 ?? [];
             var result = await service.SaveAsync(id, body.CommunityKey, p.Id, new(body.WasPlayed, end,
                 body.DurationMinutes, playerResults, body.ExpansionIds, body.ExpectedRevision,
-                body.HigherScoreWins ?? true, body.Location), ct, canAdminister);
+                body.HigherScoreWins ?? true, body.Location, body.ParticipantNames), ct, canAdminister);
+            if (body.WasPlayed && body.ParticipantNames is { Count: > 0 }) await publication.PublishAsync(id, ct);
             return Results.Ok(new { result?.PublicId });
         }
         catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
@@ -155,7 +159,12 @@ internal static class PlayEndpoints
         if (identity is null) return Results.Unauthorized();
         if (page is < 1 or > 100000) return MiniAppEndpointSupport.Problem("validation", "Неверный номер страницы.");
         var keys = (await resolver.ResolveAuthorizedAsync(identity.TelegramUserId, ct)).Select(x => x.Key).ToArray();
-        var values = await db.GatheringPlayRecords.AsNoTracking().Include(x => x.Gathering).ThenInclude(x => x.Community).Include(x => x.Players)
+        var values = await db.GatheringPlayRecords.AsNoTracking()
+            .Include(x => x.Gathering).ThenInclude(x => x.Community)
+            .Include(x => x.Gathering).ThenInclude(x => x.OrganizerParticipant)
+            .Include(x => x.Gathering).ThenInclude(x => x.Participants).ThenInclude(x => x.Participant)
+            .Include(x => x.Players).ThenInclude(x => x.Participant)
+            .AsSplitQuery()
             .Where(x => x.WasPlayed && keys.Contains(x.Gathering.CommunityKey)
                 && x.Players.Any(p => p.Participant!.TelegramUserId == identity.TelegramUserId))
             .OrderByDescending(x => x.EndedAtUtc).ThenByDescending(x => x.Id).Skip(((page ?? 1) - 1) * 30).Take(31).ToArrayAsync(ct);

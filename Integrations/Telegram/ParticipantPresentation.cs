@@ -25,9 +25,9 @@ public static class ParticipantPresentation
         return participant.TelegramUserId.ToString();
     }
 
-    public static string ToHtmlLink(Participant participant, int? maximumNameLength = null)
+    public static string ToHtmlLink(Participant participant, int? maximumNameLength = null, string? displayName = null)
     {
-        var displayName = GetDisplayName(participant);
+        displayName ??= GetDisplayName(participant);
         if (maximumNameLength is { } limit && displayName.Length > limit)
         {
             var end = limit - 1;

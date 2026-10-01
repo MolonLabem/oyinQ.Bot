@@ -5,6 +5,7 @@ public sealed class GameGatheringParticipant
     public long Id { get; set; }
     public long GameGatheringId { get; set; }
     public long ParticipantId { get; set; }
+    public string? DisplayNameOverride { get; set; }
     public GatheringParticipationStatus Status { get; set; }
     public AttendanceOutcome AttendanceOutcome { get; set; }
     public DateTimeOffset JoinedAt { get; set; }

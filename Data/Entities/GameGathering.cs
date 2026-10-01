@@ -14,6 +14,7 @@ public sealed class GameGathering
     public string CommunityKey { get; set; } = string.Empty;
     public string GameSnapshotJson { get; set; } = string.Empty;
     public long OrganizerParticipantId { get; set; }
+    public string? OrganizerDisplayNameOverride { get; set; }
     public DateTimeOffset StartsAtUtc { get; set; }
     public int MinimumPlayers { get; set; }
     public int DesiredPlayers { get; set; }

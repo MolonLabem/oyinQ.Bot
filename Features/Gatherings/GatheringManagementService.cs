@@ -18,7 +18,8 @@ public sealed record CreateGatheringCommand(string CommunityKey, string GameSour
 public sealed record UpdateGatheringCommand(DateTimeOffset StartsAt, int MinimumPlayers,
     int DesiredPlayers, int MaximumPlayers, string? Description, bool CanTeachRules,
     IReadOnlyCollection<long> SelectedExpansionIds, bool ConfirmScheduleConflict = false,
-    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null);
+    IReadOnlyCollection<long>? AddExpansionToCollectionIds = null, IReadOnlyCollection<long>? BringExpansionIds = null,
+    IReadOnlyCollection<GatheringParticipantNameChange>? ParticipantNames = null);
 public sealed record GatheringUpdateResult(GameGathering Gathering,
     IReadOnlyList<GatheringPromotion> Promotions);
 
@@ -153,6 +154,7 @@ public sealed class GatheringManagementService(
             if (dbContext.Database.IsRelational())
                 await dbContext.Participants.FromSqlInterpolated($"SELECT * FROM \"Participants\" WHERE \"Id\" = {original.OrganizerParticipantId} FOR UPDATE").SingleAsync(cancellationToken);
             gathering = await RequireManagedAsync(publicId, communityKey, telegramUserId, cancellationToken);
+            GatheringParticipantNames.Apply(gathering, command.ParticipantNames);
             now = timeProvider.GetUtcNow();
             var currentSnapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
             if (currentSnapshot.BggId == enriched.BggId)

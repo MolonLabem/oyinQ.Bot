@@ -393,6 +393,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<GameGathering>(entity =>
         {
+            entity.Property(x => x.OrganizerDisplayNameOverride).HasMaxLength(GatheringParticipantNames.MaxLength);
             entity.ToTable("GameGatherings", table =>
                 table.HasCheckConstraint(
                     "CK_GameGatherings_PlayerLimits",
@@ -438,6 +439,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<GameGatheringParticipant>(entity =>
         {
+            entity.Property(x => x.DisplayNameOverride).HasMaxLength(GatheringParticipantNames.MaxLength);
             entity.ToTable("GameGatheringParticipants");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.GameGatheringId, x.ParticipantId }).IsUnique();

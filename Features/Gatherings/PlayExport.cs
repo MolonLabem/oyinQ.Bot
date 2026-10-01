@@ -19,7 +19,7 @@ public static class PlayExport
         return new(record.PublicId, game.Name, game.BggId, record.EndedAtUtc.Value.ToUniversalTime(),
             string.IsNullOrWhiteSpace(record.Location) ? record.Gathering.Community.Name : record.Location, record.DurationMinutes,
             record.Players.OrderBy(x => x.SourcePlayerId).Select(x => new PortablePlayPlayer(
-                x.SourcePlayerId, x.DisplayName, x.Score, x.IsWinner)).ToArray(),
+                x.SourcePlayerId, GatheringParticipantNames.GetDisplayName(record, x), x.Score, x.IsWinner)).ToArray(),
             game.SelectedExpansions, TimeZoneId: record.Gathering.Community.TimeZoneId,
             HigherScoreWins: record.HigherScoreWins);
     }
