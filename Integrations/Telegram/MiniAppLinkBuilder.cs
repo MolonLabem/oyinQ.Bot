@@ -13,6 +13,7 @@ public sealed class MiniAppLinkBuilder(IOptions<BotOptions> options)
                 ? CollectionGame(context.CommunityKey, bgg) : Community(context.CommunityKey);
     public string App() => $"{baseUrl}/app/";
     public string Admin() => $"{App()}?admin=1";
+    public string ProfileSettings() => $"{App()}?tab=profile&profileTab=settings";
     public string CampParticipants(string communityKey) =>
         $"{Admin()}&adminCommunity={Uri.EscapeDataString(communityKey)}&adminSection=participants";
     public string ProfileCollection(Guid importId) => $"{App()}?tab=profile&profileImport={importId}";

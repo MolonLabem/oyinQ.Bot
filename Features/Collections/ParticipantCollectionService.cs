@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Collections;
 
@@ -13,9 +14,7 @@ public sealed class ParticipantCollectionService(AppDbContext dbContext)
         var ownsTransaction = dbContext.Database.CurrentTransaction is null && dbContext.Database.IsRelational();
         await using var transaction = ownsTransaction
             ? await dbContext.Database.BeginTransactionAsync(cancellationToken) : null;
-        if (dbContext.Database.IsRelational())
-            await dbContext.Participants.FromSqlInterpolated(
-                $"SELECT * FROM \"Participants\" WHERE \"Id\" = {participantId} FOR UPDATE").SingleAsync(cancellationToken);
+        await ParticipantWriteStore.RequireActiveAsync(dbContext, participantId, cancellationToken);
         var existing = await dbContext.ParticipantCollectionItems.Where(x => x.ParticipantId == participantId)
             .ToDictionaryAsync(x => (x.BggId, x.ItemType), cancellationToken);
         foreach (var item in items.DistinctBy(x => (x.BggId, x.ItemType)))
@@ -47,9 +46,7 @@ public sealed class ParticipantCollectionService(AppDbContext dbContext)
     {
         await using var transaction = dbContext.Database.IsRelational()
             ? await dbContext.Database.BeginTransactionAsync(cancellationToken) : null;
-        if (dbContext.Database.IsRelational())
-            await dbContext.Participants.FromSqlInterpolated(
-                $"SELECT * FROM \"Participants\" WHERE \"Id\" = {participantId} FOR UPDATE").SingleAsync(cancellationToken);
+        await ParticipantWriteStore.RequireActiveAsync(dbContext, participantId, cancellationToken);
         if (await dbContext.CampGameContributions.AnyAsync(x => x.ParticipantId == participantId
                 && x.BggId == bggId && x.ItemType == itemType && x.Camp.Status == CampStatus.Active,
                 cancellationToken))

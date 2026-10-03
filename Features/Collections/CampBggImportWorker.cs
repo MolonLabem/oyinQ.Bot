@@ -26,7 +26,7 @@ public sealed class CampBggImportWorker(
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task<bool> ProcessOneAsync(CancellationToken stoppingToken)
+    internal async Task<bool> ProcessOneAsync(CancellationToken stoppingToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -81,7 +81,13 @@ public sealed class CampBggImportWorker(
                     import.ProgressTotal = progress.Stage == BggImportStage.Preparing ? import.ProgressCurrent : null;
                     import.LeaseExpiresAt = timeProvider.GetUtcNow().AddMinutes(30);
                     import.UpdatedAt = timeProvider.GetUtcNow();
-                    await dbContext.SaveChangesAsync(stoppingToken);
+                    var changed = await dbContext.CampBggImports.Where(x => x.Id == import.Id && x.LeaseId == leaseId
+                        && x.CancellationRequestedAt == null).ExecuteUpdateAsync(s => s
+                        .SetProperty(x => x.Stage, import.Stage).SetProperty(x => x.FoundGames, import.FoundGames)
+                        .SetProperty(x => x.FoundExpansions, import.FoundExpansions).SetProperty(x => x.ProgressCurrent, import.ProgressCurrent)
+                        .SetProperty(x => x.ProgressTotal, import.ProgressTotal).SetProperty(x => x.LeaseExpiresAt, import.LeaseExpiresAt)
+                        .SetProperty(x => x.UpdatedAt, import.UpdatedAt), stoppingToken);
+                    if (changed == 0) throw new OperationCanceledException("Импорт отменён или передан другому обработчику.");
                 });
             if (import.CampId is not null)
             {
@@ -125,7 +131,14 @@ public sealed class CampBggImportWorker(
 
         await using var completionTransaction = await dbContext.Database.BeginTransactionAsync(CancellationToken.None);
         import.LeaseId = null; import.LeaseExpiresAt = null; import.UpdatedAt = timeProvider.GetUtcNow();
-        await dbContext.SaveChangesAsync(CancellationToken.None);
+        var completed = await dbContext.CampBggImports.Where(x => x.Id == import.Id && x.LeaseId == leaseId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.LeaseId, (Guid?)null).SetProperty(x => x.LeaseExpiresAt, (DateTimeOffset?)null)
+                .SetProperty(x => x.Status, import.Status).SetProperty(x => x.Stage, import.Stage)
+                .SetProperty(x => x.DraftJson, import.DraftJson).SetProperty(x => x.Error, import.Error)
+                .SetProperty(x => x.ProgressCurrent, import.ProgressCurrent).SetProperty(x => x.ProgressTotal, import.ProgressTotal)
+                .SetProperty(x => x.UpdatedAt, import.UpdatedAt), CancellationToken.None);
+        dbContext.Entry(import).State = EntityState.Detached;
+        if (completed == 0) return true;
         if (import.Status == CampBggImportStatus.Completed)
         {
             var userId = await dbContext.Participants.Where(x => x.Id == import.ParticipantId).Select(x => x.TelegramUserId).SingleAsync(stoppingToken);

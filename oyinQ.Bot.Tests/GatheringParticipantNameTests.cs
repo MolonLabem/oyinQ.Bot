@@ -19,6 +19,21 @@ namespace oyinQ.Bot.Tests;
 public sealed class GatheringParticipantNameTests
 {
     [Fact]
+    public async Task ErasedParticipantsRemainAnonymousAndCannotBeRenamedInSharedHistory()
+    {
+        await using var f = new PlanningFixture();
+        var g = WithMember(f);
+        f.Other.DeletedAt = f.Clock.Now;
+        g.Participants.Single().DisplayNameOverride = "Старое личное имя";
+        Assert.Equal(ParticipantPresentation.AnonymousName, GatheringParticipantNames.GetDisplayName(g.Participants.Single()));
+        var choice = GatheringPlayService.PlayerChoices(g).Single(x => x.Id == f.Other.PublicId);
+        Assert.False(choice.CanRename); Assert.Equal(ParticipantPresentation.AnonymousName, choice.Name);
+        Assert.Null(choice.DisplayNameOverride);
+        Assert.Equal(ParticipantPresentation.AnonymousName, ParticipantPresentation.ToHtmlLink(f.Other, displayName: "Старое личное имя"));
+        Assert.Throws<ArgumentException>(() => GatheringParticipantNames.Apply(g, [new(f.Other.PublicId, "Личное имя")]));
+        Assert.Null(ParticipantPresentation.GetContactUrl(f.Other));
+    }
+    [Fact]
     public async Task NullOverrideLoadsAndUsesCurrentProfileName()
     {
         await using var f = new PlanningFixture();

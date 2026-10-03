@@ -107,6 +107,21 @@ public sealed class ParticipantIdentityFlowTests
     }
 
     [Fact]
+    public async Task DeletedProfileCannotBeProvisionedOrReachBusinessEndpoints()
+    {
+        await using var db = CreateDb();
+        db.DeletedProfiles.Add(new() { TelegramUserId = 42, DeletedAt = Now });
+        await db.SaveChangesAsync(); var invoked = false;
+        var result = await ThroughFilter(db, _ => { invoked = true; return ValueTask.FromResult<object?>(Results.Ok()); });
+        Assert.False(invoked); Assert.Empty(await db.Participants.ToArrayAsync());
+        Assert.Equal(410, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+        Assert.Contains("profile_deleted", JsonSerializer.Serialize(Assert.IsAssignableFrom<IValueHttpResult>(result).Value));
+        await Assert.ThrowsAsync<ProfileDeletedException>(() => new ParticipantIdentityService(db, TimeProvider.System)
+            .GetOrCreateAsync(42, "trusted", "Новое имя", null, default, true));
+        Assert.Empty(await db.Participants.ToArrayAsync());
+    }
+
+    [Fact]
     public void PrivateStartRoundTripRetainsExactGatheringAndRuntimeUsername()
     {
         var id = Guid.NewGuid();

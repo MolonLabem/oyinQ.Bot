@@ -62,7 +62,7 @@ internal static class PlayEndpoints
                 Players = GatheringPlayService.PlayerChoices(g).Select(x =>
                 {
                     var saved = record?.Players.SingleOrDefault(p => p.SourcePlayerId == x.Id);
-                    return new { x.Id, x.Name, x.OriginalName, x.DisplayNameOverride, CanRename = x.ParticipantId is not null,
+                    return new { x.Id, x.Name, x.OriginalName, x.DisplayNameOverride, x.CanRename,
                         saved?.Score, IsWinner = saved?.IsWinner ?? false };
                 }),
                 SelectedPlayerIds = record?.Players.Select(x => x.SourcePlayerId).ToArray() ?? GatheringPlayService.SuggestedPlayerIds(g),

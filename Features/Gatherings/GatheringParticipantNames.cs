@@ -19,14 +19,16 @@ public static class GatheringParticipantNames
     }
 
     public static string? GetOverride(GameGathering gathering, Participant participant) =>
-        participant.Id == gathering.OrganizerParticipantId ? gathering.OrganizerDisplayNameOverride
+        participant.DeletedAt is not null ? null : participant.Id == gathering.OrganizerParticipantId ? gathering.OrganizerDisplayNameOverride
             : gathering.Participants.SingleOrDefault(x => x.ParticipantId == participant.Id)?.DisplayNameOverride;
 
     public static string GetDisplayName(GameGatheringParticipant participation) =>
-        participation.DisplayNameOverride ?? ParticipantPresentation.GetDisplayName(participation.Participant);
+        participation.Participant.DeletedAt is not null ? ParticipantPresentation.AnonymousName
+            : participation.DisplayNameOverride ?? ParticipantPresentation.GetDisplayName(participation.Participant);
 
     public static string GetDisplayName(GameGathering gathering, Participant participant) =>
-        GetOverride(gathering, participant) ?? ParticipantPresentation.GetDisplayName(participant);
+        participant.DeletedAt is not null ? ParticipantPresentation.AnonymousName
+            : GetOverride(gathering, participant) ?? ParticipantPresentation.GetDisplayName(participant);
 
     public static string GetDisplayName(GatheringPlayRecord record, GatheringPlayPlayer player)
     {
@@ -44,6 +46,7 @@ public static class GatheringParticipantNames
             throw new ArgumentException("Имя каждого участника можно указать только один раз.");
         var roster = gathering.Participants.Where(x => x.Status is GatheringParticipationStatus.Confirmed or GatheringParticipationStatus.Waitlisted)
             .Select(x => x.Participant).Prepend(gathering.OrganizerParticipant).DistinctBy(x => x.Id)
+            .Where(x => x.DeletedAt == null)
             .ToDictionary(x => x.PublicId);
         var normalized = changes.Select(x => (Participant: roster.GetValueOrDefault(x.ParticipantId)
                 ?? throw new ArgumentException("Участник не найден в составе этого сбора."), Name: Normalize(x.DisplayNameOverride)))

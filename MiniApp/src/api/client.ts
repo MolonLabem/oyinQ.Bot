@@ -1,5 +1,6 @@
 import type { ApiErrorBody } from "./types";
 import { telegram } from "../telegram/webApp";
+import { profileGeneration, profileWasDeleted } from "../app/profileLifecycle";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public code?: string, public currentRevision?: number, public affectedGatherings?: ApiErrorBody["affectedGatherings"], public requiredDate?: string, public conflicts?: ApiErrorBody["conflicts"]) { super(message); }
@@ -14,6 +15,7 @@ export function fallbackApiError(status: number) {
 }
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const generation = profileGeneration();
   const headers = new Headers(options.headers);
   headers.set("X-Telegram-Init-Data", telegram.initData);
   if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
@@ -22,6 +24,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   catch { throw new ApiError("Нет соединения с OyinQ. Проверьте интернет и попробуйте ещё раз.", 0, "network_error"); }
   if (!response.ok) {
     const body = await response.json().catch(() => ({} as ApiErrorBody)) as ApiErrorBody;
+    if (body.code === "profile_deleted" && generation === profileGeneration()) profileWasDeleted();
     throw new ApiError(body.message?.trim() || fallbackApiError(response.status), response.status, body.code, body.currentRevision, body.affectedGatherings, body.requiredDate, body.conflicts);
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
@@ -30,11 +33,13 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 export const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 export async function download(path: string, fileName: string, signal?: AbortSignal): Promise<void> {
+  const generation = profileGeneration();
   let response: Response;
   try { response = await fetch(`/api/miniapp${path}`, { headers: { "X-Telegram-Init-Data": telegram.initData }, signal, cache: "no-store" }); }
   catch (error) { if (signal?.aborted) throw error; throw new ApiError("Нет соединения с OyinQ. Не удалось скачать файл.", 0, "network_error"); }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as ApiErrorBody;
+    if (body.code === "profile_deleted" && generation === profileGeneration()) profileWasDeleted();
     throw new ApiError(body.message?.trim() || fallbackApiError(response.status), response.status, body.code);
   }
   const disposition = response.headers.get("Content-Disposition");

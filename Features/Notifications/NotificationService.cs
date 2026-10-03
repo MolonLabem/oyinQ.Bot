@@ -12,7 +12,7 @@ public sealed class NotificationService(AppDbContext db, TimeProvider time)
 {
     public async Task EnqueueAsync(NotificationIntent intent, CancellationToken ct)
     {
-        var participantId = await db.Participants.Where(x => x.TelegramUserId == intent.TelegramUserId)
+        var participantId = await db.Participants.Where(x => x.TelegramUserId == intent.TelegramUserId && x.DeletedAt == null)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(ct);
         if (participantId is null) return; // A transport ID alone must never provision an identity.
         var key = $"{intent.Kind}:{intent.EventKey}:{participantId}";

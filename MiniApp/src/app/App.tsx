@@ -15,8 +15,20 @@ import { collectionVisitFromGathering, positiveGameId } from "./collectionNaviga
 import { CommunityPicker } from "../components/CommunityPicker";
 import { mainTab, miniAppLaunchContext } from "./launchContext";
 import { useAsync } from "../hooks/useAsync";
+import { profileDeletedEvent } from "./profileLifecycle";
+import { DeletedProfilePage } from "../pages/profile/ProfileDeletion";
 
 export function App() {
+  const [deleted, setDeleted] = useState(false);
+  useEffect(() => {
+    const erased = () => setDeleted(true);
+    window.addEventListener(profileDeletedEvent, erased);
+    return () => window.removeEventListener(profileDeletedEvent, erased);
+  }, []);
+  return deleted ? <DeletedProfilePage onRecreated={() => setDeleted(false)} /> : <ActiveApp />;
+}
+
+function ActiveApp() {
   const [launchContext] = useState(() => miniAppLaunchContext(location.search, telegram.startParam));
   const discovery = useAsync(() => api<Bootstrap>("/communities"), []);
   const capabilityState = useAsync(() => api<Capabilities>("/capabilities"), []);

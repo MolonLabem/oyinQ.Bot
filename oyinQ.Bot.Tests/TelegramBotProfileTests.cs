@@ -14,6 +14,7 @@ public sealed class TelegramBotProfileTests
                 "menu:Выбрать сообщество",
                 "help:Как пользоваться OyinQ",
                 "privacy:О ваших данных",
+                "deleteprofile:Удалить мой профиль",
                 "admin:Админ-панель"
             ],
             TelegramBotProfile.PrivateCommands.Select(x => $"{x.Command}:{x.Description}"));

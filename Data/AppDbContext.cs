@@ -18,6 +18,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
     public DbSet<Participant> Participants => Set<Participant>();
+    public DbSet<DeletedProfile> DeletedProfiles => Set<DeletedProfile>();
     public DbSet<ParticipantCollectionItem> ParticipantCollectionItems => Set<ParticipantCollectionItem>();
     public DbSet<OyinQCommunity> OyinQCommunities => Set<OyinQCommunity>();
     public DbSet<ChatAdminPermission> ChatAdminPermissions => Set<ChatAdminPermission>();
@@ -41,6 +42,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<DeletedProfile>(b =>
+        {
+            b.HasKey(x => x.TelegramUserId);
+            b.Property(x => x.TelegramUserId).ValueGeneratedNever();
+        });
         modelBuilder.Entity<CampBringRequest>(b =>
         {
             b.HasKey(x => x.Id);

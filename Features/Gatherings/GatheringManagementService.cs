@@ -33,6 +33,7 @@ public sealed class GatheringManagementService(
     public async Task<GameGathering> CreateAsync(BotCommunity community, TelegramMiniAppIdentity identity,
         CreateGatheringCommand command, CancellationToken cancellationToken)
     {
+        await using var operation = await ParticipantOperationLock.AcquireAsync(dbContext, identity.TelegramUserId, cancellationToken);
         var participant = await GetOrCreateParticipantAsync(identity, community.Key, cancellationToken);
         if (command.CommunityKey != community.Key) throw new ArgumentException("Сообщество запроса не совпадает с выбранным.");
         if (command.OperationId == Guid.Empty) throw new ArgumentException("Некорректный идентификатор операции.");

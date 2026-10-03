@@ -16,6 +16,7 @@ public static class TelegramBotProfile
         new() { Command = "menu", Description = "Выбрать сообщество" },
         new() { Command = "help", Description = "Как пользоваться OyinQ" },
         new() { Command = "privacy", Description = "О ваших данных" },
+        new() { Command = "deleteprofile", Description = "Удалить мой профиль" },
         new() { Command = "admin", Description = "Админ-панель" }
     ];
 

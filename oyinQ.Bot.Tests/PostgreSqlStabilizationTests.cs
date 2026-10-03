@@ -553,7 +553,14 @@ public sealed partial class PostgreSqlStabilizationTests
     private static async Task<Participant> SeedAsync(Database database, bool camp = false)
     {
         await using var db = database.Open();
-        var p = await new ParticipantIdentityService(db, Time).GetOrCreateAsync(12345, null, "Игрок", null, default);
+        Participant p;
+        if ((await db.Database.GetPendingMigrationsAsync()).Contains("20261003073652_ProfileDeletion"))
+        {
+            // Upgrade fixtures must use the old schema rather than current identity code before migration.
+            var id = await db.Database.SqlQuery<long>($"INSERT INTO \"Participants\" (\"TelegramUserId\", \"DisplayName\", \"CreatedAt\", \"UpdatedAt\") VALUES (12345, 'Игрок', {Now}, {Now}) RETURNING \"Id\" AS \"Value\"").ToArrayAsync();
+            p = new() { Id = Assert.Single(id), TelegramUserId = 12345, DisplayName = "Игрок" };
+        }
+        else p = await new ParticipantIdentityService(db, Time).GetOrCreateAsync(12345, null, "Игрок", null, default);
         var community = new OyinQCommunity { Key = "club", Name = "Сообщество", Mode = camp ? BotMode.Camp : BotMode.Club,
             TelegramChatId = -10012345, TimeZoneId = "UTC", IsActive = true };
         if (camp)

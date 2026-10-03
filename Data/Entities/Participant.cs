@@ -13,6 +13,7 @@ public sealed class Participant
     public DateTimeOffset? PrivateChatStartedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
 
     public ICollection<GameGathering> OrganizedGatherings { get; set; } = [];
     public ICollection<GameGatheringParticipant> GatheringParticipations { get; set; } = [];

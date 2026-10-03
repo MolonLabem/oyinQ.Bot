@@ -21,6 +21,7 @@ using oyinQ.Bot.Features.Collections;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Features.MiniApp;
+using oyinQ.Bot.Features.Notifications;
 using oyinQ.Bot.Integrations.BoardGameGeek;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
@@ -41,6 +42,7 @@ public sealed class GlobalProfileApiTests
         builder.Services.AddSingleton(Options.Create(new BotOptions { Token = "123:test" }));
         builder.Services.AddSingleton(Options.Create(new BggOptions()));
         builder.Services.AddScoped<TelegramMiniAppAuthenticator>(); builder.Services.AddScoped<ParticipantIdentityService>();
+        builder.Services.AddScoped<ProfileDeletionService>(); builder.Services.AddScoped<NotificationService>(); builder.Services.AddScoped<GatheringNotificationService>();
         builder.Services.AddScoped<MiniAppLinkBuilder>(); builder.Services.AddScoped<PrivateChatCapability>(); builder.Services.AddScoped<ParticipantCollectionService>();
         builder.Services.AddScoped<ICommunityStore, CommunityStore>(); builder.Services.AddScoped<CommunityContextResolver>();
         builder.Services.AddSingleton<IAdminAuthorizationService, NoAdministration>();
@@ -101,6 +103,32 @@ public sealed class GlobalProfileApiTests
             Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/plays")).GetProperty("items").EnumerateArray());
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/miniapp/profile/notifications")).StatusCode);
             Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync("/api/miniapp/profile/collection/BaseGame/42")).StatusCode);
+            async Task<HttpResponseMessage> DeleteProfile(bool confirmed) => await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete,
+                "/api/miniapp/profile?participantId=2") { Content = JsonContent.Create(new { confirmed, telegramUserId = 99 }) });
+            client.DefaultRequestHeaders.Remove("X-Telegram-Init-Data");
+            Assert.Equal(HttpStatusCode.Unauthorized, (await DeleteProfile(true)).StatusCode);
+            client.DefaultRequestHeaders.Add("X-Telegram-Init-Data", SignedData());
+            Assert.Equal(HttpStatusCode.BadRequest, (await DeleteProfile(false)).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/miniapp/profile")).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await DeleteProfile(true)).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await DeleteProfile(true)).StatusCode);
+            foreach (var path in new[] { "/profile", "/profile/gatherings", "/profile/collection/", "/profile/notifications" })
+            {
+                var gone = await client.GetAsync("/api/miniapp" + path);
+                Assert.Equal(HttpStatusCode.Gone, gone.StatusCode);
+                Assert.Equal("profile_deleted", (await gone.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+            }
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                Assert.False(await db.Participants.AnyAsync(x => x.TelegramUserId == 42));
+                Assert.Equal("Другой", (await db.Participants.SingleAsync(x => x.TelegramUserId == 99)).DisplayName);
+                Assert.Equal(43, (await db.ParticipantCollectionItems.SingleAsync()).BggId);
+            }
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/miniapp/profile/recreate", new { confirmed = false })).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync("/api/miniapp/profile/recreate", new { confirmed = true })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/miniapp/profile")).StatusCode);
+            Assert.Empty((await client.GetFromJsonAsync<JsonElement>("/api/miniapp/profile/collection/")).EnumerateArray());
         }
         finally { await app.StopAsync(); }
     }

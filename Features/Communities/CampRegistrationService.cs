@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Communities;
 
@@ -36,6 +37,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             : dbContext.Camps.Where(x => x.Id == campId);
         var camp = await campQuery
             .Include(x => x.BotChat).SingleAsync(cancellationToken);
+        await ParticipantWriteStore.RequireActiveAsync(dbContext, participantId, cancellationToken);
         var now = timeProvider.GetUtcNow();
         CampParticipationPolicy.EnsureAcceptsMutations(camp, camp.BotChat.TimeZoneId, now);
         if (camp.StartDate is not { } start || camp.EndDate is not { } end)

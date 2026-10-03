@@ -161,14 +161,16 @@ internal static class GatheringEndpoints
                     OriginalName = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant),
                     DisplayNameOverride = gathering.OrganizerDisplayNameOverride,
                     Name = GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant), IsOrganizer = true,
+                    CanRename = gathering.OrganizerParticipant.DeletedAt is null,
                     ContactUrl = ParticipantPresentation.GetContactUrl(gathering.OrganizerParticipant) } }
                 .Concat(gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed)
                     .Select(x => new { Id = x.Participant.PublicId, OriginalName = ParticipantPresentation.GetDisplayName(x.Participant),
                         x.DisplayNameOverride, Name = GatheringParticipantNames.GetDisplayName(x),
-                        IsOrganizer = false, ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) })),
+                        IsOrganizer = false, CanRename = x.Participant.DeletedAt is null, ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) })),
             WaitlistedParticipants = waitlisted.Select((x, index) => new
             { Id = x.Participant.PublicId, OriginalName = ParticipantPresentation.GetDisplayName(x.Participant),
                 x.DisplayNameOverride, Name = GatheringParticipantNames.GetDisplayName(x), Position = index + 1,
+                CanRename = x.Participant.DeletedAt is null,
                 ContactUrl = ParticipantPresentation.GetContactUrl(x.Participant) }),
             GuestParticipants = gathering.Guests.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
                 .Select(x => new { x.Id, x.DisplayName }),

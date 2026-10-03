@@ -12,6 +12,7 @@ vi.mock("../telegram/webApp", async () => {
 });
 import { api } from "../api/client";
 import { App } from "./App";
+import { profileWasDeleted } from "./profileLifecycle";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -44,6 +45,20 @@ async function profileTab(label: string) {
   const tab = [...host.querySelectorAll<HTMLButtonElement>('.profile-tabs button')].find(x => x.textContent === label)!;
   await act(async () => tab.click());
 }
+
+it("unmounts profile data and navigation after deletion, including an already open session", async () => {
+  discovery = async () => ({ communities: [], canOpenAdminPanel: false, isSuperAdmin: false });
+  await act(async () => root.render(<App />));
+  expect(host.textContent).toContain("Моя игра");
+  await act(async () => profileWasDeleted());
+  expect(host.textContent).toContain("Профиль удалён");
+  expect(host.textContent).not.toContain("Моя игра");
+  expect(host.querySelector(".profile-tabs")).toBeNull();
+  expect(host.querySelector(".bottom-nav")).toBeNull();
+  const calls = vi.mocked(api).mock.calls.length;
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(vi.mocked(api).mock.calls.length).toBe(calls);
+});
 
 it("opens own box management in the unified profile and returns to the same wishlist detail", async () => {
   sessionStorage.clear(); history.replaceState({}, "", "/?community=camp&tab=games&wishlist=1");

@@ -136,6 +136,7 @@ builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<AdminHandler>();
 builder.Services.AddScoped<TelegramUpdateHandler>();
 builder.Services.AddScoped<ParticipantIdentityService>();
+builder.Services.AddScoped<ProfileDeletionService>();
 builder.Services.AddScoped<PrivateChatCapability>();
 builder.Services.AddHostedService<CampBggImportWorker>();
 builder.Services.AddHostedService<CampLifecycleWorker>();

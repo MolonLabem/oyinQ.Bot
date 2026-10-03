@@ -6,6 +6,7 @@ import { CampPersonalWishes } from "../games/CampWishlist";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { ChangelogPage } from "./ChangelogPage";
 import { NotificationSettings } from "./NotificationSettings";
+import { ProfileDeletion } from "./ProfileDeletion";
 import { useEffect, useState } from "react";
 import { api, json, download } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
@@ -67,7 +68,8 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
     {community?.mode === "Camp" && <CampPrivacy community={community} />}
     {!profile.data.botStartRequired && <p className="profile-bot-status">Личный чат с ботом открыт</p>}
     <NotificationSettings />
-    {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}</>}
+    {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}
+    <ProfileDeletion /></>}
     {tab === "calendar" && <section className="profile-schedule"><h2>Моё расписание</h2>
       <button disabled={busy} onClick={async () => { setBusy(true); setError(undefined); try { await download("/profile/gatherings.ics", "oyinq-agenda.ics"); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }}>Скачать календарь (.ics)</button>
       <p className="muted">Файл текущего расписания. После изменений скачайте его заново; окончание игр оценочное.</p>

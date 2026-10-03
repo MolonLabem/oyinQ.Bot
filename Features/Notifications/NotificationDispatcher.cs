@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Notifications;
 
@@ -27,18 +28,25 @@ public sealed class NotificationDispatcher(AppDbContext db, TimeProvider time, I
             foreach (var item in abandoned) { item.State = NotificationState.DeliveryUnknown; item.LastErrorCategory = "delivery_outcome_unknown"; }
             if (abandoned.Length > 0) await db.SaveChangesAsync(ct);
         }
+        var recipient = await db.Notifications.AsNoTracking()
+            .Where(x => x.Participant.DeletedAt == null && x.NextAttemptAt <= now && (x.State == NotificationState.Pending || x.State == NotificationState.Failed
+                || (x.State == NotificationState.CannotMessageUser && x.Participant.PrivateChatStartedAt != null
+                    && x.Participant.TelegramDeliveryBlockedAt == null && (x.LastAttemptAt == null || x.Participant.PrivateChatStartedAt > x.LastAttemptAt))))
+            .OrderBy(x => x.NextAttemptAt).ThenBy(x => x.Id).Select(x => (long?)x.Participant.TelegramUserId).FirstOrDefaultAsync(ct);
+        if (recipient is null) return false;
+        await using var operation = await ParticipantOperationLock.AcquireAsync(db, recipient.Value, ct);
         Notification? row;
         await using (var transaction = await db.Database.BeginTransactionAsync(ct))
         {
             var query = db.Database.IsRelational()
                 ? db.Notifications.FromSqlInterpolated($$"""
                     SELECT n.* FROM "Notifications" n JOIN "Participants" p ON p."Id" = n."ParticipantId"
-                    WHERE n."NextAttemptAt" <= {{now}} AND
+                    WHERE p."TelegramUserId" = {{recipient.Value}} AND p."DeletedAt" IS NULL AND n."NextAttemptAt" <= {{now}} AND
                     (n."State" IN (0, 2) OR (n."State" = 4 AND p."PrivateChatStartedAt" IS NOT NULL
                      AND p."TelegramDeliveryBlockedAt" IS NULL AND (n."LastAttemptAt" IS NULL OR p."PrivateChatStartedAt" > n."LastAttemptAt")))
                     ORDER BY n."NextAttemptAt", n."Id" FOR UPDATE OF n SKIP LOCKED LIMIT 1
                     """)
-                : db.Notifications.Where(x => x.NextAttemptAt <= now && (x.State == NotificationState.Pending || x.State == NotificationState.Failed
+                : db.Notifications.Where(x => x.Participant.TelegramUserId == recipient.Value && x.Participant.DeletedAt == null && x.NextAttemptAt <= now && (x.State == NotificationState.Pending || x.State == NotificationState.Failed
                     || (x.State == NotificationState.CannotMessageUser && x.Participant.PrivateChatStartedAt != null
                     && x.Participant.TelegramDeliveryBlockedAt == null && (x.LastAttemptAt == null || x.Participant.PrivateChatStartedAt > x.LastAttemptAt))))
                     .OrderBy(x => x.NextAttemptAt).ThenBy(x => x.Id).Take(1);

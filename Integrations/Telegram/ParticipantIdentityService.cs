@@ -5,6 +5,8 @@ using oyinQ.Bot.Data.Entities;
 
 namespace oyinQ.Bot.Integrations.Telegram;
 
+public sealed class ProfileDeletedException() : InvalidOperationException("Профиль удалён. Вы можете создать новый профиль с нуля.");
+
 public sealed class ParticipantIdentityService(AppDbContext dbContext, TimeProvider timeProvider)
 {
     public async Task<Participant> GetOrCreateAsync(long telegramUserId, string? username,
@@ -12,6 +14,9 @@ public sealed class ParticipantIdentityService(AppDbContext dbContext, TimeProvi
         bool privateMessageReceived = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(telegramUserId);
+        await using var operation = await ParticipantOperationLock.AcquireAsync(dbContext, telegramUserId, cancellationToken);
+        if (await dbContext.DeletedProfiles.AnyAsync(x => x.TelegramUserId == telegramUserId, cancellationToken))
+            throw new ProfileDeletedException();
         var now = timeProvider.GetUtcNow();
         var participant = await dbContext.Participants.SingleOrDefaultAsync(
             x => x.TelegramUserId == telegramUserId, cancellationToken);

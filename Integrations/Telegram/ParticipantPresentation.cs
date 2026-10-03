@@ -5,8 +5,10 @@ namespace oyinQ.Bot.Integrations.Telegram;
 
 public static class ParticipantPresentation
 {
+    public const string AnonymousName = "Удалённый профиль";
     public static string GetDisplayName(Participant participant)
     {
+        if (participant.DeletedAt is not null) return AnonymousName;
         if (!string.IsNullOrWhiteSpace(participant.PreferredDisplayName))
         {
             return participant.PreferredDisplayName.Trim();
@@ -27,7 +29,7 @@ public static class ParticipantPresentation
 
     public static string ToHtmlLink(Participant participant, int? maximumNameLength = null, string? displayName = null)
     {
-        displayName ??= GetDisplayName(participant);
+        displayName = participant.DeletedAt is not null ? AnonymousName : displayName ?? GetDisplayName(participant);
         if (maximumNameLength is { } limit && displayName.Length > limit)
         {
             var end = limit - 1;
@@ -35,13 +37,13 @@ public static class ParticipantPresentation
             displayName = displayName[..end] + "…";
         }
         var name = WebUtility.HtmlEncode(displayName);
-        return participant.TelegramUserId > 0
+        return participant.DeletedAt is null && participant.TelegramUserId > 0
             ? $"<a href=\"tg://user?id={participant.TelegramUserId}\">{name}</a>"
             : name;
     }
 
     public static string? GetContactUrl(Participant participant) =>
-        GetContactUrl(participant.TelegramUserId, participant.TelegramUsername);
+        participant.DeletedAt is not null ? null : GetContactUrl(participant.TelegramUserId, participant.TelegramUsername);
 
     public static string? GetContactUrl(long telegramUserId, string? telegramUsername)
     {

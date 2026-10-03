@@ -15,15 +15,14 @@ public sealed partial class PostgreSqlStabilizationTests
         var id = Guid.NewGuid(); var snapshot = GatheringGameSnapshotSerializer.Serialize(Snapshot());
         await using (var db = database.Open())
         {
-            var player = new Participant { TelegramUserId = 23456, DisplayName = "Виктор" };
-            db.Participants.Add(player); await db.SaveChangesAsync();
+            var playerId = Assert.Single(await db.Database.SqlQuery<long>($"INSERT INTO \"Participants\" (\"TelegramUserId\", \"DisplayName\", \"CreatedAt\", \"UpdatedAt\") VALUES (23456, 'Виктор', {Now}, {Now}) RETURNING \"Id\" AS \"Value\"").ToArrayAsync());
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "GameGatherings" ("Id","PublicId","CommunityKey","GameSnapshotJson","OrganizerParticipantId","StartsAtUtc",
                     "MinimumPlayers","DesiredPlayers","MaximumPlayers","CanTeachRules","Status","PublicationStatus","PublicationAttempts",
                     "PublicationRevision","OutcomeRevision","CreatedAt","UpdatedAt")
                 VALUES (100,{id},'club',{snapshot}::jsonb,{organizer.Id},{Now.AddHours(1)},1,2,4,false,0,0,0,0,0,{Now},{Now});
                 INSERT INTO "GameGatheringParticipants" ("GameGatheringId","ParticipantId","Status","AttendanceOutcome","JoinedAt")
-                VALUES (100,{player.Id},0,0,{Now});
+                VALUES (100,{playerId},0,0,{Now});
                 """);
             await db.Database.MigrateAsync();
             await db.Database.MigrateAsync();

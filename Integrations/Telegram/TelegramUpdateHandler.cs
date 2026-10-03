@@ -44,6 +44,20 @@ public sealed class TelegramUpdateHandler(
         var callback = update.CallbackQuery;
         var user = callback?.From ?? update.Message?.From;
         if (user is null) return;
+        await using var profileOperation = await ParticipantOperationLock.AcquireAsync(dbContext, user.Id, cancellationToken);
+        var command = TelegramUpdateRouting.GetCommand(update.Message?.Text);
+        if (update.Message is { Chat.Type: ChatType.Private }
+            && (command == "/deleteprofile" || await dbContext.DeletedProfiles.AnyAsync(x => x.TelegramUserId == user.Id, cancellationToken)))
+        {
+            if (command == "/privacy") await SendPrivacyAsync(user.Id, cancellationToken);
+            else if (command is "/start" or "/menu" or "/help" or "/admin" or "/deleteprofile")
+                await botClient.SendMessage(user.Id,
+                    command == "/deleteprofile" ? "Удаление профиля доступно в настройках OyinQ. Перед удалением приложение попросит подтверждение."
+                        : "Ваш профиль удалён. Создать новый можно в OyinQ; прежние данные не восстановятся.",
+                    replyMarkup: new InlineKeyboardMarkup(InlineKeyboardButton.WithWebApp("Открыть настройки профиля",
+                        new WebAppInfo { Url = links.ProfileSettings() })), cancellationToken: cancellationToken);
+            return;
+        }
         var participant = update.Message is { Chat.Type: ChatType.Private }
             ? await new ParticipantIdentityService(dbContext, TimeProvider.System).GetOrCreateAsync(
                 user.Id, user.Username, BuildDisplayName(user), null, cancellationToken, privateMessageReceived: true)
@@ -72,7 +86,6 @@ public sealed class TelegramUpdateHandler(
         }
 
         var message = update.Message;
-        var command = TelegramUpdateRouting.GetCommand(message?.Text);
         if (message is { Chat.Type: not ChatType.Private })
         {
             if (TelegramUpdateRouting.IsPostingTopicSelectionRequest(message.Text, command))

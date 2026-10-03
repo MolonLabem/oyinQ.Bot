@@ -5,7 +5,7 @@ using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Gatherings;
 
-public sealed record PlayPlayerChoice(Guid Id, string Name, long? ParticipantId, string? OriginalName = null, string? DisplayNameOverride = null);
+public sealed record PlayPlayerChoice(Guid Id, string Name, long? ParticipantId, string? OriginalName = null, string? DisplayNameOverride = null, bool CanRename = true);
 public sealed record PlayPlayerResult(Guid PlayerId, decimal? Score, bool IsWinner);
 public sealed record RecordPlayCommand(bool WasPlayed, DateTimeOffset? EndedAtUtc, int? DurationMinutes,
     IReadOnlyCollection<PlayPlayerResult> Players, IReadOnlyCollection<long> ExpansionIds, int ExpectedRevision,
@@ -20,8 +20,8 @@ public sealed class GatheringPlayService(AppDbContext db, TimeProvider clock)
         g.Participants.Where(x => x.Status == GatheringParticipationStatus.Confirmed).Select(x => x.Participant)
             .Prepend(g.OrganizerParticipant).DistinctBy(x => x.Id)
             .Select(x => new PlayPlayerChoice(x.PublicId, GatheringParticipantNames.GetDisplayName(g, x), x.Id,
-                ParticipantPresentation.GetDisplayName(x), GatheringParticipantNames.GetOverride(g, x)))
-            .Concat(g.Guests.Select(x => new PlayPlayerChoice(x.PublicId, x.DisplayName, null))).ToArray();
+                ParticipantPresentation.GetDisplayName(x), GatheringParticipantNames.GetOverride(g, x), x.DeletedAt is null))
+            .Concat(g.Guests.Select(x => new PlayPlayerChoice(x.PublicId, x.DisplayName, null, CanRename: false))).ToArray();
 
     public static IReadOnlyList<Guid> SuggestedPlayerIds(GameGathering gathering)
     {

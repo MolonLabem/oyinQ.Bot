@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 namespace oyinQ.Bot.Features.MiniApp;
 
 internal sealed record SaveProfileRequest(string? DisplayName);
+internal sealed record ProfileLifecycleRequest(bool Confirmed);
+internal sealed record ProfileLifecycleEndpoint;
 
 internal static class ProfileEndpoints
 {
@@ -23,7 +25,30 @@ internal static class ProfileEndpoints
         group.MapGet("/profile/gatherings", GetGatheringsAsync);
         group.MapGet("/profile/gatherings.ics", ExportAgendaAsync);
         group.MapPut("/profile", SaveAsync);
+        group.MapDelete("/profile", DeleteAsync).WithMetadata(new ProfileLifecycleEndpoint());
+        group.MapPost("/profile/recreate", RecreateAsync).WithMetadata(new ProfileLifecycleEndpoint());
         return group;
+    }
+
+    private static async Task<IResult> DeleteAsync(HttpRequest request,
+        [Microsoft.AspNetCore.Mvc.FromBody] ProfileLifecycleRequest body,
+        TelegramMiniAppAuthenticator authenticator, ProfileDeletionService deletion, CancellationToken ct)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
+        if (!body.Confirmed) return MiniAppEndpointSupport.Problem("confirmation_required", "Подтвердите удаление профиля.");
+        await deletion.DeleteAsync(identity.TelegramUserId, ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> RecreateAsync(HttpRequest request, ProfileLifecycleRequest body,
+        TelegramMiniAppAuthenticator authenticator, ProfileDeletionService deletion, CancellationToken ct)
+    {
+        var identity = MiniAppEndpointSupport.Authenticate(request, authenticator);
+        if (identity is null) return Results.Unauthorized();
+        if (!body.Confirmed) return MiniAppEndpointSupport.Problem("confirmation_required", "Подтвердите создание нового профиля.");
+        await deletion.RecreateAsync(identity, ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> GetGatheringsAsync(HttpRequest request,
