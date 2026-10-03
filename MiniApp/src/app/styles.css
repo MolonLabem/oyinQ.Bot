@@ -274,7 +274,9 @@ fieldset { min-width: 0; margin-inline: 0; }
 .camp-question { padding-top: 16px; border-top: var(--surface-border); }
 .camp-question h3 { margin: 0; font-size: var(--font-section); }
 .camp-question > summary { font-weight: 600; cursor: pointer; padding-block: 8px; overflow-wrap: anywhere; }
-.camp-question > section { padding-block: 12px; }
+.camp-question > fieldset { display: grid; gap: 12px; border: 0; margin: 0; padding: 12px 0; min-width: 0; }
+.camp-price-preview { display: grid; gap: 16px; padding: 16px; border: var(--surface-border); border-radius: var(--radius-control); background: var(--surface); min-width: 0; }
+.camp-price-preview > h3, .camp-price-preview p { margin: 0; }
 .camp-options { max-height: 480px; overflow-y: auto; padding-right: 4px; }
 .review-list dt, .review-list dd { min-width: 0; overflow-wrap: anywhere; }
 .camp-option { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, .6fr) auto; align-items: center; gap: 8px; }
@@ -407,7 +409,8 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 
 /* Admin behaves as an application on wide screens and remains stacked on phones. */
 .admin-shell { width: 100%; max-width: var(--reading-max); margin: 0 auto; padding: 18px max(var(--space-4), var(--tg-content-safe-area-inset-right, env(safe-area-inset-right))) var(--space-6) max(var(--space-4), var(--tg-content-safe-area-inset-left, env(safe-area-inset-left))); }
-.admin-context { display: grid; gap: var(--space-1); }
+.admin-context { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); }
+.admin-context-main { min-width: 0; display: grid; gap: var(--space-1); }
 .admin-context-label { color: var(--muted); font-size: var(--font-xs); }
 .admin-community-select { position: relative; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .admin-community-trigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; text-align: left; padding-inline: var(--space-2); border-color: transparent; background: transparent; color: var(--text); }

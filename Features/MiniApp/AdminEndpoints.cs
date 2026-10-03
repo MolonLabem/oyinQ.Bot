@@ -48,6 +48,7 @@ internal static class AdminEndpoints
         admin.MapDelete("/clubs/{clubId:long}", DeleteClubAsync);
         admin.MapPost("/clubs/{clubId:long}/collection/from-club", CopyClubCollectionAsync);
         admin.MapPost("/camps", CreateCampAsync);
+        admin.MapCampPricingPreviewEndpoints();
         admin.MapPut("/camps/{campId:long}", UpdateCampAsync);
         admin.MapDelete("/camps/{campId:long}", DeleteCampAsync);
         admin.MapCampParticipantEndpoints();

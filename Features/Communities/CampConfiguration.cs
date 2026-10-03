@@ -166,8 +166,13 @@ public static class CampConfigurationRules
 
     public static void EnsureFieldsUnchanged(CampConfiguration before, CampConfiguration after, bool hasRegistrations)
     {
-        if (hasRegistrations && Serialize(before.RegistrationFields) != Serialize(after.RegistrationFields))
-            throw new InvalidOperationException("После первой регистрации вопросы и их варианты нельзя менять. Создайте новую форму для следующего кэмпа.");
+        if (!hasRegistrations) return;
+        var existing = before.RegistrationFields ?? [];
+        var updated = after.RegistrationFields ?? [];
+        if (updated.Count < existing.Count ||
+            Serialize(existing) != Serialize(updated.Take(existing.Count).ToArray()) ||
+            updated.Skip(existing.Count).Any(field => field.Required))
+            throw new InvalidOperationException("После первой регистрации можно добавлять только необязательные вопросы. Существующие вопросы, варианты и доплаты менять нельзя.");
     }
     private static void RequireId(string id)
     {

@@ -94,7 +94,33 @@ public sealed class CampConfigurationTests
             new(camp.Name, camp.BotChat.TimeZoneId, camp.StartsAtUtc!.Value, camp.EndsAtUtc!.Value, Configuration() with { RegistrationFields = [] }), default));
         await manager.UpdateCampAsync(camp.Id, new(camp.Name, camp.BotChat.TimeZoneId, camp.StartsAtUtc!.Value, camp.EndsAtUtc!.Value,
             Configuration() with { Description = "Обновлённое описание" }), default);
+        var beforeAppend = reg.RegistrationDataJson;
+        var appended = Configuration() with { RegistrationFields = [.. Configuration().RegistrationFields!, new("extra", "Комментарий о приезде", "Text")] };
+        await manager.UpdateCampAsync(camp.Id, new(camp.Name, camp.BotChat.TimeZoneId, camp.StartsAtUtc!.Value, camp.EndsAtUtc!.Value, appended), default);
+        Assert.Equal(beforeAppend, reg.RegistrationDataJson);
+        Assert.True(CampParticipationPolicy.IsRegistrationComplete(reg, camp));
+        await service.SaveAsync(camp.Id, player.Id, [dates[0]], false, "Ещё одно имя", "Астана", false, default, Answers());
+        Assert.Equal(beforeAppend, reg.RegistrationDataJson);
         Assert.Equal(22500, CampConfigurationRules.ReadRegistration(reg.RegistrationDataJson).Quote!.Total);
+    }
+
+    [Fact]
+    public void RegisteredCampOnlyAllowsOptionalQuestionsAppendedWithoutChangingExistingSchema()
+    {
+        var before = Configuration();
+        var fields = before.RegistrationFields!;
+        var optional = new CampRegistrationField("new", "Новый вопрос", "Checkbox", Amount: 500);
+        var after = CampConfigurationRules.Normalize(before with { RegistrationFields = [.. fields, optional] });
+        CampConfigurationRules.EnsureFieldsUnchanged(before, after, true);
+        foreach (var changed in new IReadOnlyList<CampRegistrationField>[] {
+            [.. fields, optional with { Required = true }], fields.Reverse().ToArray(), fields.Skip(1).ToArray(),
+            [fields[0] with { Label = "Изменено" }, .. fields.Skip(1)],
+            [fields[0], optional, .. fields.Skip(1)],
+            [.. fields.Take(fields.Count - 1), fields[^1] with { Amount = 1 }]
+        })
+            Assert.Throws<InvalidOperationException>(() => CampConfigurationRules.EnsureFieldsUnchanged(before,
+                before with { RegistrationFields = changed }, true));
+        CampConfigurationRules.EnsureFieldsUnchanged(before, before with { RegistrationFields = [] }, false);
     }
 
     internal sealed class Clock : TimeProvider

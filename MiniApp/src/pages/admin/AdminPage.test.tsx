@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminOverview } from "../../api/types";
 
 vi.mock("../../telegram/webApp", () => ({ telegram: {
+  canFullscreen: true, isFullscreen: false, onFullscreenChanged: vi.fn(() => () => {}), requestFullscreen: vi.fn(), exitFullscreen: vi.fn(),
   back: vi.fn(() => () => {}), success: vi.fn(), confirm: vi.fn(), requestPeer: vi.fn(),
 }, successEventName: "test:success" }));
 vi.mock("../../api/client", async importOriginal => ({
@@ -101,6 +102,16 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
+describe("admin fullscreen", () => {
+  it("keeps the shared expand control available while creating a camp", async () => {
+    await createCampFromKnownChat();
+    const expand = host.querySelector<HTMLButtonElement>('button[aria-label="Развернуть на весь экран"]')!;
+    expect(expand).not.toBeNull();
+    await act(async () => expand.click());
+    expect(telegram.requestFullscreen).toHaveBeenCalled();
+  });
+});
+
 describe("camp creation", () => {
   it("selects a Telegram group before dates are filled and submits its selection token", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
@@ -189,26 +200,41 @@ describe("camp creation", () => {
 });
 
 describe("camp customization", () => {
-  it("creates a configured camp with priced registration choices and the Halloween preset", async () => {
+  it("creates a configured camp with a generic registration question and participant pricing preview", async () => {
     await createCampFromKnownChat(); await changeDate(0, "2026-10-31T12:00"); await changeDate(1, "2026-11-01T23:00");
-    await click("Вопросы для Хэллоуина");
-    const pricingToggle = Array.from(host.querySelectorAll("label")).find(label => label.textContent?.includes("Рассчитывать стоимость участия"))!.querySelector("input")!;
-    await act(async () => pricingToggle.click());
+    expect(host.textContent).not.toContain("Вопросы для Хэллоуина");
+    expect(host.textContent).not.toContain("Имя, город, дни участия");
+    await click("Добавить вопрос");
+    const question = Array.from(host.querySelectorAll("label")).find(label => label.textContent === "Название вопроса 1")!.querySelector("input")!;
+    expect(document.activeElement).toBe(question);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(question, "Время приезда"); question.dispatchEvent(new Event("input", { bubbles: true })); });
+    const pricingMode = Array.from(host.querySelectorAll("label")).find(label => label.querySelector("span")?.textContent === "Расчёт стоимости")!.querySelector("select")!;
+    await act(async () => { pricingMode.value = "choices"; pricingMode.dispatchEvent(new Event("change", { bubbles: true })); });
     const amount = Array.from(host.querySelectorAll("label")).find(label => label.textContent === "Цена участия")!.querySelector("input")!;
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(amount, "10000"); amount.dispatchEvent(new Event("input", { bubbles: true })); });
     await click("Создать кэмп");
     const body = JSON.parse(String(writes().find(([path]) => path === "/admin/camps")![1]?.body));
     expect(body.configuration.pricing).toEqual({ currency: "KZT", amount: 10000, perDay: false });
-    expect(body.configuration.registrationFields.map((field: { label: string }) => field.label)).toEqual(["Во сколько планируете приехать?", "Будете в костюме?", "Комментарий организатору"]);
-    expect(body.configuration.registrationFields[0].options).toHaveLength(24);
-    expect(body.configuration.registrationFields[0].options[0].label).toBe("00:00");
+    expect(body.configuration.registrationFields).toEqual([expect.objectContaining({ label: "Время приезда", type: "Text", required: false })]);
+
   });
-  it("locks answered questions while allowing camp information to be edited", async () => {
+  it("preserves answered questions and allows adding and saving optional questions", async () => {
     data.camps[0].configuration = { version: 1, description: "Описание", registrationFields: [{ id: "question", label: "Приезд", type: "Text", required: false, amount: 0, perDay: false, options: [] }] };
     await mount(); await switchTo("camp-3"); await click("Настройки");
     const name = Array.from(host.querySelectorAll("label")).find(label => label.textContent === "Название вопроса 1")!.querySelector("input")!;
     expect(name.matches(":disabled")).toBe(true);
     expect(host.querySelector("textarea")!.matches(":disabled")).toBe(false);
+    const existing = data.camps[0].configuration.registrationFields[0];
+    await click("Добавить вопрос");
+    const added = Array.from(host.querySelectorAll("label")).find(label => label.textContent === "Название вопроса 2")!.querySelector("input")!;
+    expect(added.matches(":disabled")).toBe(false);
+    expect(document.activeElement).toBe(added);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(added, "Комментарий"); added.dispatchEvent(new Event("input", { bubbles: true })); });
+    const required = Array.from(host.querySelectorAll("label")).filter(label => label.textContent === "Обязательный ответ").at(-1)!.querySelector("input")!;
+    expect(required.matches(":disabled")).toBe(true);
+    await click("Сохранить настройки");
+    const body = JSON.parse(String(writes().find(([path]) => path === "/admin/camps/3")![1]?.body));
+    expect(body.configuration.registrationFields).toEqual([existing, expect.objectContaining({ label: "Комментарий", required: false })]);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { CampConfiguration, CampRegistrationField, CampRegistrationQuote } from "../api/types";
+import type { CampConfiguration, CampPricing, CampRegistrationField, CampRegistrationQuote } from "../api/types";
 import { formatDate, formatMoney } from "../app/format";
 import { Field, FormSection } from "./Ui";
 
@@ -10,12 +10,15 @@ export function CampInformation({ config }: { config: CampConfiguration }) {
   return <FormSection title="О кэмпе">
     {config.description && <p className="pre-line camp-description">{config.description}</p>}
     {(config.locationName || config.locationUrl) && <p>{config.locationUrl ? <a href={config.locationUrl} target="_blank" rel="noreferrer">{config.locationName || "Место проведения"}</a> : config.locationName}</p>}
-    {price && <div><h3>Стоимость участия</h3><p>{formatMoney(price.amount, price.currency)}{price.perDay ? " за день" : " за кэмп"}</p>
-      {price.earlyAmount != null && price.earlyUntil && <p>Ранняя цена: {formatMoney(price.earlyAmount, price.currency)}{price.perDay ? " за день" : ""} при регистрации до {formatDate(price.earlyUntil)} включительно.</p>}
-      {Boolean(price.accommodationAmount) && <p>Жильё: +{formatMoney(price.accommodationAmount!, price.currency)}{price.accommodationPerDay ? " за день" : ""} при выборе «Нужно жильё».</p>}
-      <p className="muted">Итог зависит от выбранных дней и вариантов в регистрации. Расчёт не подтверждает оплату.</p></div>}
+    {price && <CampPriceInformation price={price} />}
     {config.paymentInstructions && <div><h3>Как оплатить</h3><p className="pre-line camp-description">{config.paymentInstructions}</p></div>}
   </FormSection>;
+}
+export function CampPriceInformation({ price }: { price: CampPricing }) {
+  return <div><h3>Стоимость участия</h3><p>{formatMoney(price.amount, price.currency)}{price.perDay ? " за день" : " за кэмп"}</p>
+      {price.earlyAmount != null && price.earlyUntil && <p>Ранняя цена: {formatMoney(price.earlyAmount, price.currency)}{price.perDay ? " за день" : ""} при регистрации до {formatDate(price.earlyUntil)} включительно.</p>}
+      {Boolean(price.accommodationAmount) && <p>Жильё: +{formatMoney(price.accommodationAmount!, price.currency)}{price.accommodationPerDay ? " за день" : ""} при выборе «Нужно жильё».</p>}
+      <p className="muted">Итог зависит от выбранных дней и вариантов в регистрации. Расчёт не подтверждает оплату.</p></div>;
 }
 export function requiredAnswersComplete(fields: CampRegistrationField[], answers: Record<string, string>) {
   return fields.every(field => !field.required || (field.type === "Checkbox" ? answers[field.id] === "true" : Boolean(answers[field.id]?.trim())));

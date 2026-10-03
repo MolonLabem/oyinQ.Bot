@@ -6,6 +6,39 @@ namespace oyinQ.Bot.Tests;
 public sealed partial class PostgreSqlStabilizationTests
 {
     [PostgreSqlFact]
+    public async Task OptionalQuestionsAppendPreservesSavedRegistrationAcrossRestart()
+    {
+        await using var database = await Database.CreateAsync();
+        var actor = await SeedAsync(database, camp: true);
+        string saved;
+        await using (var db = database.Open())
+        {
+            var camp = await db.Camps.Include(x => x.BotChat).SingleAsync();
+            var config = CampConfigurationTests.Configuration();
+            camp.ConfigurationJson = CampConfigurationRules.Serialize(config);
+            await db.SaveChangesAsync();
+            var registrations = new CampRegistrationService(db, Time);
+            await registrations.SaveAsync(camp.Id, actor.Id, [DateOnly.FromDateTime(Now.UtcDateTime)], false,
+                "Игрок", "Алматы", false, default, CampConfigurationTests.Answers());
+            saved = (await db.CampRegistrations.SingleAsync()).RegistrationDataJson;
+            var manager = new ManagedCommunityService(db, null!, Time);
+            var appended = config with { RegistrationFields = [.. config.RegistrationFields!, new("extra", "Комментарий", "Text")] };
+            await manager.UpdateCampAsync(camp.Id, new("Обновлённый кэмп", "UTC", camp.StartsAtUtc!.Value,
+                camp.EndsAtUtc!.Value, appended), default);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => manager.UpdateCampAsync(camp.Id,
+                new(camp.Name, "UTC", camp.StartsAtUtc.Value, camp.EndsAtUtc.Value,
+                    appended with { RegistrationFields = [.. config.RegistrationFields!, new("required", "Обязательный", "Text", Required: true)] }), default));
+        }
+        await using var restarted = database.Open();
+        var stored = await restarted.Camps.SingleAsync();
+        Assert.Equal("extra", CampConfigurationRules.Read(stored.ConfigurationJson).RegistrationFields![^1].Id);
+        var registration = await restarted.CampRegistrations.Include(x => x.SelectedDays).SingleAsync();
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(System.Text.Json.Nodes.JsonNode.Parse(saved),
+            System.Text.Json.Nodes.JsonNode.Parse(registration.RegistrationDataJson)));
+        Assert.True(CampParticipationPolicy.IsRegistrationComplete(registration, stored));
+    }
+
+    [PostgreSqlFact]
     public async Task CampConfigurationMigrationPreservesPopulatedOldRegistrationsAndSurvivesRestart()
     {
         await using var database = await Database.CreateAsync("20261001090000_GatheringParticipantDisplayNames");

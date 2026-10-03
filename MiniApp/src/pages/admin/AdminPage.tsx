@@ -1,3 +1,4 @@
+import { FullscreenButton } from "../../components/FullscreenButton";
 import { CampConfigurationEditor, emptyCampConfiguration } from "../../components/CampConfigurationEditor";
 import { CampInformation, hasCampInformation } from "../../components/CampInformation";
 import { FormSection, validateForm } from "../../components/Ui";
@@ -73,8 +74,9 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
   ];
   return <div className="app-shell admin-app">
     <header className="context-bar admin-context">
-      <span className="admin-context-label">Администрирование</span>
-      <AdminCommunitySwitcher options={options} selected={selected} loading={state.loading} select={switchCommunity} />
+      <div className="admin-context-main"><span className="admin-context-label">Администрирование</span>
+      <AdminCommunitySwitcher options={options} selected={selected} loading={state.loading} select={switchCommunity} /></div>
+      <div className="context-actions"><FullscreenButton /></div>
     </header>
     <div className="admin-shell">
       <div className="admin-main" key={currentSection === "release" ? "announcements" : `${selected?.id ?? "none"}:${currentSection}`}>
@@ -452,7 +454,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
         </Field>
         <Notice>Изменение дат не удаляет данные. Все существующие регистрации и сборы должны помещаться в новый диапазон.</Notice>
       </FormSection>
-      <CampConfigurationEditor value={configuration} onChange={setConfiguration} fieldsLocked={camp.registrations > 0} disabled={busy} />
+      <CampConfigurationEditor timeZoneId={zone} value={configuration} onChange={setConfiguration} fieldsLocked={camp.registrations > 0} disabled={busy} />
       {error && <Notice kind="danger">{error}</Notice>}
       <button type="submit" className="primary" disabled={busy || !name.trim() || !zone.trim()} aria-busy={busy}>{busy ? "Сохраняем…" : "Сохранить настройки"}</button>
       </form>
@@ -726,7 +728,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
         <CampDateRange start={start} end={end} timeZoneId={zone} errors={dateErrors} onChange={(start, end) => { setStart(start); setEnd(end); setDateErrors({}); }} />
         <Field label="Часовой пояс" hint={sourceClub ? "Унаследован от клуба; при необходимости измените" : "Выберите местное время кэмпа"}><TimeZoneSelect value={zone} onChange={setZone} /></Field>
       </FormSection>
-      <CampConfigurationEditor value={configuration} onChange={setConfiguration} disabled={busy} />
+      <CampConfigurationEditor timeZoneId={zone} value={configuration} onChange={setConfiguration} disabled={busy} />
       <FormSection title="Коллекция игр" hint="Участники также смогут отметить свои игры и хотелки.">
         <Field label="Исходный клуб"><select value={source} onChange={e => changeSource(e.target.value)}><option value="">Без базовой коллекции</option>{overview?.clubs.map(club => <option value={club.id} key={club.id}>{club.name}</option>)}</select></Field>
         {sourceClub && <Notice>Коллекция «{sourceClub.name}» будет обновляться автоматически при изменениях в клубе. Участники отдельно отмечают, какие игры привезут.</Notice>}
