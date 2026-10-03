@@ -13,9 +13,10 @@ import { GatheringDetails } from "../gatherings/GatheringsPage";
 import type { AdminCamp, AdminClub, AdminOverview, Administrator, Community, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
 import { BackButton, Badge, BggAttribution, Card, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
+import { CampDateRange } from "../../components/CampDateRange";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
-import { campStatusLabel, currentLocalMinute, formatInstant, formatDate, plural } from "../../app/format";
+import { campStatusLabel, currentLocalMinute, formatInstant, formatLocalDateTime, plural } from "../../app/format";
 import { postingTopicTitle, selectablePostingTopics, shouldShowPostingTopic } from "./postingTopicState";
 import { campDateValidation, cancellationConfirmation, canCancelCamp, canDeleteCommunity, deletionConfirmation, type CommunityKind } from "./communityLifecycleState";
 import { campStatusTone } from "../../app/semanticTones";
@@ -436,14 +437,8 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
         <Field label="Название">
           <input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} />
         </Field>
-        <div className="date-range">
-          <Field label="Начало кэмпа" error={dateErrors.start}>
-            <input type="datetime-local" value={start} onChange={(event) => { setStart(event.target.value); setDateErrors({}); }} />
-          </Field>
-          <Field label="Окончание кэмпа" error={dateErrors.end}>
-            <input type="datetime-local" min={start} value={end} onChange={(event) => { setEnd(event.target.value); setDateErrors({}); }} />
-          </Field>
-        </div>
+        <CampDateRange start={start} end={end} timeZoneId={zone} errors={dateErrors}
+          onChange={(start, end) => { setStart(start); setEnd(end); setDateErrors({}); }} />
         <Field label="Часовой пояс" hint={camp.gatherings > 0 ? "Нельзя изменить после создания первого сбора" : "Выберите город с тем же местным временем"}>
           <TimeZoneSelect value={zone} onChange={setZone} disabled={camp.gatherings > 0} />
         </Field>
@@ -663,9 +658,6 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
   }
   async function choose() {
     if (busy) return;
-    const validation = campDateValidation(start, end);
-    setDateErrors(validation);
-    if (validation.start || validation.end) { setError(undefined); return; }
     setBusy(true);
     setError(undefined);
     try {
@@ -717,14 +709,8 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
         <Field label="Название" hint="После выбора группы подставим её название">
           <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <div className="date-range">
-          <Field label="Начало кэмпа" error={dateErrors.start}>
-            <input type="datetime-local" value={start} onChange={(e) => { setStart(e.target.value); setDateErrors({}); }} />
-          </Field>
-          <Field label="Окончание кэмпа" error={dateErrors.end}>
-            <input type="datetime-local" min={start} value={end} onChange={(e) => { setEnd(e.target.value); setDateErrors({}); }} />
-          </Field>
-        </div>
+        <CampDateRange start={start} end={end} timeZoneId={zone} errors={dateErrors}
+          onChange={(start, end) => { setStart(start); setEnd(end); setDateErrors({}); }} />
         <Field label="Исходный клуб">
           <select value={source} onChange={(e) => changeSource(e.target.value)}>
             <option value="">Без базовой коллекции</option>
@@ -747,7 +733,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
               <dd>{knownChat?.name ?? selection?.result?.chat?.title ?? "Выбрана"}</dd>
               <dt>Даты</dt>
               <dd>
-                {formatDate(start)} — {formatDate(end)}
+                {formatLocalDateTime(start)} — {formatLocalDateTime(end)}
               </dd>
               <dt>Основа</dt>
               <dd>{sourceClub?.name ?? "Пустая коллекция"}</dd>

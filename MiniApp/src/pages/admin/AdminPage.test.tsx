@@ -57,6 +57,19 @@ async function switchTo(key: string) {
   expect(option).toBeDefined();
   await act(async () => option.click());
 }
+async function changeDate(index: number, value: string) {
+  const input = host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[index];
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+async function createCampFromKnownChat() {
+  await mount();
+  const card = Array.from(host.querySelectorAll(".card")).find(item => item.textContent?.includes("Новая группа"))!;
+  const button = Array.from(card.querySelectorAll("button")).find(item => item.textContent === "Создать кэмп")!;
+  await act(async () => button.click());
+}
 function title() { return host.querySelector("h1")?.textContent; }
 
 beforeEach(() => {
@@ -91,6 +104,93 @@ beforeEach(() => {
   });
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
+
+describe("camp creation", () => {
+  it("selects a Telegram group before dates are filled and submits its selection token", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const selectionId = "camp-selection";
+      intercept = path => {
+        if (path.startsWith("/admin/peer-selections")) return Promise.resolve({
+          publicId: selectionId, preparedButtonId: "prepared", status: path.endsWith(selectionId) ? "Completed" : "Pending",
+          result: { chat: { title: "Группа кэмпа" } },
+        });
+        return undefined;
+      };
+      vi.mocked(telegram.requestPeer).mockResolvedValue(true);
+      await mount(); await click("Новый кэмп"); await click("Выбрать группу");
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+      expect(telegram.requestPeer).toHaveBeenCalledWith("prepared");
+      expect(host.querySelectorAll('[role="alert"]')).toHaveLength(0);
+      expect(host.querySelector(".review-list")?.textContent).toContain("Группа кэмпа");
+      await changeDate(0, "2026-10-10T18:30"); await changeDate(1, "2026-10-12T11:45");
+      await click("Создать кэмп");
+      const request = writes().find(([path]) => path === "/admin/camps")!;
+      expect(JSON.parse(String(request[1]?.body))).toMatchObject({
+        selectionId, name: "Группа кэмпа", startsAtLocal: "2026-10-10T18:30", endsAtLocal: "2026-10-12T11:45",
+      });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("reviews and submits exact local times for a known Telegram group", async () => {
+    await createCampFromKnownChat();
+    await changeDate(0, "2026-10-10T18:30");
+    await changeDate(1, "2026-10-12T11:45");
+    expect(host.querySelector(".review-list")?.textContent).toContain("10 октября 2026 г., 18:30");
+    expect(host.querySelector(".review-list")?.textContent).toContain("12 октября 2026 г., 11:45");
+    await click("Создать кэмп");
+    const request = writes().find(([path]) => path === "/admin/camps")!;
+    expect(JSON.parse(String(request[1]?.body))).toEqual({
+      knownTelegramChatId: -100006, name: "Новая группа", startsAtLocal: "2026-10-10T18:30",
+      endsAtLocal: "2026-10-12T11:45", sourceClubId: null, timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    expect(title()).not.toBe("Новый кэмп");
+  });
+
+  it("keeps invalid dates editable and submits only after correction", async () => {
+    await createCampFromKnownChat();
+    await click("Создать кэмп");
+    expect(host.querySelectorAll('[role="alert"]')).toHaveLength(2);
+    expect(writes()).toHaveLength(0);
+    await changeDate(0, "2026-10-10T18:30"); await changeDate(1, "2026-10-10T18:30");
+    await click("Создать кэмп");
+    expect(host.textContent).toContain("Окончание должно быть позже начала.");
+    expect(writes()).toHaveLength(0);
+    await changeDate(1, "2026-10-10T19:30"); await click("Создать кэмп");
+    expect(writes()).toHaveLength(1);
+  });
+
+  it("uses the source club timezone in the picker and retains dates after a failed save", async () => {
+    await createCampFromKnownChat();
+    const source = host.querySelector<HTMLSelectElement>('select')!;
+    await act(async () => { source.value = "1"; source.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(host.querySelector(".date-range")?.textContent).toContain("Местное время (Asia/Almaty)");
+    await changeDate(0, "2026-10-10T18:30"); await changeDate(1, "2026-10-12T11:45");
+    intercept = path => path === "/admin/camps" ? Promise.reject(new Error("Группа недоступна.")) : undefined;
+    await click("Создать кэмп");
+    expect(host.textContent).toContain("Группа недоступна.");
+    expect(host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[0].value).toBe("2026-10-10T18:30");
+    intercept = undefined;
+    await click("Создать кэмп");
+    const requests = writes().filter(([path]) => path === "/admin/camps");
+    expect(requests).toHaveLength(2);
+    expect(JSON.parse(String(requests[1][1]?.body))).toMatchObject({ sourceClubId: 1, timeZoneId: "Asia/Almaty" });
+  });
+
+  it("edits the same local-time fields and validates the range before saving", async () => {
+    await mount(); await switchTo("camp-3"); await click("Настройки");
+    expect(host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[0].value).toBe("2026-10-01T05:00");
+    expect(host.querySelector(".date-range")?.textContent).toContain("Местное время (Asia/Almaty)");
+    await changeDate(0, "2026-10-01T18:30"); await changeDate(1, "2026-10-01T18:00");
+    await click("Сохранить настройки");
+    expect(host.querySelector('[aria-invalid="true"]')).not.toBeNull();
+    expect(writes()).toHaveLength(0);
+    await changeDate(1, "2026-10-05T11:45"); await click("Сохранить настройки");
+    expect(JSON.parse(String(writes()[0][1]?.body))).toEqual({
+      name: "Кэмп 3", timeZoneId: "Asia/Almaty", startsAtLocal: "2026-10-01T18:30", endsAtLocal: "2026-10-05T11:45",
+    });
+  });
+});
 
 describe("persistent admin community context", () => {
   it("opens the authorized camp from the Telegram roster link instead of the saved community", async () => {

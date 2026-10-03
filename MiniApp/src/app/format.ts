@@ -5,6 +5,13 @@ export function formatDate(value?: string) {
   return dateFormatter.format(new Date(year, month - 1, day));
 }
 
+// A datetime-local value is wall time in the selected community, not a browser-zone instant.
+export function formatLocalDateTime(value?: string) {
+  if (!value) return "Дата не указана";
+  const [date, time] = value.split("T");
+  return `${formatDate(date)}, ${time}`;
+}
+
 export function formatShortDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(year, month - 1, day));
