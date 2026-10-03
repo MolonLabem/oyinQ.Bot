@@ -236,6 +236,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.BotChatKey).HasMaxLength(32);
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.BaseCollectionJson).HasColumnType("jsonb");
+            entity.Property(x => x.ConfigurationJson).HasColumnType("jsonb").HasDefaultValue("{\"version\":1,\"registrationFields\":[]}");
 
             entity.HasOne(x => x.BotChat)
                 .WithOne(x => x.Camp)
@@ -258,6 +259,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => new { x.CampId, x.ParticipantId }).IsUnique();
             entity.Property(x => x.DisplayName).HasMaxLength(128);
+            entity.Property(x => x.RegistrationDataJson).HasColumnType("jsonb").HasDefaultValue("{\"version\":1,\"answers\":{}}");
             entity.Property(x => x.City).HasMaxLength(100);
             entity.HasOne(x => x.Camp)
                 .WithMany(x => x.Registrations)

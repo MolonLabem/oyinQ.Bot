@@ -48,6 +48,9 @@ OyinQ is one ASP.NET Core .NET 10 application, one React Telegram Mini App, and 
 
 Canonical rule ownership:
 
+- `CampConfigurationRules` owns Camp details, custom question schemas, answer validation, itemized pricing and saved quote preservation. Create/edit reuse `CampConfigurationEditor`; participant views reuse `CampInformation`, `CampRegistrationFields` and `CampQuote`. Questions/options are frozen under the Camp lock after the first registration. Quote preview and save use the same owner; never accept client totals or expose answers outside the owner/authorized admin. See `docs/camp-customization-ui.md`.
+- `DateTimeField` owns all local date/time inputs: native date plus explicit 00–23 hour and minute controls. Use shared formatters with `hourCycle: h23` for user-facing instants; server presentation uses `HH:mm`. Never reintroduce locale-dependent native time/datetime-local inputs.
+
 - `CommunityContextResolver` plus `ICommunityStore` own active community resolution and membership checks; `OyinQCommunity.Key` is application scope and `TelegramChatId` is transport identity.
 - `IAdminAuthorizationService` owns Super Admin and effective group-admin authorization. Endpoints and Telegram handlers must not reconstruct it.
 - `BggGameNameResolver`, `BggTaxonomyCatalog`, and `BggGameMapper` own provider title, taxonomy, and provider-to-domain projection. BGG ID is identity and `BggGameUrl` derives links.

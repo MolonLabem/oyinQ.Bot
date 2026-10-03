@@ -21,6 +21,7 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Admin;
+using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.MiniApp;
 using oyinQ.Bot.Integrations.Telegram;
 using Telegram.Bot;
@@ -30,6 +31,31 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class CampParticipantExportTests
 {
+    [Fact]
+    public async Task CustomAnswersAndSavedQuoteAppearInRosterCsvExcelAndTelegramWithoutFormulas()
+    {
+        await using var f = await Fixture.Create();
+        var config = CampConfigurationTests.Configuration();
+        f.Camp.ConfigurationJson = CampConfigurationRules.Serialize(config);
+        var answers = CampConfigurationTests.Answers(); answers["comment"] = "=HYPERLINK(\"evil\")\n🎃";
+        var person = await f.Db.CampRegistrations.SingleAsync(x => x.Id == 1);
+        person.RegistrationDataJson = CampConfigurationRules.Serialize(new CampRegistrationData(Answers: answers,
+            Quote: CampConfigurationRules.Quote(config, answers, 2, "UTC", new DateTimeOffset(2026, 10, 26, 0, 0, 0, TimeSpan.Zero))));
+        await f.Db.SaveChangesAsync();
+        var roster = await f.Service.GetAsync(42, 1, default);
+        Assert.Equal("18:00", roster.Participants[0].CustomAnswers["arrival"]);
+        Assert.Equal(11000, roster.Participants[0].Quote!.Total);
+        var csv = ReadCsv((await f.Service.ExportAsync(42, 1, "csv", default)).Content);
+        Assert.Equal("Приезд", csv[0][7]); Assert.Equal("18:00", csv[1][7]);
+        Assert.Equal("'" + answers["comment"], csv[1][10]); Assert.Equal("11000", csv[1][12]); Assert.Equal("KZT", csv[1][13]);
+        using var workbook = new XLWorkbook(new MemoryStream((await f.Service.ExportAsync(42, 1, "xlsx", default)).Content));
+        var sheet = workbook.Worksheet(1); Assert.Equal("18:00", sheet.Cell(7, 8).GetString());
+        Assert.False(sheet.Cell(7, 11).HasFormula); Assert.Equal(answers["comment"], sheet.Cell(7, 11).GetString());
+        Assert.Equal(11000, sheet.Cell(7, 13).GetDouble()); Assert.Equal(XLDataType.Number, sheet.Cell(7, 13).DataType);
+        var messages = CampParticipantMessages.Build(roster);
+        Assert.Contains("Приезд: 18:00", messages[0].Text); Assert.Contains("11000 KZT", messages[0].Text);
+        Assert.All(messages, message => Assert.InRange(Encoding.UTF8.GetByteCount(message.Text), 1, 3900));
+    }
     [Fact]
     public async Task AuthenticatedRoutesShareFiltersProtectDownloadsAndIgnoreDestinationPayloads()
     {

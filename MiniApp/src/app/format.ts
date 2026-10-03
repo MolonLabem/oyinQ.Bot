@@ -40,8 +40,20 @@ export function isFutureLocalDateTime(value: string, timeZoneId: string, now = n
 export function formatInstant(value: string, timeZoneId: string) {
   return new Intl.DateTimeFormat("ru-RU", {
     weekday: "short", day: "numeric", month: "long", year: "numeric",
-    hour: "2-digit", minute: "2-digit", timeZone: timeZoneId
+    hour: "2-digit", minute: "2-digit", timeZone: timeZoneId, hourCycle: "h23"
   }).format(new Date(value));
+}
+
+export function formatUpdatedAt(value: string) {
+  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "short", hourCycle: "h23" }).format(new Date(value));
+}
+
+export function formatTime(value: string) {
+  return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(value));
+}
+
+export function formatMoney(amount: number, currency: string) {
+  return new Intl.NumberFormat("ru-RU", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
 }
 
 export function plural(value: number, one: string, few: string, many: string) {

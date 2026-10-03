@@ -27,7 +27,9 @@ public static class CampParticipantMessages
             var name = $"{index + 1}. {person.DisplayName}\n{person.City ?? "Город не указан"}"
                 + (person.TelegramUsername is { } username ? $"\n@{username}" : "");
             var dates = $"{person.DatesText}\nДней: {person.DayCount}";
-            var rowText = $"\n\n{name}\nДаты: {dates}\nЖильё: {person.AccommodationText}";
+            var details = string.Join("\n", roster.RegistrationFields.Select(field => $"{field.Label}: {person.CustomAnswers.GetValueOrDefault(field.Id, "Не указано")}"));
+            if (person.Quote is { } quote) details += $"\nСумма: {quote.Total:0.##} {quote.Currency}";
+            var rowText = $"\n\n{name}\nДаты: {dates}\nЖильё: {person.AccommodationText}" + (details.Length > 0 ? "\n" + details : "");
             if (Encoding.UTF8.GetByteCount(heading + rowText) > TextBudget)
                 throw new InvalidOperationException("Одна из строк слишком длинная для сообщения. Отправьте список файлом Excel или CSV.");
             if (rows.Count > 1 && (Encoding.UTF8.GetByteCount(text.ToString() + rowText) > TextBudget || rows.Count > RowBudget))
@@ -37,7 +39,7 @@ public static class CampParticipantMessages
             }
             text.Append(rowText);
             // RichText strings are plain text, escaped by the SDK's JSON serializer.
-            rows.Add([Cell(name), Cell(dates), Cell(person.AccommodationText)]);
+            rows.Add([Cell(name), Cell(dates), Cell(person.AccommodationText + (details.Length > 0 ? "\n" + details : ""))]);
         }
         if (roster.Participants.Count == 0) text.Append("\n\nПо выбранным условиям участников нет.");
         FinishChunk();

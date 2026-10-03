@@ -1,3 +1,4 @@
+import { formatTime } from "../../app/format";
 import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import { useCampWishlistAction } from "../../hooks/useCampWishlistAction";
@@ -55,7 +56,7 @@ function CampWishBrowser(props: Props) {
     <div hidden={frames.length > 0}>
       {!props.personal && <Tabs label="Хотелки кэмпа" active={selection.mode} onChange={mode => change({ mode })} items={[{ id: "all", label: "Все" }, { id: "mine", label: "Мои" }, { id: "bring", label: "Что взять" }]} />}
       <Field label="Поиск игры"><input type="search" value={selection.search} onChange={e => change({ search: e.target.value })} placeholder="Название игры" /></Field>
-      <div className="wish-toolbar"><button className="primary" disabled={!result?.canAct} onClick={() => setAdding(true)}>Добавить</button><button aria-haspopup="dialog" className={Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? "active" : ""} onClick={() => setFiltersOpen(true)}>Фильтры{Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? " •" : ""}</button><button className="wish-refresh" disabled={state.loading} title={result ? `Обновлено ${new Date(result.updatedAt).toLocaleTimeString("ru-RU")}` : undefined} onClick={state.reload}><span aria-hidden>↻ </span>{state.loading ? "Обновляем…" : "Обновить"}</button></div>
+      <div className="wish-toolbar"><button className="primary" disabled={!result?.canAct} onClick={() => setAdding(true)}>Добавить</button><button aria-haspopup="dialog" className={Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? "active" : ""} onClick={() => setFiltersOpen(true)}>Фильтры{Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? " •" : ""}</button><button className="wish-refresh" disabled={state.loading} title={result ? `Обновлено ${formatTime(result.updatedAt)}` : undefined} onClick={state.reload}><span aria-hidden>↻ </span>{state.loading ? "Обновляем…" : "Обновить"}</button></div>
       <div className="wish-list-meta"><span role="status" aria-live="polite">{state.loading ? "Обновляем…" : result ? `Игры: ${result.total}` : ""}</span>{!props.personal && <button className="person-link" onClick={() => push("participants")}>Участники</button>}
         {!props.personal && !!result?.suggestions && selection.mode !== "bring" && <button className="person-link" onClick={() => change({ mode: "bring" })}>Что взять · {result.suggestions}</button>}
       </div>

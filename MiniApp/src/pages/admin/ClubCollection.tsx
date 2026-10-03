@@ -1,3 +1,4 @@
+import { formatUpdatedAt } from "../../app/format";
 import { useEffect, useMemo, useState } from "react";
 import { download, json } from "../../api/client";
 import type { ClubCollectionState } from "../../api/types";
@@ -230,7 +231,7 @@ export function ClubCollection({ clubId, bggAvailable, back }: { clubId: number;
           <details className="club-collection-technical"><summary>Техническая информация</summary>
             <p>Внутренняя версия коллекции: {state.data.revision}</p>
             <p className="muted">Версия опубликованного содержимого. Ход загрузки BGG учитывается отдельно.</p>
-            <p className="muted">Обновлено {new Date(state.data.updatedAt).toLocaleString("ru-RU")}</p>
+            <p className="muted">Обновлено {formatUpdatedAt(state.data.updatedAt)}</p>
           </details>
         </>
       )}

@@ -1,3 +1,4 @@
+import { readDateTime } from "../../components/dateTimeTestHelper";
 // @vitest-environment jsdom
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -73,7 +74,7 @@ describe("participant names inside one gathering", () => {
       id="gathering-id" value={value} done={done} cancel={() => {}} />));
     await click("Виктор"); await click("✏️ Изменить имя"); await input("Виктор (новичок)"); await click("Применить имя");
     expect(mocks.mutation).not.toHaveBeenCalled();
-    expect(container.querySelector<HTMLInputElement>('input[type="datetime-local"]')!.value).toBe("2070-01-01T18:00");
+    expect(readDateTime(container)).toBe("2070-01-01T18:00");
     await click("Сохранить");
     expect(mocks.mutation).toHaveBeenCalledTimes(1);
     const [url, options] = mocks.mutation.mock.calls[0]; expect(url).toBe("/gatherings/gathering-id");

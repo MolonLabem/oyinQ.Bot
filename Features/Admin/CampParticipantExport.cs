@@ -22,13 +22,17 @@ public static class CampParticipantExport
         byte[] content;
         if (format == "csv")
         {
-            using var csv = CsvExportService.BuildCsv(Headers, Rows(roster, cancellationToken)
+            using var csv = CsvExportService.BuildCsv(Columns(roster), Rows(roster, cancellationToken)
                 .Select(row => row.Select(value => value is string text ? SafeCsvText(text) : value).ToArray()));
             content = csv.ToArray();
         }
         else content = Excel(roster, generatedAt, cancellationToken);
         return new(fileName, format == "csv" ? "text/csv; charset=utf-8" : ExcelContentType, content, roster.Participants.Count);
     }
+
+    private static bool HasQuotes(CampAdminParticipants roster) => roster.Participants.Any(person => person.Quote is not null);
+    private static string[] Columns(CampAdminParticipants roster) => [.. Headers,
+        .. roster.RegistrationFields.Select(field => field.Label), .. (HasQuotes(roster) ? new[] { "Сумма", "Валюта" } : [])];
 
     private static IEnumerable<object?[]> Rows(CampAdminParticipants roster, CancellationToken cancellationToken)
     {
@@ -37,7 +41,9 @@ public static class CampParticipantExport
             cancellationToken.ThrowIfCancellationRequested();
             var person = roster.Participants[i];
             yield return [i + 1, person.DisplayName, person.TelegramUsername is { } username ? "@" + username : "Не указан",
-                person.City ?? "Не указан", person.DatesText, person.DayCount, person.AccommodationText];
+                person.City ?? "Не указан", person.DatesText, person.DayCount, person.AccommodationText,
+                .. roster.RegistrationFields.Select(field => (object?)person.CustomAnswers.GetValueOrDefault(field.Id, "Не указано")),
+                .. (HasQuotes(roster) ? new object?[] { person.Quote is { } quote ? (object)quote.Total : "Не рассчитано", person.Quote?.Currency ?? "" } : [])];
         }
     }
 
@@ -52,6 +58,7 @@ public static class CampParticipantExport
 
     private static byte[] Excel(CampAdminParticipants roster, DateTimeOffset generatedAt, CancellationToken cancellationToken)
     {
+        var headers = Columns(roster);
         using var workbook = new XLWorkbook();
         var sheet = workbook.AddWorksheet("Участники");
         sheet.Style.Font.FontSize = 11;
@@ -61,14 +68,14 @@ public static class CampParticipantExport
         for (var i = 0; i < metadata.Length; i++)
         {
             SetText(sheet.Cell(i + 1, 1), metadata[i]);
-            sheet.Range(i + 1, 1, i + 1, Headers.Length).Merge().Style.Alignment.WrapText = true;
+            sheet.Range(i + 1, 1, i + 1, headers.Length).Merge().Style.Alignment.WrapText = true;
             sheet.Row(i + 1).Height = Math.Max(22, 16 * (1 + metadata[i].Length / 100));
         }
         sheet.Cell(1, 1).Style.Font.SetBold().Font.FontSize = 16;
         const int headerRow = 6;
-        for (var column = 0; column < Headers.Length; column++) SetText(sheet.Cell(headerRow, column + 1), Headers[column]);
+        for (var column = 0; column < headers.Length; column++) SetText(sheet.Cell(headerRow, column + 1), headers[column]);
         var rowNumber = headerRow;
-        double[] widths = [7, 32, 24, 24, 38, 18, 18];
+        double[] widths = [7, 32, 24, 24, 38, 18, 18, .. Enumerable.Repeat(30d, roster.RegistrationFields.Count), .. (HasQuotes(roster) ? new[] { 18d, 12d } : [])];
         foreach (var values in Rows(roster, cancellationToken))
         {
             rowNumber++;
@@ -77,6 +84,7 @@ public static class CampParticipantExport
             {
                 var cell = sheet.Cell(rowNumber, column + 1);
                 if (values[column] is int number) cell.Value = number;
+                else if (values[column] is decimal amount) { cell.Value = (double)amount; cell.Style.NumberFormat.Format = "#,##0.##"; }
                 else
                 {
                     var text = (string)values[column]!;
@@ -86,13 +94,13 @@ public static class CampParticipantExport
             }
             sheet.Row(rowNumber).Height = Math.Min(409, Math.Max(30, lines * 16));
         }
-        var range = sheet.Range(headerRow, 1, rowNumber, Headers.Length);
+        var range = sheet.Range(headerRow, 1, rowNumber, headers.Length);
         range.Style.Alignment.WrapText = true;
         range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
         if (rowNumber > headerRow) range.CreateTable("CampParticipants").Theme = XLTableTheme.TableStyleMedium2;
         else range.SetAutoFilter(); // Keep an empty camp genuinely empty, without a fictitious participant row.
-        sheet.Range(headerRow, 1, headerRow, Headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#2878c8");
-        sheet.Range(headerRow, 1, headerRow, Headers.Length).Style.Font.SetBold().Font.FontColor = XLColor.White;
+        sheet.Range(headerRow, 1, headerRow, headers.Length).Style.Fill.BackgroundColor = XLColor.FromHtml("#2878c8");
+        sheet.Range(headerRow, 1, headerRow, headers.Length).Style.Font.SetBold().Font.FontColor = XLColor.White;
         sheet.Row(headerRow).Height = 32;
         for (var column = 0; column < widths.Length; column++) sheet.Column(column + 1).Width = widths[column];
         sheet.SheetView.FreezeRows(headerRow);

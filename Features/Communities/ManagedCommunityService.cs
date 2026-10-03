@@ -20,9 +20,10 @@ public sealed record CreateClubCommand(string Name, long TelegramChatId, string 
 
 public sealed record CreateCampCommand(string Name, long TelegramChatId, string TimeZoneId,
     long CreatedByTelegramUserId, long? SourceClubId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc,
-    bool RequireCreatorTelegramAdmin = true);
+    bool RequireCreatorTelegramAdmin = true, CampConfiguration? Configuration = null);
 
-public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc);
+public sealed record UpdateCampCommand(string Name, string TimeZoneId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc,
+    CampConfiguration? Configuration = null);
 public sealed record CampStatusTransitionResult(IReadOnlyList<Guid> CancelledGatheringIds);
 public sealed record ManagedChatMigrationResult(bool Updated, string? CommunityKey);
 public enum ManagedChatMigrationAction { Ignore, Update, Replay, Collision }
@@ -89,6 +90,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
 
     public async Task<Camp> CreateCampAsync(CreateCampCommand command, CancellationToken cancellationToken)
     {
+        var configuration = CampConfigurationRules.Normalize(command.Configuration);
         CampOperatingWindow.Validate(command.StartsAtUtc, command.EndsAtUtc);
         var key = CreateKey("camp");
         var definition = CommunityOptions.CreateValidated(key, command.Name, command.TelegramChatId,
@@ -108,6 +110,7 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var camp = new Camp
         {
             BotChat = community, BotChatKey = key, Name = community.Name,
+            ConfigurationJson = CampConfigurationRules.Serialize(configuration),
             SourceClubId = sourceClub?.Id,
             BaseCollectionJson = sourceClub?.CollectionJson ?? ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty),
             Status = CampStatus.Draft, StartsAtUtc = command.StartsAtUtc.ToUniversalTime(), EndsAtUtc = command.EndsAtUtc.ToUniversalTime(),
@@ -166,10 +169,17 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
         var timeZone = CommunityOptions.RequireTimeZone(command.TimeZoneId);
         var dates = CampOperatingWindow.AttendanceDates(command.StartsAtUtc, command.EndsAtUtc, command.TimeZoneId);
         var duration = CampRules.InclusiveDuration(dates.Start, dates.End);
-        var camp = await dbContext.Camps.Include(x => x.BotChat)
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var campQuery = dbContext.Database.IsNpgsql()
+            ? dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
+            : dbContext.Camps.Where(x => x.Id == campId);
+        var camp = await campQuery.Include(x => x.BotChat)
             .Include(x => x.Registrations).ThenInclude(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.Id == campId, cancellationToken)
             ?? throw new KeyNotFoundException("Кэмп не найден.");
+        var before = CampConfigurationRules.Read(camp.ConfigurationJson);
+        var configuration = command.Configuration is null ? before : CampConfigurationRules.Normalize(command.Configuration);
+        CampConfigurationRules.EnsureFieldsUnchanged(before, configuration, camp.Registrations.Count > 0);
         CommunityTimeZonePolicy.EnsureChangeAllowed(camp.BotChat.TimeZoneId, command.TimeZoneId,
             await dbContext.GameGatherings.AnyAsync(x => x.CommunityKey == camp.BotChatKey,
                 cancellationToken));
@@ -187,11 +197,13 @@ public sealed class ManagedCommunityService(AppDbContext dbContext, IManagedChat
             }))
             throw new InvalidOperationException("Новый диапазон не включает один или несколько сборов кэмпа.");
         camp.Name = camp.BotChat.Name = command.Name.Trim();
+        camp.ConfigurationJson = CampConfigurationRules.Serialize(configuration);
         camp.BotChat.TimeZoneId = command.TimeZoneId;
         camp.StartsAtUtc = command.StartsAtUtc.ToUniversalTime();
         camp.EndsAtUtc = command.EndsAtUtc.ToUniversalTime();
         camp.UpdatedAt = camp.BotChat.UpdatedAt = timeProvider.GetUtcNow();
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task CopyCampBaseCollectionAsync(long campId, long sourceClubId,

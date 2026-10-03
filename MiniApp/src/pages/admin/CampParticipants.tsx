@@ -5,7 +5,7 @@ import { BackButton, Card, ContactLink, Empty, ErrorState, Field, Loading, Notic
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { useScreenRequest } from "../../hooks/useScreenRequest";
 import { telegram } from "../../telegram/webApp";
-import { formatDate, formatShortDate, plural } from "../../app/format";
+import { formatDate, formatShortDate, formatMoney, plural } from "../../app/format";
 
 type Props = { campId: number; campName: string; back: () => void };
 export function CampParticipants(props: Props) { return <CampRoster key={props.campId} {...props} />; }
@@ -108,6 +108,8 @@ function CampRoster({ campId, campName, back }: Props) {
           <tbody>{data.participants.map(person => <tr key={person.participantId}>
             <th scope="row"><ContactLink url={person.contactUrl}>{person.displayName}</ContactLink>
               <span className="camp-roster-secondary camp-roster-mobile">{person.city || "Город не указан"}<br />{person.telegramUsername ? `@${person.telegramUsername}` : "Telegram не указан"}</span>
+              {Boolean(data.registrationFields?.length) && <details className="camp-roster-secondary"><summary>Ответы регистрации</summary>{data.registrationFields?.map(field => <p key={field.id}><strong>{field.label}</strong>: {person.customAnswers?.[field.id] ?? "Не указано"}</p>)}</details>}
+              {person.quote && <span className="camp-roster-secondary">Расчёт: {formatMoney(person.quote.total, person.quote.currency)}</span>}
             </th>
             <td className="camp-roster-wide">{person.city || "Не указан"}</td>
             <td className="camp-roster-wide"><ContactLink url={person.contactUrl}>{person.telegramUsername ? `@${person.telegramUsername}` : "Открыть профиль"}</ContactLink></td>

@@ -1,3 +1,4 @@
+import { changeDateTime } from "../../components/dateTimeTestHelper";
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -35,11 +36,7 @@ it("retries a lost creation response with the same operation identity", async ()
   vi.mocked(gatheringMutation).mockRejectedValueOnce(new Error("lost response")).mockResolvedValueOnce({ publicId: "saved" });
   const done = vi.fn();
   await act(async () => root.render(<CreateGathering initialGameId={42} community={{ key: "retry-club", name: "Клуб", mode: "Club", timeZoneId: "UTC" }} bggAvailable={false} onDone={done} editRegistration={() => {}} />));
-  await act(async () => {
-    const date = host.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(date, "2026-09-26T12:00");
-    date.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await changeDateTime(host, "2026-09-26T12:00");
   const create = () => [...host.querySelectorAll("button")].find(x => x.textContent === "Создать сбор")!;
   await act(async () => create().click()); expect(done).not.toHaveBeenCalled();
   await act(async () => create().click());
@@ -70,11 +67,7 @@ it.each([false, true])("saved owned Camp game submits explicit bringing choice: 
   expect(checkbox.checked).toBe(false);
   expect(host.textContent).not.toContain("Добавить выбранные дополнения в мою коллекцию");
   if (bring) await act(async () => checkbox.click());
-  await act(async () => {
-    const date = host.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(date, "2026-09-26T12:00");
-    date.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await changeDateTime(host, "2026-09-26T12:00");
   await act(async () => button("Создать сбор").click());
   expect(gatheringMutation).toHaveBeenCalledOnce();
   expect(JSON.parse(vi.mocked(gatheringMutation).mock.calls[0][1]!.body as string))

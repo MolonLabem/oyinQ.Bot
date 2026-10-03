@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { changeDateTime } from "../../components/dateTimeTestHelper";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -51,11 +52,7 @@ it.each((["Club", "Camp"] as const).flatMap(mode => ["create", "edit"].map(scree
     expect(host.querySelector<HTMLInputElement>('[aria-label="Добавить в мою коллекцию: Второе"]')!.checked).toBe(false);
   }
   expect(gatheringMutation).not.toHaveBeenCalled();
-  await act(async () => {
-    const date = host.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(date, "2030-09-10T18:00");
-    date.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await changeDateTime(host, "2030-09-10T18:00");
   await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
   const lastBody = () => JSON.parse(vi.mocked(gatheringMutation).mock.calls.at(-1)![1]!.body as string);
   expect(lastBody()).toMatchObject({ selectedExpansionIds: [20, 21], addExpansionToCollectionIds: [20], bringExpansionIds: mode === "Camp" ? [21] : [] });
@@ -84,11 +81,7 @@ it.each(["create", "edit"])("%s offers and submits five players only with the ex
   await act(async () => expansion.click());
   expect(limits()[2].value).toBe("5");
   await act(async () => { limits()[1].value = "5"; limits()[1].dispatchEvent(new Event("change", { bubbles: true })); });
-  await act(async () => {
-    const date = host.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(date, "2030-09-10T18:00");
-    date.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await changeDateTime(host, "2030-09-10T18:00");
   await act(async () => button(screen === "create" ? "Создать сбор" : "Сохранить").click());
   const sent = JSON.parse(vi.mocked(gatheringMutation).mock.calls[0][1]!.body as string);
   expect(sent).toMatchObject({ selectedExpansionIds: [20], desiredPlayers: 5, maximumPlayers: 5 });

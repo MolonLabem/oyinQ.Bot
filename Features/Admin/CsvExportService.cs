@@ -15,7 +15,7 @@ public sealed class CsvExportService(
 {
     public static readonly string[] CampRegistrationHeaders =
         ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "display_name", "city",
-            "days_staying", "selected_dates", "needs_accommodation", "created_at", "updated_at"];
+            "days_staying", "selected_dates", "needs_accommodation", "created_at", "updated_at", "registration_data", "camp_configuration"];
     public static readonly string[] CampContributionHeaders =
         ["id", "camp_id", "camp_name", "participant_id", "telegram_user_id", "bgg_id", "item_type",
             "source", "commitment", "parent_bgg_id", "parent_bgg_ids", "created_at", "updated_at"];
@@ -57,7 +57,7 @@ public sealed class CsvExportService(
             .OrderBy(value => value.CampId).ThenBy(value => value.ParticipantId)
             .Select(value => new
             {
-                Registration = value, CampName = value.Camp.Name, value.Participant.TelegramUserId,
+                Registration = value, CampName = value.Camp.Name, CampConfiguration = value.Camp.ConfigurationJson, value.Participant.TelegramUserId,
                 DisplayName = value.DisplayName ?? value.Participant.PreferredDisplayName ?? value.Participant.DisplayName
             })
             .ToListAsync(cancellationToken);
@@ -67,7 +67,8 @@ public sealed class CsvExportService(
             value.Registration.ParticipantId, value.TelegramUserId, value.DisplayName,
             value.Registration.City, value.Registration.DaysStaying,
             string.Join(";", value.Registration.SelectedDays.OrderBy(x => x.Date).Select(x => x.Date.ToString("yyyy-MM-dd"))),
-            value.Registration.NeedsAccommodation, value.Registration.CreatedAt, value.Registration.UpdatedAt
+            value.Registration.NeedsAccommodation, value.Registration.CreatedAt, value.Registration.UpdatedAt,
+            value.Registration.RegistrationDataJson, value.CampConfiguration
         });
         return File("camp-registrations.csv", CampRegistrationHeaders, rows);
     }

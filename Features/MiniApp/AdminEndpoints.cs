@@ -17,9 +17,10 @@ internal sealed record CreateClubRequest(Guid? SelectionId, long? KnownTelegramC
     string TimeZoneId);
 internal sealed record CreateCampRequest(Guid? SelectionId, long? KnownTelegramChatId, string? Name,
     string StartsAtLocal, string EndsAtLocal,
-    long? SourceClubId, string? TimeZoneId);
+    long? SourceClubId, string? TimeZoneId, CampConfiguration? Configuration = null);
 internal sealed record UpdateCommunityRequest(string Name, string TimeZoneId, bool IsActive);
-internal sealed record UpdateCampRequest(string Name, string TimeZoneId, string StartsAtLocal, string EndsAtLocal);
+internal sealed record UpdateCampRequest(string Name, string TimeZoneId, string StartsAtLocal, string EndsAtLocal,
+    CampConfiguration? Configuration = null);
 internal sealed record ChangeCampStatusRequest(string Status);
 internal sealed record CopyClubCollectionRequest(long SourceClubId, long ExpectedRevision);
 internal sealed record CopyCampCollectionRequest(long SourceClubId);
@@ -234,7 +235,7 @@ internal static class AdminEndpoints
             {
                 x.Id, CommunityKey = x.BotChatKey, x.Name, TelegramTitle = x.BotChat.Name,
                 x.BotChat.TelegramChatId, x.BotChat.TimeZoneId, IsApproved = true,
-                Status = x.Status.ToString(), x.StartsAtUtc, x.EndsAtUtc,
+                Status = x.Status.ToString(), x.StartsAtUtc, x.EndsAtUtc, x.ConfigurationJson,
                 SourceClubId = x.SourceClub != null && approvedKeys.Contains(x.SourceClub.BotChatKey)
                     ? x.SourceClubId : null,
                 SourceClubName = x.SourceClub != null && approvedKeys.Contains(x.SourceClub.BotChatKey)
@@ -246,6 +247,7 @@ internal static class AdminEndpoints
         foreach (var camp in camps)
             campViews.Add(new { camp.Id, camp.CommunityKey, camp.Name, camp.TelegramTitle, camp.TelegramChatId,
                 camp.TimeZoneId, camp.IsApproved, camp.Status, camp.StartsAtUtc, camp.EndsAtUtc,
+                Configuration = CampConfigurationRules.Read(camp.ConfigurationJson),
                 IsBotUnavailable = unavailableKeys.Contains(camp.CommunityKey),
                 camp.SourceClubId, camp.SourceClubName, camp.Registrations, camp.Contributions, camp.Gatherings,
                 AvatarUrl = await photos.GetDataUrlAsync(camp.TelegramChatId, cancellationToken) });
@@ -449,18 +451,22 @@ internal static class AdminEndpoints
         if (identity is null) return Results.Forbid();
         try
         {
-            var chat = await ResolveSelectedChatAsync(body.SelectionId, body.KnownTelegramChatId,
-                identity.TelegramUserId, TelegramPeerSelectionPurpose.CreateCampChat, dbContext, selections,
-                cancellationToken);
             var timeZone = body.TimeZoneId?.Trim();
             if (string.IsNullOrWhiteSpace(timeZone) && body.SourceClubId is { } sourceClubId)
                 timeZone = await dbContext.Clubs.Where(x => x.Id == sourceClubId)
                     .Select(x => x.BotChat.TimeZoneId).SingleAsync(cancellationToken);
             if (string.IsNullOrWhiteSpace(timeZone)) throw new InvalidOperationException("Выберите часовой пояс.");
+            var configuration = CampConfigurationRules.Normalize(body.Configuration);
+            var start = CommunityTime.ParseLocal(body.StartsAtLocal, timeZone);
+            var end = CommunityTime.ParseLocal(body.EndsAtLocal, timeZone);
+            CampOperatingWindow.Validate(start, end);
+            var chat = await ResolveSelectedChatAsync(body.SelectionId, body.KnownTelegramChatId,
+                identity.TelegramUserId, TelegramPeerSelectionPurpose.CreateCampChat, dbContext, selections,
+                cancellationToken);
             var camp = await communities.CreateCampAsync(new(
                 string.IsNullOrWhiteSpace(body.Name) ? chat.Title ?? "Новый кэмп" : body.Name.Trim(),
                 chat.TelegramChatId, timeZone, identity.TelegramUserId, body.SourceClubId,
-                CommunityTime.ParseLocal(body.StartsAtLocal, timeZone), CommunityTime.ParseLocal(body.EndsAtLocal, timeZone), RequireCreatorTelegramAdmin: false), cancellationToken);
+                start, end, RequireCreatorTelegramAdmin: false, Configuration: configuration), cancellationToken);
             var delivery = await onboarding.SendAsync(chat.TelegramChatId, cancellationToken);
             return Results.Created($"/api/miniapp/admin/camps/{camp.Id}", new
             {
@@ -579,7 +585,7 @@ internal static class AdminEndpoints
         try
         {
             await communities.UpdateCampAsync(campId,
-                new(body.Name, body.TimeZoneId, CommunityTime.ParseLocal(body.StartsAtLocal, body.TimeZoneId), CommunityTime.ParseLocal(body.EndsAtLocal, body.TimeZoneId)), cancellationToken);
+                new(body.Name, body.TimeZoneId, CommunityTime.ParseLocal(body.StartsAtLocal, body.TimeZoneId), CommunityTime.ParseLocal(body.EndsAtLocal, body.TimeZoneId), body.Configuration), cancellationToken);
             return Results.NoContent();
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }

@@ -25,7 +25,8 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
     private readonly GatheringNotificationService notifications = notificationService ?? new(dbContext, new Features.Notifications.NotificationService(dbContext, timeProvider));
     public async Task<CampRegistrationMutationResult> SaveAsync(long campId, long participantId,
         IReadOnlyCollection<DateOnly> selectedDates, bool needsAccommodation, string? displayName, string city,
-        bool confirmAttendanceChanges, CancellationToken cancellationToken)
+        bool confirmAttendanceChanges, CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? answers = null)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable, cancellationToken);
@@ -46,6 +47,11 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             .Include(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.CampId == campId && x.ParticipantId == participantId,
                 cancellationToken);
+        var configuration = CampConfigurationRules.Read(camp.ConfigurationJson);
+        var savedData = CampConfigurationRules.ReadRegistration(registration?.RegistrationDataJson);
+        var normalizedAnswers = CampConfigurationRules.ValidateAnswers(configuration, answers ?? savedData.Answers);
+        var quote = CampConfigurationRules.QuoteForRegistration(configuration, normalizedAnswers, normalizedDates,
+            camp.BotChat.TimeZoneId, now, registration, needsAccommodation);
         var removed = registration is null ? [] : registration.SelectedDays.Select(x => x.Date)
             .Except(normalizedDates).ToHashSet();
         var impacted = removed.Count == 0 ? [] : await LoadImpactedGatheringsAsync(
@@ -66,6 +72,7 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
         };
         if (registration.Id == 0) dbContext.CampRegistrations.Add(registration);
         registration.DisplayName = normalizedDisplayName;
+        registration.RegistrationDataJson = CampConfigurationRules.Serialize(new CampRegistrationData(Answers: normalizedAnswers, Quote: quote));
         registration.City = normalizedCity;
         registration.NeedsAccommodation = needsAccommodation;
         registration.DaysStaying = normalizedDates.Count;

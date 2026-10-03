@@ -1,4 +1,4 @@
-import { Field } from "./Ui";
+import { DateTimeField } from "./DateTimeField";
 
 export function CampDateRange({ start, end, timeZoneId, errors, onChange }: {
   start: string;
@@ -8,13 +8,9 @@ export function CampDateRange({ start, end, timeZoneId, errors, onChange }: {
   onChange: (start: string, end: string) => void;
 }) {
   return <div className="date-range">
-    <Field label="Начало кэмпа" hint={`Местное время (${timeZoneId})`} error={errors.start}>
-      <input type="datetime-local" value={start} required aria-invalid={Boolean(errors.start)}
-        onChange={event => onChange(event.target.value, end)} />
-    </Field>
-    <Field label="Окончание кэмпа" hint={`Местное время (${timeZoneId})`} error={errors.end}>
-      <input type="datetime-local" min={start || undefined} value={end} required aria-invalid={Boolean(errors.end)}
-        onChange={event => onChange(start, event.target.value)} />
-    </Field>
+    <DateTimeField label="Начало кэмпа" hint={`Местное время (${timeZoneId}) · 24 часа`} error={errors.start}
+      value={start} required onChange={value => onChange(value, end)} />
+    <DateTimeField label="Окончание кэмпа" hint={`Местное время (${timeZoneId}) · 24 часа`} error={errors.end}
+      min={start || undefined} value={end} required onChange={value => onChange(start, value)} />
   </div>;
 }

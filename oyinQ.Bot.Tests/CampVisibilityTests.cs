@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Features.Catalog;
@@ -141,11 +143,14 @@ public sealed partial class PostgreSqlStabilizationTests
     [PostgreSqlFact]
     public async Task VisibilityMigrationPreservesEveryLegacyFlagAndDoesNotReapplyAfterNewChoices()
     {
-        await using var database = await Database.CreateAsync("20260923134044_CampWishlistFlow");
+        await using var database = await Database.CreateAsync();
         CampWishSeed seed;
         await using (var db = database.Open())
         {
+            // Seed through the current model, then restore the populated pre-visibility schema.
             seed = await CampWishSeed.Create(db, Time);
+            await db.GetService<IMigrator>().MigrateAsync("20260923134044_CampWishlistFlow");
+            await db.Database.ExecuteSqlRawAsync("UPDATE \"CampRegistrations\" SET \"ShareCollection\" = FALSE, \"ShareWishes\" = FALSE");
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"CampRegistrations\" SET \"ShareCollection\" = TRUE WHERE \"ParticipantId\" = {seed.A.Id}");
             await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"CampRegistrations\" SET \"ShareWishes\" = TRUE WHERE \"ParticipantId\" = {seed.B.Id}");
             await db.Database.MigrateAsync();

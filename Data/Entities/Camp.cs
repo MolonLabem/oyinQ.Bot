@@ -11,6 +11,7 @@ public sealed class Camp
     public string BotChatKey { get; set; } = string.Empty;
     public BotMode BotChatMode { get; private set; } = BotMode.Camp;
     public string Name { get; set; } = string.Empty;
+    public string ConfigurationJson { get; set; } = CampConfigurationRules.Serialize(CampConfigurationRules.Normalize(null));
     public long? SourceClubId { get; set; }
     public string BaseCollectionJson { get; set; } = ClubCollectionSerializer.Serialize(ClubCollectionDocument.Empty);
     public CampStatus Status { get; set; }

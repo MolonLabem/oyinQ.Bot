@@ -1,3 +1,4 @@
+import { formatUpdatedAt } from "../../app/format";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
 import { useAsync } from "../../hooks/useAsync";
@@ -71,7 +72,7 @@ function AnnouncementHistory({ open }: { open: (id: string) => void }) {
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} />
       : !state.data?.items.length ? <Empty>Сообщений пока нет.</Empty>
       : <div className="stack">{state.data.items.map(item => <button className="card announcement-history-item" key={item.id} onClick={() => open(item.id)}>
-        <small>{new Date(item.createdAt).toLocaleString("ru-RU")}</small><p>{item.text}</p><span>Открыть сообщение →</span>
+        <small>{formatUpdatedAt(item.createdAt)}</small><p>{item.text}</p><span>Открыть сообщение →</span>
       </button>)}</div>}
     <div className="row page-section">
       <button disabled={state.loading || page === 1} onClick={() => setPage(page - 1)}>Назад</button>

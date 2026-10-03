@@ -22,6 +22,8 @@ public sealed class CampParticipationPolicy(AppDbContext dbContext, TimeProvider
             _ = CampRules.ValidateSelectedDates(registration.SelectedDays.Select(x => x.Date).ToArray(),
                 start, end);
             _ = CampRules.NormalizeCity(registration.City);
+            _ = CampConfigurationRules.ValidateAnswers(CampConfigurationRules.Read(camp.ConfigurationJson),
+                CampConfigurationRules.ReadRegistration(registration.RegistrationDataJson).Answers);
             return true;
         }
         catch (ArgumentException)

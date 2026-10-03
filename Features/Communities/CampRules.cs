@@ -28,7 +28,7 @@ public static class CampRules
     public static IReadOnlyList<DateOnly> ValidateSelectedDates(IReadOnlyCollection<DateOnly> values,
         DateOnly startDate, DateOnly endDate)
     {
-        if (values.Count == 0)
+        if (values is null || values.Count == 0)
             throw new ArgumentException("Выберите хотя бы один день кэмпа.", nameof(values));
         var distinct = values.Distinct().Order().ToArray();
         if (distinct.Length != values.Count)

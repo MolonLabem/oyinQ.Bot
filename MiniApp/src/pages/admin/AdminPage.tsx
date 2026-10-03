@@ -1,7 +1,11 @@
+import { CampConfigurationEditor, emptyCampConfiguration } from "../../components/CampConfigurationEditor";
+import { CampInformation, hasCampInformation } from "../../components/CampInformation";
+import { FormSection, validateForm } from "../../components/Ui";
+import { formatUpdatedAt } from "../../app/format";
 import { ClubCollection } from "./ClubCollection";
 import { CampParticipants } from "./CampParticipants";
 import { AnnouncementsPage } from "./AnnouncementsPage";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, download, json } from "../../api/client";
 import { Navigation, type Tab } from "../../components/Navigation";
 import { adminCommunityOptions, adminCommunityStorageKey, adminGatheringCommunity, adminSectionForCommunity, resolveAdminCommunity, type AdminCommunityOption, type AdminSection as Section } from "./adminNavigation";
@@ -240,7 +244,7 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                       <p>Telegram ID: <code>{club.telegramChatId}</code></p>
                       <p>Часовой пояс: {club.timeZoneId}</p>
                       <p>Внутренняя версия коллекции: {club.collectionRevision}</p>
-                      <small>Обновлено {new Date(club.updatedAt).toLocaleString("ru-RU")}</small>
+                      <small>Обновлено {formatUpdatedAt(club.updatedAt)}</small>
                     </details>
                   </Card>
                 ))}
@@ -390,6 +394,8 @@ function EditClub({ club, overview, done }: { club: AdminClub; overview?: AdminO
 
 function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminOverview; done: () => void }) {
   const api = useScreenRequest();
+  const form = useRef<HTMLFormElement>(null);
+  const [configuration, setConfiguration] = useState(camp.configuration ?? emptyCampConfiguration());
   const [name, setName] = useState(camp.name);
   const [zone, setZone] = useState(camp.timeZoneId);
   const [start, setStart] = useState(camp.startsAtUtc ? currentLocalMinute(camp.timeZoneId, new Date(camp.startsAtUtc)) : "");
@@ -404,10 +410,11 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
     const validation = campDateValidation(start, end);
     setDateErrors(validation);
     if (validation.start || validation.end) { setError(undefined); return; }
+    if (!validateForm(form.current)) return;
     setBusy(true);
     setError(undefined);
     try {
-      await api(`/admin/camps/${camp.id}`, json("PUT", { name, timeZoneId: zone, startsAtLocal: start, endsAtLocal: end }));
+      await api(`/admin/camps/${camp.id}`, json("PUT", { name, timeZoneId: zone, startsAtLocal: start, endsAtLocal: end, configuration }));
       telegram.success("Настройки кэмпа сохранены");
       done();
     } catch (e) {
@@ -432,8 +439,9 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
     }
   }
   return (
-    <Page title="Настройки кэмпа" actions={<BackButton onClick={done} />}>
-      <Card className="form-grid">
+    <div className="camp-admin-screen"><Page title="Настройки кэмпа" actions={<BackButton onClick={done} />}>
+      <form ref={form} noValidate className="camp-admin-form" onSubmit={event => { event.preventDefault(); save(); }}>
+      <FormSection title="Название и даты">
         <Field label="Название">
           <input value={name} maxLength={160} onChange={(event) => setName(event.target.value)} />
         </Field>
@@ -443,10 +451,11 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
           <TimeZoneSelect value={zone} onChange={setZone} disabled={camp.gatherings > 0} />
         </Field>
         <Notice>Изменение дат не удаляет данные. Все существующие регистрации и сборы должны помещаться в новый диапазон.</Notice>
-        <button className="primary" disabled={busy || !name.trim() || !zone.trim()} onClick={save}>
-          {busy ? "Сохраняем…" : "Сохранить настройки"}
-        </button>
-      </Card>
+      </FormSection>
+      <CampConfigurationEditor value={configuration} onChange={setConfiguration} fieldsLocked={camp.registrations > 0} disabled={busy} />
+      {error && <Notice kind="danger">{error}</Notice>}
+      <button type="submit" className="primary" disabled={busy || !name.trim() || !zone.trim()} aria-busy={busy}>{busy ? "Сохраняем…" : "Сохранить настройки"}</button>
+      </form>
       <PostingTopicSetting communityKey={camp.communityKey} />
       <RecruitmentSettings communityKey={camp.communityKey} mode="Camp" />
       <Card className="form-grid">
@@ -478,8 +487,7 @@ function EditCamp({ camp, overview, done }: { camp: AdminCamp; overview?: AdminO
           </>
         )}
       </Card>
-      {error && <Notice kind="danger">{error}</Notice>}
-    </Page>
+    </Page></div>
   );
 }
 
@@ -638,6 +646,8 @@ function CreateClub({ knownChat, done }: { knownChat?: LockedAdminCommunity; don
 
 function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; knownChat?: LockedAdminCommunity; done: () => void }) {
   const api = useScreenRequest();
+  const form = useRef<HTMLFormElement>(null);
+  const [configuration, setConfiguration] = useState(emptyCampConfiguration);
   const [name, setName] = useState(knownChat?.name ?? "");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -676,6 +686,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
     const validation = campDateValidation(start, end);
     setDateErrors(validation);
     if (validation.start || validation.end) { setError(undefined); return; }
+    if (!validateForm(form.current)) return;
     setBusy(true);
     setError(undefined);
     try {
@@ -689,6 +700,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
           endsAtLocal: end,
           sourceClubId: source || null,
           timeZoneId: zone,
+          configuration,
         }),
       );
       telegram.success("Кэмп создан как черновик");
@@ -703,55 +715,31 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
       setBusy(false);
     }
   }
-  return (
-    <Page title="Новый кэмп" actions={<BackButton onClick={done} />}>
-      <Card className="form-grid">
-        <Field label="Название" hint="После выбора группы подставим её название">
-          <input value={name} maxLength={160} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <CampDateRange start={start} end={end} timeZoneId={zone} errors={dateErrors}
-          onChange={(start, end) => { setStart(start); setEnd(end); setDateErrors({}); }} />
-        <Field label="Исходный клуб">
-          <select value={source} onChange={(e) => changeSource(e.target.value)}>
-            <option value="">Без базовой коллекции</option>
-            {overview?.clubs.map((club) => (
-              <option value={club.id} key={club.id}>
-                {club.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Часовой пояс" hint={sourceClub ? "Унаследован от клуба; при необходимости измените" : "Выберите местное время кэмпа"}>
-          <TimeZoneSelect value={zone} onChange={setZone} />
-        </Field>
+  return <div className="camp-admin-screen"><Page title="Новый кэмп" subtitle="Настройте событие, затем откройте регистрацию" actions={<BackButton onClick={done} />}>
+    <FormSection title="Telegram-группа" hint="Регистрация и сборы будут доступны участникам выбранной группы.">
+      {selection || knownChat ? <><p><strong>{knownChat?.name ?? selection?.result?.chat?.title ?? "Группа выбрана"}</strong></p>{!knownChat && <button disabled={busy} type="button" onClick={choose}>Выбрать другую группу</button>}</>
+        : <button type="button" className="primary" disabled={busy} onClick={choose}>{busy ? "Ожидаем Telegram…" : "Выбрать группу"}</button>}
+    </FormSection>
+    <form ref={form} noValidate className="camp-admin-form" onSubmit={event => { event.preventDefault(); create(); }}>
+      <FormSection title="Название и даты">
+        <Field label="Название" hint="После выбора группы подставим её название"><input value={name} maxLength={160} onChange={e => setName(e.target.value)} /></Field>
+        <CampDateRange start={start} end={end} timeZoneId={zone} errors={dateErrors} onChange={(start, end) => { setStart(start); setEnd(end); setDateErrors({}); }} />
+        <Field label="Часовой пояс" hint={sourceClub ? "Унаследован от клуба; при необходимости измените" : "Выберите местное время кэмпа"}><TimeZoneSelect value={zone} onChange={setZone} /></Field>
+      </FormSection>
+      <CampConfigurationEditor value={configuration} onChange={setConfiguration} disabled={busy} />
+      <FormSection title="Коллекция игр" hint="Участники также смогут отметить свои игры и хотелки.">
+        <Field label="Исходный клуб"><select value={source} onChange={e => changeSource(e.target.value)}><option value="">Без базовой коллекции</option>{overview?.clubs.map(club => <option value={club.id} key={club.id}>{club.name}</option>)}</select></Field>
         {sourceClub && <Notice>Коллекция «{sourceClub.name}» будет обновляться автоматически при изменениях в клубе. Участники отдельно отмечают, какие игры привезут.</Notice>}
-        {(selection || knownChat) && (
-          <>
-            <h2>Проверка</h2>
-            <dl className="review-list">
-              <dt>Группа</dt>
-              <dd>{knownChat?.name ?? selection?.result?.chat?.title ?? "Выбрана"}</dd>
-              <dt>Даты</dt>
-              <dd>
-                {formatLocalDateTime(start)} — {formatLocalDateTime(end)}
-              </dd>
-              <dt>Основа</dt>
-              <dd>{sourceClub?.name ?? "Пустая коллекция"}</dd>
-              <dt>Часовой пояс</dt>
-              <dd>{zone}</dd>
-            </dl>
-          </>
-        )}
+      </FormSection>
+      <FormSection title="Проверка">
+        <dl className="review-list"><dt>Группа</dt><dd>{knownChat?.name ?? selection?.result?.chat?.title ?? "Выберите группу"}</dd><dt>Даты</dt><dd>{formatLocalDateTime(start)} — {formatLocalDateTime(end)}</dd><dt>Основа</dt><dd>{sourceClub?.name ?? "Пустая коллекция"}</dd><dt>Часовой пояс</dt><dd>{zone}</dd><dt>Дополнительные вопросы</dt><dd>{configuration.registrationFields.length}</dd></dl>
+        {hasCampInformation(configuration) && <details><summary>Как участники увидят описание и стоимость</summary><CampInformation config={configuration} /></details>}
+        <p className="muted">Сначала создадим черновик. Активируйте его, когда будете готовы принимать регистрации.</p>
         {error && <Notice kind="danger">{error}</Notice>}
-        <div className="row">
-          {selection && !knownChat && <button onClick={() => setSelection(undefined)}>Выбрать другую группу</button>}
-          <button className="primary" disabled={busy || !zone.trim()} onClick={selection || knownChat ? create : choose}>
-            {busy ? "Ожидаем Telegram…" : selection || knownChat ? "Создать кэмп" : "Выбрать группу"}
-          </button>
-        </div>
-      </Card>
-    </Page>
-  );
+        <button type="submit" className="primary" disabled={busy || !zone.trim() || (!selection && !knownChat)} aria-busy={busy}>{busy ? "Создаём…" : "Создать кэмп"}</button>
+      </FormSection>
+    </form>
+  </Page></div>;
 }
 
 function Administrators({ communityKey, communityName, back }: { communityKey: string; communityName: string; back: () => void }) {

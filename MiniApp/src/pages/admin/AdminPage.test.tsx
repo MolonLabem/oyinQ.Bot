@@ -1,3 +1,4 @@
+import { changeDateTime, readDateTime } from "../../components/dateTimeTestHelper";
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -57,13 +58,8 @@ async function switchTo(key: string) {
   expect(option).toBeDefined();
   await act(async () => option.click());
 }
-async function changeDate(index: number, value: string) {
-  const input = host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[index];
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
+async function changeDate(index: number, value: string) { await changeDateTime(host, value, index); }
+
 async function createCampFromKnownChat() {
   await mount();
   const card = Array.from(host.querySelectorAll(".card")).find(item => item.textContent?.includes("Новая группа"))!;
@@ -142,7 +138,7 @@ describe("camp creation", () => {
     const request = writes().find(([path]) => path === "/admin/camps")!;
     expect(JSON.parse(String(request[1]?.body))).toEqual({
       knownTelegramChatId: -100006, name: "Новая группа", startsAtLocal: "2026-10-10T18:30",
-      endsAtLocal: "2026-10-12T11:45", sourceClubId: null, timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      endsAtLocal: "2026-10-12T11:45", sourceClubId: null, timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone, configuration: { version: 1, registrationFields: [] },
     });
     expect(title()).not.toBe("Новый кэмп");
   });
@@ -162,14 +158,14 @@ describe("camp creation", () => {
 
   it("uses the source club timezone in the picker and retains dates after a failed save", async () => {
     await createCampFromKnownChat();
-    const source = host.querySelector<HTMLSelectElement>('select')!;
+    const source = Array.from(host.querySelectorAll("label")).find(label => label.textContent?.startsWith("Исходный клуб"))!.querySelector<HTMLSelectElement>("select")!;
     await act(async () => { source.value = "1"; source.dispatchEvent(new Event("change", { bubbles: true })); });
     expect(host.querySelector(".date-range")?.textContent).toContain("Местное время (Asia/Almaty)");
     await changeDate(0, "2026-10-10T18:30"); await changeDate(1, "2026-10-12T11:45");
     intercept = path => path === "/admin/camps" ? Promise.reject(new Error("Группа недоступна.")) : undefined;
     await click("Создать кэмп");
     expect(host.textContent).toContain("Группа недоступна.");
-    expect(host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[0].value).toBe("2026-10-10T18:30");
+    expect(readDateTime(host)).toBe("2026-10-10T18:30");
     intercept = undefined;
     await click("Создать кэмп");
     const requests = writes().filter(([path]) => path === "/admin/camps");
@@ -179,7 +175,7 @@ describe("camp creation", () => {
 
   it("edits the same local-time fields and validates the range before saving", async () => {
     await mount(); await switchTo("camp-3"); await click("Настройки");
-    expect(host.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]')[0].value).toBe("2026-10-01T05:00");
+    expect(readDateTime(host)).toBe("2026-10-01T05:00");
     expect(host.querySelector(".date-range")?.textContent).toContain("Местное время (Asia/Almaty)");
     await changeDate(0, "2026-10-01T18:30"); await changeDate(1, "2026-10-01T18:00");
     await click("Сохранить настройки");
@@ -187,8 +183,32 @@ describe("camp creation", () => {
     expect(writes()).toHaveLength(0);
     await changeDate(1, "2026-10-05T11:45"); await click("Сохранить настройки");
     expect(JSON.parse(String(writes()[0][1]?.body))).toEqual({
-      name: "Кэмп 3", timeZoneId: "Asia/Almaty", startsAtLocal: "2026-10-01T18:30", endsAtLocal: "2026-10-05T11:45",
+      name: "Кэмп 3", timeZoneId: "Asia/Almaty", startsAtLocal: "2026-10-01T18:30", endsAtLocal: "2026-10-05T11:45", configuration: { version: 1, registrationFields: [] },
     });
+  });
+});
+
+describe("camp customization", () => {
+  it("creates a configured camp with priced registration choices and the Halloween preset", async () => {
+    await createCampFromKnownChat(); await changeDate(0, "2026-10-31T12:00"); await changeDate(1, "2026-11-01T23:00");
+    await click("Вопросы для Хэллоуина");
+    const pricingToggle = Array.from(host.querySelectorAll("label")).find(label => label.textContent?.includes("Рассчитывать стоимость участия"))!.querySelector("input")!;
+    await act(async () => pricingToggle.click());
+    const amount = Array.from(host.querySelectorAll("label")).find(label => label.textContent === "Цена участия")!.querySelector("input")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(amount, "10000"); amount.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click("Создать кэмп");
+    const body = JSON.parse(String(writes().find(([path]) => path === "/admin/camps")![1]?.body));
+    expect(body.configuration.pricing).toEqual({ currency: "KZT", amount: 10000, perDay: false });
+    expect(body.configuration.registrationFields.map((field: { label: string }) => field.label)).toEqual(["Во сколько планируете приехать?", "Будете в костюме?", "Комментарий организатору"]);
+    expect(body.configuration.registrationFields[0].options).toHaveLength(24);
+    expect(body.configuration.registrationFields[0].options[0].label).toBe("00:00");
+  });
+  it("locks answered questions while allowing camp information to be edited", async () => {
+    data.camps[0].configuration = { version: 1, description: "Описание", registrationFields: [{ id: "question", label: "Приезд", type: "Text", required: false, amount: 0, perDay: false, options: [] }] };
+    await mount(); await switchTo("camp-3"); await click("Настройки");
+    const name = Array.from(host.querySelectorAll("label")).find(label => label.textContent === "Название вопроса 1")!.querySelector("input")!;
+    expect(name.matches(":disabled")).toBe(true);
+    expect(host.querySelector("textarea")!.matches(":disabled")).toBe(false);
   });
 });
 

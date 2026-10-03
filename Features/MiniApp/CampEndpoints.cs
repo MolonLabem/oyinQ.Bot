@@ -12,7 +12,10 @@ using oyinQ.Bot.Integrations.BoardGameGeek;
 namespace oyinQ.Bot.Features.MiniApp;
 
 internal sealed record CampRegistrationRequest(string CommunityKey, IReadOnlyCollection<DateOnly> SelectedDates,
-    bool NeedsAccommodation, string? DisplayName, string City, bool ConfirmAttendanceChanges = false);
+    bool NeedsAccommodation, string? DisplayName, string City, bool ConfirmAttendanceChanges = false,
+    IReadOnlyDictionary<string, string>? Answers = null);
+internal sealed record CampQuoteRequest(string CommunityKey, IReadOnlyCollection<DateOnly> SelectedDates,
+    IReadOnlyDictionary<string, string>? Answers = null, bool NeedsAccommodation = false);
 internal sealed record QueueCampImportRequest(string CommunityKey, string BggInput);
 internal sealed record ConfirmCampImportRequest(string CommunityKey,
     IReadOnlyCollection<long> SelectedBaseGameIds, IReadOnlyCollection<long> SelectedExpansionIds);
@@ -34,10 +37,8 @@ internal static class CampEndpoints
 {
     public static RouteGroupBuilder MapCampEndpoints(this RouteGroupBuilder group)
     {
+        group.MapCampRegistrationEndpoints();
         var camp = group.MapGroup("/camp");
-        camp.MapGet("/registration", GetRegistrationAsync);
-        camp.MapPut("/registration", SaveRegistrationAsync);
-        camp.MapPost("/registration/unregister", UnregisterAsync);
         camp.MapPost("/imports", QueueImportAsync);
         camp.MapGet("/imports/{publicId:guid}", GetImportAsync);
         camp.MapPost("/imports/{publicId:guid}/confirm", ConfirmImportAsync);
@@ -52,13 +53,23 @@ internal static class CampEndpoints
         return group;
     }
 
+    internal static RouteGroupBuilder MapCampRegistrationEndpoints(this RouteGroupBuilder group)
+    {
+        var camp = group.MapGroup("/camp");
+        camp.MapGet("/registration", GetRegistrationAsync);
+        camp.MapPut("/registration", SaveRegistrationAsync);
+        camp.MapPost("/registration/quote", QuoteRegistrationAsync);
+        camp.MapPost("/registration/unregister", UnregisterAsync);
+        return group;
+    }
+
     private static async Task<IResult> GetRegistrationAsync(HttpRequest request, string community,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator,
             resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Регистрация нужна только для кэмпа.");
         var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == community, cancellationToken);
         var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
@@ -80,6 +91,7 @@ internal static class CampEndpoints
                 ? availableDates : [];
         var baseGameIds = (await new SharedCollectionReader(dbContext).ForCampAsync(camp, cancellationToken)).Games.Select(x => x.BggId).Order().ToArray();
         return Results.Ok(new { CampStatus = camp.Status.ToString(), camp.StartDate, camp.EndDate, camp.StartsAtUtc, camp.EndsAtUtc,
+            Configuration = CampConfigurationRules.Read(camp.ConfigurationJson),
             ShareCollection = visibility?.ShareCollection != false, ShareWishes = visibility?.ShareWishes != false,
             DateLabels = CampOperatingWindow.AttendanceLabels(camp),
             AvailableDates = availableDates, BaseGameIds = baseGameIds, DisplayName = participantDisplayName,
@@ -89,6 +101,7 @@ internal static class CampEndpoints
                 registration.Row.DaysStaying,
                 registration.Row.NeedsAccommodation,
                 registration.Row.City,
+                Data = CampConfigurationRules.ReadRegistration(registration.Row.RegistrationDataJson),
                 registration.DisplayName,
                 SelectedDates = selectedDates,
                 SuggestedDates = suggestedDates
@@ -104,7 +117,7 @@ internal static class CampEndpoints
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey,
             authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Регистрация нужна только для кэмпа.");
         var camp = await dbContext.Camps.SingleAsync(x => x.BotChatKey == body.CommunityKey, cancellationToken);
         if (camp.Status != CampStatus.Active) return MiniAppEndpointSupport.Problem("camp_closed", "Кэмп не принимает регистрации.");
@@ -119,7 +132,7 @@ internal static class CampEndpoints
         {
             var result = await registrations.SaveAsync(camp.Id, participant.Id, body.SelectedDates,
                 body.NeedsAccommodation, body.DisplayName, body.City, body.ConfirmAttendanceChanges,
-                cancellationToken);
+                cancellationToken, body.Answers);
             await PublishRegistrationChangesAsync(result, publication, cancellationToken);
             return Results.NoContent();
         }
@@ -127,6 +140,32 @@ internal static class CampEndpoints
         {
             return Results.Json(new { Code = exception.CanConfirm ? "registration_dates_affect_gatherings" : "registration_organizer_conflict", exception.Message,
                 AffectedGatherings = exception.Gatherings }, statusCode: StatusCodes.Status409Conflict);
+        }
+        catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
+    }
+
+    private static async Task<IResult> QuoteRegistrationAsync(HttpRequest request, CampQuoteRequest body,
+        AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator, CommunityContextResolver resolver,
+        TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
+        var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, body.CommunityKey, authenticator,
+            resolver, cancellationToken);
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Расчёт доступен только для кэмпа.");
+        try
+        {
+            var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat)
+                .SingleAsync(x => x.BotChatKey == body.CommunityKey, cancellationToken);
+            CampParticipationPolicy.EnsureAcceptsMutations(camp, camp.BotChat.TimeZoneId, timeProvider.GetUtcNow());
+            if (camp.StartDate is not { } start || camp.EndDate is not { } end) throw new ArgumentException("Сначала задайте даты кэмпа.");
+            var dates = CampRules.ValidateSelectedDates(body.SelectedDates, start, end);
+            var config = CampConfigurationRules.Read(camp.ConfigurationJson);
+            var answers = CampConfigurationRules.ValidateAnswers(config, body.Answers, requireAll: false);
+            var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
+                .SingleOrDefaultAsync(x => x.CampId == camp.Id
+                    && x.Participant.TelegramUserId == access.Identity.TelegramUserId, cancellationToken);
+            return Results.Ok(new { Quote = CampConfigurationRules.QuoteForRegistration(config, answers, dates,
+                camp.BotChat.TimeZoneId, timeProvider.GetUtcNow(), registration, body.NeedsAccommodation) });
         }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
@@ -331,7 +370,7 @@ internal static class CampEndpoints
         GameCatalogService catalog, CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
-        if (access is null) return Results.Forbid();
+        if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (access.Community.Mode != BotMode.Camp) return MiniAppEndpointSupport.Problem("wrong_mode", "Каталог кэмпа недоступен.");
         var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
             .Select(x => (long?)x.Id).SingleOrDefaultAsync(cancellationToken);
@@ -354,7 +393,7 @@ internal static class CampEndpoints
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
-        if (access is null) return (0, 0, Results.Forbid());
+        if (access is null) return (0, 0, Results.StatusCode(StatusCodes.Status403Forbidden));
         if (access.Community.Mode != BotMode.Camp)
             return (0, 0, MiniAppEndpointSupport.Problem("wrong_mode", "Действие доступно только в кэмпе."));
         var participant = await MiniAppEndpointSupport.GetOrCreateParticipantAsync(dbContext, access.Identity,

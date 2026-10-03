@@ -1,3 +1,4 @@
+using oyinQ.Bot.Features.Communities;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
@@ -14,6 +15,8 @@ public sealed record CampAdminParticipant(
     long ParticipantId, string DisplayName, string? City, IReadOnlyList<DateOnly> SelectedDates,
     bool? NeedsAccommodation, string? TelegramUsername, string? ContactUrl)
 {
+    public IReadOnlyDictionary<string, string> CustomAnswers { get; init; } = new Dictionary<string, string>();
+    public CampRegistrationQuote? Quote { get; init; }
     public int DayCount => SelectedDates.Count;
     public string DatesText => SelectedDates.Count == 0 ? "Не указаны"
         : string.Join(", ", SelectedDates.Select(CampParticipantFilter.FormatDate));
@@ -22,6 +25,7 @@ public sealed record CampAdminParticipant(
 
 public sealed record CampAdminParticipants(long CampId, string CampName, IReadOnlyList<CampAdminParticipant> Participants)
 {
+    public IReadOnlyList<CampRegistrationField> RegistrationFields { get; init; } = [];
     public string CommunityKey { get; init; } = "";
     public string TimeZoneId { get; init; } = "UTC";
     public int TotalCount { get; init; } = Participants.Count;
@@ -88,10 +92,11 @@ public sealed class CampParticipantAdminService(
             throw new UnauthorizedAccessException("Нет доступа к участникам этого кэмпа.");
         filter = (filter ?? new()).Normalize();
         var camp = await dbContext.Camps.AsNoTracking().Where(x => x.Id == campId)
-            .Select(x => new { x.Id, x.Name, x.BotChatKey, x.BotChat.TimeZoneId })
+            .Select(x => new { x.Id, x.Name, x.BotChatKey, x.BotChat.TimeZoneId, x.ConfigurationJson })
             .SingleOrDefaultAsync(cancellationToken) ?? throw new KeyNotFoundException("Кэмп не найден.");
         var rows = await dbContext.CampRegistrations.AsNoTracking().Where(x => x.CampId == campId)
             .Include(x => x.Participant).Include(x => x.SelectedDays).ToArrayAsync(cancellationToken);
+        var configuration = CampConfigurationRules.Read(camp.ConfigurationJson);
         var participants = rows.Select(x => new CampAdminParticipant(
             x.ParticipantId,
             CampParticipantPresentation.RegistrationDisplayName(x.DisplayName,
@@ -100,13 +105,18 @@ public sealed class CampParticipantAdminService(
             string.IsNullOrWhiteSpace(x.City) ? null : x.City.Trim(),
             x.SelectedDays.Select(day => day.Date).Distinct().Order().ToArray(),
             x.NeedsAccommodation, NormalizeUsername(x.Participant.TelegramUsername),
-            ParticipantPresentation.GetContactUrl(x.Participant)))
+            ParticipantPresentation.GetContactUrl(x.Participant))
+        {
+            CustomAnswers = CampConfigurationRules.PresentAnswers(configuration, CampConfigurationRules.ReadRegistration(x.RegistrationDataJson)),
+            Quote = CampConfigurationRules.ReadRegistration(x.RegistrationDataJson).Quote
+        })
             .OrderBy(x => x.DisplayName, StringComparer.Create(CultureInfo.GetCultureInfo("ru-RU"), true))
             .ThenBy(x => x.ParticipantId).ToArray();
         // This endpoint returns the complete matching roster, never a page of it.
         return new(camp.Id, camp.Name, participants.Where(filter.Matches).ToArray())
         {
             CommunityKey = camp.BotChatKey, TimeZoneId = camp.TimeZoneId, TotalCount = participants.Length,
+            RegistrationFields = configuration.RegistrationFields!,
             AvailableDates = participants.SelectMany(x => x.SelectedDates).Distinct().Order().ToArray(),
             FilterDescription = filter.Describe()
         };

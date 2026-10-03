@@ -1,3 +1,4 @@
+import { DateTimeField } from "../../components/DateTimeField";
 import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
@@ -69,7 +70,7 @@ export function PlayPanel({ community, id, onSaved }: { community: Community; id
   return <Card className="form-grid play-record-form"><h2>Игра состоялась?</h2>
     <p>Подтвердите факт партии и фактический состав. Это не меняет отметки посещаемости сбора.</p>
     {state.data.canEdit ? <><div className="choice-row"><button aria-pressed={played === true} className={played === true ? "active" : ""} onClick={() => setPlayed(true)}>Да, сыграли</button><button aria-pressed={played === false} className={played === false ? "active" : ""} onClick={() => setPlayed(false)}>Нет, не состоялась</button></div>
-    {played && <><Field label={`Окончание партии (${community.timeZoneId})`} error={endError}><input type="datetime-local" value={end} onChange={e => { setEnd(e.target.value); setEndError(undefined); }} /></Field><p className="muted">Продолжительность рассчитывается автоматически от запланированного начала сбора до окончания партии.</p>
+    {played && <><DateTimeField label={`Окончание партии (${community.timeZoneId})`} hint="Время в формате 24 часов" error={endError} value={end} onChange={value => { setEnd(value); setEndError(undefined); }} required /><p className="muted">Продолжительность рассчитывается автоматически от запланированного начала сбора до окончания партии.</p>
       <Field label="Где играли"><input type="text" maxLength={160} value={location} onChange={e => setLocation(e.target.value)} placeholder={community.name} /></Field>
       <fieldset className="play-results"><legend>Кто играл и кто победил</legend><small>Можно выбрать несколько победителей. Для совместного поражения не отмечайте никого.</small>
         {state.data.players.map(p => <div className={`play-player-result${players.includes(p.id) ? " selected" : ""}`} key={p.id}>

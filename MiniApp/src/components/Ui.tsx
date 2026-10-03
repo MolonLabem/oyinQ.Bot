@@ -9,6 +9,17 @@ export function Page({ as: Element = "main", title, titleHref, subtitle, actions
   return <Element className="page">{(hasHeading || actions) && <header className={`page-header${hasHeading ? "" : " actions-only"}`}>{hasHeading && <div>{title && <h1>{titleHref ? <a className="page-title-link" href={titleHref} target="_blank" rel="noreferrer">{title}</a> : title}</h1>}{subtitle && <p>{subtitle}</p>}</div>}{actions}</header>}{children}</Element>;
 }
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <section className={`card ${className}`}>{children}</section>; }
+export function FormSection({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return <Card className="form-grid form-section"><h2>{title}</h2>{hint && <p className="muted">{hint}</p>}{children}</Card>;
+}
+export function validateForm(form: HTMLFormElement | null) {
+  if (!form) return false;
+  form.querySelectorAll("input:invalid, select:invalid, textarea:invalid").forEach(control => {
+    let parent = control.parentElement;
+    while (parent && parent !== form) { if (parent instanceof HTMLDetailsElement) parent.open = true; parent = parent.parentElement; }
+  });
+  return form.reportValidity();
+}
 // Screens wire the native button through telegram.back; retain navigation in ordinary browsers.
 export function BackButton({ onClick }: { onClick: () => void }) {
   return telegram.hasBackButton ? null : <button className="ghost page-back" onClick={onClick}><span aria-hidden>← </span>Назад</button>;

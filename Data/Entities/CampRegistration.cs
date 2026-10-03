@@ -9,6 +9,7 @@ public sealed class CampRegistration
     public bool? NeedsAccommodation { get; set; }
     public string? DisplayName { get; set; }
     public string? City { get; set; }
+    public string RegistrationDataJson { get; set; } = "{\"version\":1,\"answers\":{}}";
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

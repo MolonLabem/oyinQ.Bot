@@ -57,7 +57,7 @@ export async function gatheringMutation<T>(path: string, options: RequestInit): 
   try { return await api<T>(path, options); }
   catch (e) {
     if (!(e instanceof ApiError) || e.code !== "gathering_schedule_conflict" || !e.conflicts?.length) throw e;
-    const summary = e.conflicts.map(x => `${x.gameName} · ${new Intl.DateTimeFormat("ru-RU", { timeZone: x.timeZoneId, dateStyle: "short", timeStyle: "short" }).format(new Date(x.startsAtUtc))} · ${x.community}`).join("\n");
+    const summary = e.conflicts.map(x => `${x.gameName} · ${new Intl.DateTimeFormat("ru-RU", { timeZone: x.timeZoneId, dateStyle: "short", timeStyle: "short", hourCycle: "h23" }).format(new Date(x.startsAtUtc))} · ${x.community}`).join("\n");
     if (!await telegram.confirm(`Возможное пересечение\n\n${summary}\n\nВсё равно продолжить?`)) throw new Error("Действие отменено.");
     return api<T>(path, { ...options, body: JSON.stringify({ ...JSON.parse(String(options.body)), confirmScheduleConflict: true }) });
   }
