@@ -74,7 +74,7 @@ function GatheringList({ community, listState, setListState, open, create }: { c
               {item.card.cancellationReason && <p className="gathering-card-cancellation">Причина: {item.card.cancellationReason}</p>}
             </div>
           </button>
-          <footer className="gathering-card-footer"><button onClick={() => open(item.card.publicId)}>Открыть сбор <span aria-hidden>→</span></button><GatheringBggLink bggUrl={item.card.bggUrl} compact /></footer>
+          <footer className="gathering-card-footer"><button className="ghost" onClick={() => open(item.card.publicId)}>Открыть сбор <span aria-hidden>→</span></button><GatheringBggLink bggUrl={item.card.bggUrl} compact /></footer>
         </article>)}</div>
       </section>)}</div>{(result.hasPrevious || result.hasNext) && <div className="row gathering-pagination"><button disabled={!result.hasPrevious} onClick={() => setListState({ ...listState, page: page - 1 })}>Назад</button><span className="muted">Страница {page}</span><button disabled={!result.hasNext} onClick={() => setListState({ ...listState, page: page + 1 })}>Дальше</button></div>}</>}
   </Page></div>;
@@ -202,7 +202,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
       <p className="gathering-rules">{value.gathering.rulesText}</p>
       {!readOnly && (value.canJoin || value.canLeave) && <div className="gathering-participation" aria-label="Участие в сборе">
         {value.canJoin && <button className="primary" disabled={working} onClick={() => action("join")}>{busy ? "Сохраняем…" : freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}
-        {value.canLeave && <><Badge tone={participationStatusTone(value.currentUserStatus)}>{value.currentUserStatus === "Waitlisted" ? `Ваше место в очереди: ${value.waitlistPosition ?? "—"}` : "Вы записаны на сбор"}</Badge><button className="ghost" disabled={working} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button></>}
+        {value.canLeave && <><Badge tone={participationStatusTone(value.currentUserStatus)}>{value.currentUserStatus === "Waitlisted" ? `Ваше место в очереди: ${value.waitlistPosition ?? "—"}` : "Вы записаны на сбор"}</Badge><button className="danger" disabled={working} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button></>}
       </div>}
       {value.gathering.cancellationReason && <Notice kind="danger">Причина отмены: {value.gathering.cancellationReason}</Notice>}
       {community.mode === "Club" && value.provider && <p className="gathering-box-status">Коробка · {value.provider.summary}</p>}

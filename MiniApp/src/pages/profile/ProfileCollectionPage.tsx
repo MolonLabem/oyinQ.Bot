@@ -60,7 +60,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
     return <div className="collection-item" data-box-game={`${item.itemType}:${item.bggId}`} id={`owned-game-${item.bggId}`}>
       <div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h3>{item.snapshot.name}</h3><GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} compact /></div></div>
       {community?.mode === "Camp" && <CampBoxControl communityKey={community.key} item={item} contribution={contribution} disabled={!profile?.data?.canAct || !campState.data || Boolean(campState.error)} declined={item.itemType === "BaseGame" && profile?.data?.declinedGameIds.includes(item.bggId)} attendanceDates={profile?.data?.myDates} beforeChange={() => anchor.capture(`${item.itemType}:${item.bggId}`)} changed={async () => (await Promise.all([campState.reload(), profile?.reload()])).every(Boolean)} />}
-      <details className="collection-menu"><summary aria-label={`Действия с игрой ${item.snapshot.name}`}>Ещё</summary><button className="ghost" onClick={() => void remove(item)}>Удалить из коллекции</button></details>
+      <details className="collection-menu"><summary aria-label={`Действия с игрой ${item.snapshot.name}`}>Ещё</summary><button className="danger ghost" onClick={() => void remove(item)}>Удалить из коллекции</button></details>
     </div>;
   };
   return <>

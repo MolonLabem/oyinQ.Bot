@@ -42,7 +42,7 @@ export function GuestRow({ name, editable, busy, rename, remove }: {
       <button type="button" className="ghost" disabled={disabled} onClick={cancel} aria-label="Отменить изменение имени" title="Отменить изменение имени">×</button>
     </form> : <>
       <div className="guest-name">
-        {editable ? <button ref={nameButton} type="button" className="guest-name-button" disabled={disabled}
+        {editable ? <button ref={nameButton} type="button" className="guest-name-button ghost" disabled={disabled}
           aria-label={`Изменить имя гостя ${name}`} onClick={() => { setDraft(name); setEditing(true); }}>
           {name}<span className="guest-edit-hint" aria-hidden>✎</span>
         </button> : <span>{name}</span>}
