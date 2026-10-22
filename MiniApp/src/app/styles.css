@@ -598,14 +598,20 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .collection-heading { justify-content: space-between; flex-wrap: wrap; }
 .collection-heading h2 { margin: 0; }
 .collection-item { display: grid; gap: 8px; min-width: 0; }
+.collection-item-heading { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.collection-item-heading > .media { flex: 1; }
+.collection-delete, .collection-select { display: grid; place-items: center; width: 44px; min-height: 44px; flex: 0 0 44px; }
+.collection-delete { padding: 0; font-size: 1.5rem; line-height: 1; }
+.collection-select { cursor: pointer; }
+.collection-select input { width: 22px; height: 22px; min-height: 22px; margin: 0; }
+.collection-selection { position: sticky; top: calc(var(--context-nav-height) + 8px + var(--tg-safe-area-inset-top, env(safe-area-inset-top)) + var(--tg-content-safe-area-inset-top, 0px)); z-index: 2; padding: 10px; border: var(--surface-border); border-radius: 12px; background: var(--surface); }
 .collection-item .media { align-items: center; min-width: 0; }
 .collection-item .media > div { min-width: 0; }
 .collection-item h3 { overflow-wrap: anywhere; margin: 0 0 4px; font-size: 1rem; }
 .collection-item .cover { width: 48px; height: 60px; flex: 0 0 48px; }
 .box-control { display: grid; gap: 6px; min-width: 0; }
 .box-control select { width: 100%; max-width: 100%; min-height: 44px; }
-.collection-menu summary, .box-date-options summary, .import-options summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; }
-.collection-menu { justify-self: end; }
+.box-date-options summary, .import-options summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; }
 .box-date-options .check { min-height: 44px; }
 .profile-collection[hidden], .profile-collection [hidden] { display: none !important; }
 .profile-collection .card { padding: 12px; }
@@ -654,7 +660,6 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .profile-screen .profile-collection .card { padding: 16px; }
 .profile-screen .collection-item .cover { width: 64px; height: 86px; flex-basis: 64px; border-radius: 7px; }
 .profile-screen .collection-expansion .cover { width: 48px; height: 64px; flex-basis: 48px; }
-.profile-screen .collection-menu summary { color: var(--muted); font-size: var(--font-small); }
 .profile-screen .content-section.form-grid, .profile-screen .camp-privacy { margin-top: 20px; padding: 18px; border: var(--surface-border); border-radius: 14px; background: var(--surface); }
 .profile-screen .form-grid { gap: 16px; }
 .profile-screen .form-grid h2 { margin: 0; font-size: var(--font-section); }

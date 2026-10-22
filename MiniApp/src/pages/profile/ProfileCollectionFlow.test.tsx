@@ -43,7 +43,7 @@ it("keeps the collection free of visibility controls and addition closed without
   expect(host.querySelector("#collection-add")?.hasAttribute("hidden")).toBe(true);
   expect(visible(".collection-item")).toHaveLength(1);
   expect(host.querySelector(".camp-privacy")).toBeNull();
-  await click("Добавить ▾"); await click("Выбрать новую игру"); await click("Свернуть добавление ▴");
+  await click("Добавить"); await click("Выбрать новую игру"); await click("Закрыть");
   expect(host.textContent).toContain("Выбрана игра «Новая игра»");
   await click("Продолжить добавление");
   expect(host.querySelector("#collection-add")?.hasAttribute("hidden")).toBe(false);
@@ -121,10 +121,11 @@ it("explains Camp visibility during registration without another consent checkbo
   expect(vi.mocked(api).mock.calls.some(c => c[1]?.method)).toBe(false);
 });
 
-it("keeps declined distinct from withdrawing an offer and puts ownership deletion in the menu", async () => {
+it("keeps declined distinct from withdrawing an offer and offers direct ownership deletion", async () => {
   settings.declinedGameIds = [42]; await mount();
   const select = host.querySelector<HTMLSelectElement>('.box-control select')!; expect(select.value).toBe("declined");
-  expect(host.querySelector('.collection-menu')?.hasAttribute("open")).toBe(false);
+  expect(host.querySelector('.collection-menu')).toBeNull();
+  expect(host.querySelector('button[aria-label="Удалить «Немезида» из коллекции"]')).toBeTruthy();
   await act(async () => { select.value = ""; select.dispatchEvent(new Event("change", { bubbles: true })); });
   const request = vi.mocked(api).mock.calls.find(c => c[1]?.method === "POST")!;
   expect(JSON.parse(String(request[1]?.body))).toEqual({ action: "withdraw", bggId: 42 });

@@ -21,6 +21,8 @@ import { importStatusTone } from "../../app/semanticTones";
 
 export { CampRegistrationSettings, CampRegistrationGate } from "../camp/CampRegistration";
 
+const collectionItemKey = (item: PersonalCollectionItem) => `${item.itemType}:${item.bggId}`;
+
 export function ProfileCollectionPage({ community, bggAvailable, editRegistration, initialGameId }: { initialGameId?: number; community?: Community; bggAvailable: boolean; editRegistration?: () => void }) {
   const state = useAsync(() => api<PersonalCollectionItem[]>("/profile/collection/"), [community?.key]);
   const importSource = useAsync(() => api<{ source: { bggUsername: string; lastImportedAt: string } | null }>("/profile/collection/imports/source"), []);
@@ -34,6 +36,10 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
   const [filter, setFilter] = useState(() => (initialGameId || new URLSearchParams(location.search).has("box")) ? "all" : sessionStorage.getItem(`oyinq-collection-filter:${community?.key ?? "global"}`) ?? "all");
   const [addOpen, setAddOpen] = useState(false); const [importOpen, setImportOpen] = useState(true);
   const [importStatus, setImportStatus] = useState("Загрузка состояния");
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [removing, setRemoving] = useState(false);
+  const removalLock = useRef(false);
   const detailScroll = useRef(0);
   const restoreDetailScroll = useRef(false);
   const [detail, setDetail] = useState<{ game?: number; person?: string }>();
@@ -50,17 +56,58 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
     return groupCollectionItems(values, item => (!listQuery.trim() || matches.has(item.bggId)) &&
       (community?.mode !== "Camp" || filter === "all" || filter === "demand" && Boolean(profile?.data?.suggestedGameIds.includes(item.bggId)) || Boolean(campState.data?.some(c => c.bggId === item.bggId && c.itemType === item.itemType && c.commitment === filter))));
   }, [state.data, listQuery, filter, campState.data, profile?.data, community?.mode]);
+  const listedItems = useMemo(() => [...new Map(collectionGroups.flatMap(group => [group.item, ...group.expansions])
+    .map(item => [collectionItemKey(item), item])).values()], [collectionGroups]);
+  const selectedItems = listedItems.filter(item => selected.has(collectionItemKey(item)));
+  useEffect(() => {
+    const listed = new Set(listedItems.map(collectionItemKey));
+    setSelected(current => current.size && [...current].some(key => !listed.has(key))
+      ? new Set([...current].filter(key => listed.has(key))) : current);
+  }, [listedItems]);
+  function closeSelection() { setSelecting(false); setSelected(new Set()); }
+  function toggleSelection(item: PersonalCollectionItem) {
+    setSelected(current => { const next = new Set(current); const key = collectionItemKey(item); next.has(key) ? next.delete(key) : next.add(key); return next; });
+  }
   const anchor = useListAnchor(collectionGroups);
   useBackButton(Boolean(importId && importOpen && !detail), () => setImportOpen(false));
+  useBackButton(selecting && !detail && !(importId && importOpen), () => { if (!removalLock.current) closeSelection(); });
   async function startImport(input?: string) { setError(undefined); try { const result = await api<{ publicId: string }>("/profile/collection/imports", json("POST", { bggInput: input })); setLegacyImport(false); localStorage.setItem("oyinq-profile-import", result.publicId); setImportId(result.publicId); setImportOpen(true); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
-  async function addManual() { if (adding || !chosen) return; setAdding(true); setError(undefined); try { await api("/profile/collection/manual", json("POST", { communityKey: community?.key, bggInput: String(chosen.bggId), expansionBggIds: selectedExpansions })); setChosen(undefined); setSelectedExpansions([]); telegram.success("Игра и данные BGG добавлены"); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setAdding(false); } }
-  async function remove(item: PersonalCollectionItem) { if (!await telegram.confirm(`Удалить «${item.snapshot.name}» из личной коллекции во всех сообществах? Если вы обещали взять игру на кэмп, сначала снимите это обещание.`)) return; setError(undefined); try { await api(`/profile/collection/${item.itemType}/${item.bggId}`, { method: "DELETE" }); telegram.success("Игра удалена"); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
+  async function addManual() { if (adding || !chosen) return; setAdding(true); setError(undefined); try { await api("/profile/collection/manual", json("POST", { communityKey: community?.key, bggInput: String(chosen.bggId), expansionBggIds: selectedExpansions })); setChosen(undefined); setSelectedExpansions([]); telegram.success("Игра добавлена"); state.reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setAdding(false); } }
+  async function remove(items: PersonalCollectionItem[]) {
+    if (removalLock.current || !items.length) return;
+    removalLock.current = true; setRemoving(true);
+    try {
+      const target = items.length === 1 ? `«${items[0].snapshot.name}»` : `выбранные игры (${items.length})`;
+      if (!await telegram.confirm(`Удалить ${target} из коллекции во всех сообществах?`)) return;
+      setError(undefined);
+      const removed = new Set<string>(); const failures: string[] = [];
+      for (const item of items) {
+        try {
+          await api(`/profile/collection/${item.itemType}/${item.bggId}`, { method: "DELETE" });
+          removed.add(collectionItemKey(item));
+        } catch (e) { failures.push(`«${item.snapshot.name}»: ${e instanceof Error ? e.message : String(e)}`); }
+      }
+      // Keep accepted deletions out of a retry even if refreshing the list fails.
+      setSelected(current => new Set([...current].filter(key => !removed.has(key))));
+      if (!failures.length) closeSelection();
+      else setError(`Не удалось удалить: ${failures.join("; ")}`);
+      if (removed.size) {
+        state.setData(current => current?.filter(item => !removed.has(collectionItemKey(item))));
+        telegram.success(items.length === 1 ? "Игра удалена" : `Удалено: ${removed.size}`);
+        await state.reload();
+      }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { removalLock.current = false; setRemoving(false); }
+  }
   const renderItem = (item: PersonalCollectionItem) => {
     const contribution = campState.data?.find(x => x.bggId === item.bggId && x.itemType === item.itemType);
     return <div className="collection-item" data-box-game={`${item.itemType}:${item.bggId}`} id={`owned-game-${item.bggId}`}>
-      <div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h3>{item.snapshot.name}</h3><GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} compact /></div></div>
-      {community?.mode === "Camp" && <CampBoxControl communityKey={community.key} item={item} contribution={contribution} disabled={!profile?.data?.canAct || !campState.data || Boolean(campState.error)} declined={item.itemType === "BaseGame" && profile?.data?.declinedGameIds.includes(item.bggId)} attendanceDates={profile?.data?.myDates} beforeChange={() => anchor.capture(`${item.itemType}:${item.bggId}`)} changed={async () => (await Promise.all([campState.reload(), profile?.reload()])).every(Boolean)} />}
-      <details className="collection-menu"><summary aria-label={`Действия с игрой ${item.snapshot.name}`}>Ещё</summary><button className="danger ghost" onClick={() => void remove(item)}>Удалить из коллекции</button></details>
+      <div className="collection-item-heading">
+        <div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h3>{item.snapshot.name}</h3><GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} compact /></div></div>
+        {selecting ? <label className="collection-select"><input type="checkbox" aria-label={`Выбрать «${item.snapshot.name}»`} checked={selected.has(collectionItemKey(item))} disabled={removing} onChange={() => toggleSelection(item)} /></label>
+          : <button type="button" className="danger collection-delete" aria-label={`Удалить «${item.snapshot.name}» из коллекции`} title="Удалить из коллекции" disabled={removing || adding} onClick={() => void remove([item])}>×</button>}
+      </div>
+      {community?.mode === "Camp" && <div hidden={selecting}><CampBoxControl communityKey={community.key} item={item} contribution={contribution} disabled={selecting || removing || !profile?.data?.canAct || !campState.data || Boolean(campState.error)} declined={item.itemType === "BaseGame" && profile?.data?.declinedGameIds.includes(item.bggId)} attendanceDates={profile?.data?.myDates} beforeChange={() => anchor.capture(`${item.itemType}:${item.bggId}`)} changed={async () => (await Promise.all([campState.reload(), profile?.reload()])).every(Boolean)} /></div>}
     </div>;
   };
   return <>
@@ -70,9 +117,13 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
     }} /></div>}
     {detail && community && <CampWishlist community={community} bggAvailable={bggAvailable} initialGameId={detail.game} initialPersonId={detail.person} back={() => { restoreDetailScroll.current = true; setDetail(undefined); }} />}
     <section ref={anchor.list} className="profile-collection stack" hidden={Boolean(importId && importOpen) || Boolean(detail)}>
-      <div className="row collection-heading"><h2>Игры · {state.data?.length ?? 0}</h2><button className="primary" aria-expanded={addOpen} aria-controls="collection-add" onClick={() => setAddOpen(!addOpen)}>{addOpen ? "Свернуть добавление ▴" : "Добавить ▾"}</button></div>
-      <p className="muted">Личная коллекция общая для всех сообществ.</p>
-      {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Сохранённые игры можно просматривать, отмечать и удалять.</Notice>}
+      <div className="row collection-heading"><h2>Игры · {state.data?.length ?? 0}</h2><div className="row">
+        {selecting ? <button disabled={removing} onClick={closeSelection}>Отмена</button> : <>
+          {(state.data?.length ?? 0) > 1 && <button disabled={removing || adding} onClick={() => { setSelected(new Set()); setSelecting(true); setAddOpen(false); }}>Выбрать</button>}
+          <button className="primary" disabled={removing} aria-expanded={addOpen} aria-controls="collection-add" onClick={() => setAddOpen(!addOpen)}>{addOpen ? "Закрыть" : "Добавить"}</button>
+        </>}
+      </div></div>
+      {!bggAvailable && <Notice kind="warning">Поиск и загрузка из BGG временно недоступны.</Notice>}
       {campState.error && <Notice kind="warning">{campState.error}</Notice>}
       {error && <Notice kind="danger">{error}</Notice>}
       {chosen && !addOpen && <p role="status">Выбрана игра «{chosen.name}». <button onClick={() => setAddOpen(true)}>Продолжить добавление</button></p>}
@@ -84,16 +135,21 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
         <details className="import-options"><summary>Импорт из BGG</summary>{importSource.error && <ErrorState message={importSource.error} retry={importSource.reload} />}<BggImportButton available={bggAvailable} username={importSource.data?.source?.bggUsername} lastImportedAt={importSource.data?.source?.lastImportedAt} start={startImport} /></details>
       </div>
       {community?.mode === "Camp" && <>
-        <p className="muted">Новая отметка «Могу привезти» или «Точно привезу» действует на все дни участия{profile?.data?.myDates.length ? `: ${attendanceLabel(profile.data.myDates)}` : ""}. Для отдельных игр можно выбрать другие дни. <button className="person-link" onClick={editRegistration}>Изменить регистрацию</button></p>
+        {editRegistration && <button onClick={editRegistration}>Дни участия{profile?.data?.myDates.length ? `: ${attendanceLabel(profile.data.myDates)}` : ""}</button>}
         <Incoming allowDecline communityKey={community.key} open={id => { setFocusGame(id); requestAnimationFrame(() => document.getElementById(`owned-game-${id}`)?.scrollIntoView({ block: "center" })); setFilter("all"); setListQuery(""); if (!state.data?.some(x => x.bggId === id && x.itemType === "BaseGame")) openDetail({ game: id }); }} openProfile={person => openDetail({ person })} />
-        {!!profile?.data?.suggestedGameIds.length && <button className="ghost" onClick={() => setFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
+        {!!profile?.data?.suggestedGameIds.length && <button className="ghost" disabled={removing} onClick={() => setFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
       </>}
-      <Field label="Поиск среди добавленных игр"><input type="search" value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Название игры" /></Field>
-      {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</div>}
+      <Field label="Найти игру"><input type="search" disabled={removing} value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Название игры" /></Field>
+      {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} disabled={removing} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</div>}
+      {selecting && <div className="row collection-selection" aria-busy={removing}>
+        <span role="status">Выбрано: {selectedItems.length}</span>
+        <button disabled={removing || !listedItems.length} onClick={() => setSelected(selectedItems.length === listedItems.length ? new Set() : new Set(listedItems.map(collectionItemKey)))}>{selectedItems.length && selectedItems.length === listedItems.length ? "Снять выбор" : "Выбрать все"}</button>
+        <button className="danger" disabled={removing || !selectedItems.length} onClick={() => void remove(selectedItems)}>{removing ? "Удаляем…" : `Удалить (${selectedItems.length})`}</button>
+      </div>}
       {state.loading && !state.data && <Loading />}{state.error && <ErrorState message={state.error} retry={state.reload} />}
       {state.data && (!state.data.length ? <Empty>В коллекции пока нет игр. <button onClick={() => setAddOpen(true)}>Добавить игры</button></Empty> : !collectionGroups.length ? <Empty>Ничего не найдено. Измените поиск или фильтр.</Empty> : <div className="stack">{collectionGroups.map(group => <Card key={`${group.item.itemType}-${group.item.bggId}`}>
         {renderItem(group.item)}
-        {group.expansions.length > 0 && <details className="collection-expansions" open={listQuery.trim() || filter !== "all" ? true : undefined}><summary>Дополнения ({group.expansions.length})</summary>{group.expansions.map(item => <div className="collection-expansion" key={item.bggId}>{renderItem(item)}</div>)}</details>}
+        {group.expansions.length > 0 && <details className="collection-expansions" open={selecting || listQuery.trim() || filter !== "all" ? true : undefined}><summary>Дополнения ({group.expansions.length})</summary>{group.expansions.map(item => <div className="collection-expansion" key={item.bggId}>{renderItem(item)}</div>)}</details>}
       </Card>)}</div>)}
       {anchor.notice && <p role="status">{anchor.notice}</p>}
     </section>
