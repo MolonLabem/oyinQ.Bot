@@ -15,7 +15,7 @@ const person = { id: "owner", name: "Виктор", dates: ["2026-09-24"] };
 const result = { items: [game], total: 48, suggestions: 3, hasMore: true, canAct: true, shareCollection: false, shareWishes: false, myDates: person.dates, updatedAt: "2026-09-23T12:00:00Z" };
 const detail = { item: game, interested: [person], anonymousCount: 7, owners: [], requests: [], canAct: true, myDates: person.dates };
 const visible = (selector: string) => [...host.querySelectorAll<HTMLElement>(selector)].filter(x => !x.closest("[hidden]"));
-async function click(text: string) { const button = visible("button").find(x => x.textContent?.trim() === text || x.getAttribute("role") === "tab" && x.textContent?.startsWith(`${text} ·`) || x.querySelector("strong")?.textContent === text); expect(button, text).toBeTruthy(); await act(async () => button!.click()); }
+async function click(text: string) { const button = visible("button").find(x => x.getAttribute("aria-label") === text || x.textContent?.trim() === text || x.getAttribute("role") === "tab" && x.textContent?.startsWith(`${text} ·`) || x.querySelector("strong")?.textContent === text); expect(button, text).toBeTruthy(); await act(async () => button!.click()); }
 async function mount() { await act(async () => root.render(<CampWishlist community={community} bggAvailable={false} />)); }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); sessionStorage.clear();
@@ -57,7 +57,7 @@ it("keeps one What to bring entry and puts creation before people without requir
 it("keeps loaded cards through refresh and error, and never posts during reads", async () => {
   await mount(); let reject!: (e: Error) => void;
   vi.mocked(api).mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
-  await click("↻ Обновить"); expect(host.textContent).toContain(game.game.name); expect(host.textContent).toContain("Обновляем…");
+  await click("Обновить"); expect(host.textContent).toContain(game.game.name); expect(host.textContent).toContain("Обновляем…");
   await act(async () => reject(new Error("Нет сети")));
   expect(host.textContent).toContain(game.game.name); expect(host.textContent).toContain("Нет сети");
   expect(vi.mocked(api).mock.calls.every(call => !call[1])).toBe(true);

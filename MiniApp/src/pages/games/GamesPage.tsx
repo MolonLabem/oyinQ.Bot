@@ -8,13 +8,14 @@ import { WishButton, WishlistPanel } from "../../components/Wishlist";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { CatalogResponse, Community, GameDetails, GameListItem } from "../../api/types";
-import { BackButton, Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page, Tabs } from "../../components/Ui";
+import { BackButton, Badge, Card, ContactLink, Cover, Empty, ErrorState, Loading, Notice, Page, Tabs } from "../../components/Ui";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { successEventName } from "../../telegram/webApp";
 import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, gameCount, normalizeFilters, restoreFilters, type FilterOptions } from "../../app/catalogFilters";
 import { CatalogFilters } from "./CatalogFilters";
 import { collectionMissingMessage } from "../../app/collectionNavigation";
 import { GameTaxonomy } from "../../components/GameTaxonomy";
+import { BrowseSearch } from "../../components/BrowseSearch";
 
 type GamesPageProps = { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggAvailable: boolean; initialGameId?: number; onInitialConsumed?: () => void; backToGathering?: () => void };
 export function GamesPage(props: GamesPageProps) {
@@ -70,8 +71,8 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
     <Tabs label="Разделы игр" active={section} onChange={setSection} items={[{ id: "catalog", label: "Каталог" }, { id: "wishlist", label: wishlistCopy.title }]} />
     {section === "wishlist" ? community.mode === "Camp" ? <CampWishlist community={community} bggAvailable={bggAvailable} create={createGathering} openGathering={openGathering} /> : <><WishlistPanel community={community} bggAvailable={bggAvailable} /><CommunityDemand communityKey={community.key} create={createGathering} /></> : <>
       <div className="catalog-browse-toolbar">
-        <Field label="Поиск игры"><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Название игры или дополнения" /></Field>
-        <div className="catalog-browse-actions"><Field label="Сортировка"><select value={sort} onChange={e => setSort(e.target.value)}><option value="name">По названию</option><option value="players">По числу игроков</option><option value="popular">По сыгранным партиям</option></select></Field>
+        <BrowseSearch label="Поиск игры" value={query} onChange={setQuery} placeholder="Игра или дополнение" />
+        <div className="catalog-browse-actions"><label className="catalog-sort"><span className="visually-hidden">Сортировка</span><select value={sort} onChange={e => setSort(e.target.value)}><option value="name">По названию</option><option value="players">По числу игроков</option><option value="popular">По сыгранным партиям</option></select></label>
         <button type="button" disabled={!options} aria-expanded={filtersOpen} aria-controls="catalog-filters" className={count ? "filter-button active" : "filter-button"} onClick={() => setFiltersOpen(true)}>Фильтры{count ? ` · ${count}` : ""}</button></div>
       </div>
       {chips.length > 0 && <div className="catalog-applied"><div className="catalog-chip-strip" aria-label="Активные фильтры">{chips.map(chip => <button type="button" className="filter-chip" key={chip.key} aria-label={`Убрать фильтр: ${chip.label}`} onClick={() => setApplied(chip.remove)}><span>{chip.label}</span><span aria-hidden>×</span></button>)}</div><button className="ghost" type="button" onClick={() => setApplied(emptyFilters())}>Сбросить</button></div>}

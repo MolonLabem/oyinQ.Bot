@@ -1,7 +1,7 @@
 import { useBackButton, BackButtonScope } from "../../hooks/useBackButton";
 import { CampProfileProvider } from "./CampProfileContext";
 import { WishlistPanel } from "../../components/Wishlist";
-import { PlayedHistory } from "./PlayedHistory";
+import { PlayedHistoryDisclosure } from "./PlayedHistory";
 import { CampPersonalWishes } from "../games/CampWishlist";
 import { ChangelogPage } from "./ChangelogPage";
 import { ProfileSettings, type ProfileSettingSection } from "./ProfileSettings";
@@ -42,7 +42,7 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
     {tab === "settings" && <ProfileSettings community={community} profile={profile.data} reloadProfile={profile.reload} section={setting} open={setSetting} />}
     {tab === "calendar" && <Suspense fallback={<Loading label="Загружаем календарь…" />}>
       <ProfileCalendar communities={communities} contextKey={community?.key} timeZoneId={community?.timeZoneId} open={openGathering} />
-      <details className="profile-history"><summary>Сыгранные партии</summary><PlayedHistory key={community?.key} communityKey={community?.key} open={openGathering} compact /></details>
+      <PlayedHistoryDisclosure key={community?.key} communityKey={community?.key} open={openGathering} />
     </Suspense>}
     <ProductFooter />
   </Page></div></BackButtonScope>;

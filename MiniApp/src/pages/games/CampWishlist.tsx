@@ -15,6 +15,7 @@ import { successEventName } from "../../telegram/webApp";
 import { GameGatherings } from "./GameGatherings";
 import { CampBoxControl } from "../../components/CampBoxControl";
 import { useListAnchor } from "../../hooks/useListAnchor";
+import { BrowseSearch } from "../../components/BrowseSearch";
 
 type Person = { id: string; name: string; dates: string[] };
 type Owner = { person: Person; status: string; dates: string[]; requestState: string; isMe: boolean };
@@ -55,8 +56,8 @@ function CampWishBrowser(props: Props) {
   return <section className="camp-wishlist">
     <div hidden={frames.length > 0}>
       {!props.personal && <Tabs label="Хотелки кэмпа" active={selection.mode} onChange={mode => change({ mode })} items={[{ id: "all", label: "Все" }, { id: "mine", label: "Мои" }, { id: "bring", label: `Что взять${result?.suggestions ? ` · ${result.suggestions}` : ""}` }]} />}
-      <Field label="Поиск игры"><input type="search" value={selection.search} onChange={e => change({ search: e.target.value })} placeholder="Название игры" /></Field>
-      <div className="wish-toolbar"><button className="primary" disabled={!result?.canAct} onClick={() => setAdding(true)}>Добавить</button><button aria-haspopup="dialog" className={Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? "active" : ""} onClick={() => setFiltersOpen(true)}>Фильтры{Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? " •" : ""}</button><button className="wish-refresh" disabled={state.loading} title={result ? `Обновлено ${formatTime(result.updatedAt)}` : undefined} onClick={state.reload}><span aria-hidden>↻ </span>{state.loading ? "Обновляем…" : "Обновить"}</button></div>
+      <BrowseSearch label="Поиск игры" value={selection.search} onChange={search => change({ search })} />
+      <div className="wish-toolbar"><button className="primary" disabled={!result?.canAct} onClick={() => setAdding(true)}>Добавить</button><button aria-haspopup="dialog" className={Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? "active" : ""} onClick={() => setFiltersOpen(true)}>Фильтры{Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand" ? " •" : ""}</button><button className="wish-refresh" disabled={state.loading} aria-label="Обновить" aria-busy={state.loading} title={result ? `Обновлено ${formatTime(result.updatedAt)}` : "Обновить список"} onClick={state.reload}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.3 8a7 7 0 0 1 11.2-2L20 12M4 12l3.5 6A7 7 0 0 0 18.7 16" /></svg></button></div>
       <div className="wish-list-meta"><span role="status" aria-live="polite">{state.loading ? "Обновляем…" : result ? `Игры: ${result.total}` : ""}</span>{!props.personal && <button className="person-link" onClick={() => push("participants")}>Участники</button>}
       </div>
       {(Object.keys(filterLabels).some(key => selection[key as keyof typeof filterLabels]) || selection.sort !== "demand") && <div className="wish-filters">{Object.entries(filterLabels).filter(([key]) => selection[key as keyof typeof filterLabels]).map(([key, label]) => <button className="filter-chip active" key={key} aria-label={`Убрать: ${label}`} onClick={() => change({ [key]: false })}>{label} ×</button>)}{selection.sort !== "demand" && <button className="filter-chip active" aria-label="Убрать сортировку по названию" onClick={() => change({ sort: "demand" })}>По названию ×</button>}</div>}
@@ -81,7 +82,7 @@ function CampWishBrowser(props: Props) {
 function Paging({ page, hasMore, change }: { page: number; hasMore: boolean; change: (page: number) => void }) { return page > 1 || hasMore ? <div className="row"><button disabled={page <= 1} onClick={() => change(page - 1)}>Назад</button><span>Страница {page}</span><button disabled={!hasMore} onClick={() => change(page + 1)}>Дальше</button></div> : null; }
 function WishCard({ item, open, ...box }: { item: WishGame; open: (section?: string) => void; communityKey: string; canAct: boolean; changed: () => Promise<boolean>; beforeChange?: () => (() => void) | undefined }) {
   return <div data-box-game={item.game.bggId}><Card className="wish-card"><button className="wish-game-heading" onClick={() => open()}><Cover name={item.game.name} src={item.game.thumbnailImageUrl} /><span><strong>{item.game.name}</strong><ComplexityBadge info={item.game.complexityInfo} />{item.isOwned && <small>Есть у вас</small>}</span></button>
-    <button className="person-link" onClick={() => open("interested")}>Хотят сыграть: {item.interestedParticipants}{item.isWished ? " · Вы тоже" : ""}</button><p>{item.boxSummary}</p><p>{item.scheduledGatherings ? `Предстоящих сборов: ${item.scheduledGatherings}` : "Сборов пока нет"}</p>
+    <div className="wish-card-activity"><button className="person-link" onClick={() => open("interested")}>Хотят сыграть: {item.interestedParticipants}{item.isWished ? " · Вы тоже" : ""}</button><span>Сборов: {item.scheduledGatherings}</span></div><p>{item.boxSummary}</p>
     {item.isOwned ? <WishBoxControl item={item} {...box} /> : <button onClick={() => open(item.scheduledGatherings ? "gatherings" : item.confirmed ? "create" : "owners")}>{item.scheduledGatherings ? "Посмотреть сборы" : item.confirmed ? "Организовать сбор" : "Попросить привезти"}</button>}
   </Card></div>;
 }

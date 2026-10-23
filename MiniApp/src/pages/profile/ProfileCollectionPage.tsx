@@ -7,6 +7,7 @@ import { useListAnchor } from "../../hooks/useListAnchor";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { groupCollectionItems } from "../../app/collectionGroups";
+import { BrowseSearch } from "../../components/BrowseSearch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, json } from "../../api/client";
 import type { CampImport, ClubGame, Community, Contribution, PersonalCollectionItem, ImportDraftItem } from "../../api/types";
@@ -185,7 +186,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
         {!!profile?.data?.suggestedGameIds.length && <button className="ghost" disabled={removing} onClick={() => changeFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
       </>}
       <div className="collection-search">
-        <Field label="Найти игру"><input type="search" disabled={removing} value={listQuery} onChange={event => { setListQuery(event.target.value); setPage(1); }} placeholder="Название игры" /></Field>
+        <BrowseSearch label="Найти игру" disabled={removing} value={listQuery} onChange={value => { setListQuery(value); setPage(1); }} />
         {collectionGroups.length > 10 && <label className="collection-page-size">На странице<select aria-label="Игр на странице" disabled={removing} value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label>}
       </div>
       {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} disabled={removing} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{label}</button>)}</div>}
