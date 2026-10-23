@@ -158,14 +158,13 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
       localStorage.removeItem(storageKey); setImportId(undefined); setLegacyImport(false); state.reload(); importSource.reload();
     }} /></div>}
     {detail && community && <CampWishlist community={community} bggAvailable={bggAvailable} initialGameId={detail.game} initialPersonId={detail.person} back={() => { restoreDetailScroll.current = true; setDetail(undefined); }} />}
-    <section ref={anchor.list} className="profile-collection stack" hidden={Boolean(importId && importOpen) || Boolean(detail)}>
-      <div className="row collection-heading"><h2>Игры · {state.data?.length ?? 0}</h2><div className="row">
+    <section ref={anchor.list} className="profile-collection stack" aria-label="Личная коллекция во всех сообществах" hidden={Boolean(importId && importOpen) || Boolean(detail)}>
+      <div className="row collection-heading"><h2>{plural(state.data?.length ?? 0, "игра", "игры", "игр")}</h2><div className="row">
         {selecting ? <button disabled={removing} onClick={closeSelection}>Отмена</button> : <>
           {(state.data?.length ?? 0) > 1 && <button disabled={removing || adding} onClick={() => { setSelected(new Set()); setSelecting(true); setAddOpen(false); }}>Выбрать</button>}
           <button className="primary" disabled={removing} aria-expanded={addOpen} aria-controls="collection-add" onClick={() => setAddOpen(!addOpen)}>{addOpen ? "Закрыть" : "Добавить"}</button>
         </>}
       </div></div>
-      <p className="muted collection-scope">Личная коллекция · во всех сообществах</p>
       {!bggAvailable && <Notice kind="warning">Поиск и загрузка из BGG временно недоступны.</Notice>}
       {campState.error && <Notice kind="warning">{campState.error}</Notice>}
       {error && <Notice kind="danger">{error}</Notice>}
@@ -186,8 +185,8 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
         {!!profile?.data?.suggestedGameIds.length && <button className="ghost" disabled={removing} onClick={() => changeFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
       </>}
       <div className="collection-search">
-        <BrowseSearch label="Найти игру" disabled={removing} value={listQuery} onChange={value => { setListQuery(value); setPage(1); }} />
-        {collectionGroups.length > 10 && <label className="collection-page-size">На странице<select aria-label="Игр на странице" disabled={removing} value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label>}
+        <BrowseSearch label="Найти игру" placeholder="Найти игру" disabled={removing} value={listQuery} onChange={value => { setListQuery(value); setPage(1); }} />
+        {collectionGroups.length > 10 && <label className="collection-page-size"><span className="visually-hidden">На странице</span><select aria-label="Игр на странице" disabled={removing} value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50].map(size => <option key={size} value={size}>{size} / стр.</option>)}</select></label>}
       </div>
       {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} disabled={removing} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{label}</button>)}</div>}
       {selecting && <div className="row collection-selection" aria-busy={removing}>

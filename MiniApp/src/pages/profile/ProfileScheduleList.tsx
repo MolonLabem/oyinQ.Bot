@@ -2,6 +2,14 @@ import type { Community, ProfileGathering } from "../../api/types";
 import { CommunityAvatar } from "../../components/CommunityAvatar";
 
 export const profileScheduleEmptyText = "Вы пока не записаны ни на один предстоящий сбор.";
+export const scheduleRoles = [
+  { key: "participating", label: "Участвую" },
+  { key: "organizing", label: "Организую" },
+  { key: "waitlisted", label: "Лист ожидания" }
+] as const;
+export function scheduleRole(item: ProfileGathering): typeof scheduleRoles[number]["key"] {
+  return item.isOrganizer ? "organizing" : item.waitlistPosition ? "waitlisted" : "participating";
+}
 
 export function ProfileScheduleList({ items, communities, open, compact = false }: {
   items: ProfileGathering[];
@@ -21,7 +29,7 @@ export function ProfileScheduleList({ items, communities, open, compact = false 
     <div className="stack">{day.items.map(item => {
       const itemCommunity = communities.find(value => value.key === item.communityKey)
         ?? { key: item.communityKey, name: item.communityName, mode: item.communityMode, timeZoneId: "UTC" };
-      return <button type="button" className="card profile-schedule-item" key={item.publicId} onClick={() => open(item.communityKey, item.publicId)}><time className="schedule-time" dateTime={item.localTime}>{item.localTime}</time>{!compact && <CommunityAvatar community={itemCommunity} />}<span><strong>{item.gameName}</strong><small>{compact && item.isOrganizer ? "Вы организатор · " : ""}{item.communityName}</small>{item.waitlistPosition && <small>Лист ожидания · позиция {item.waitlistPosition}</small>}{item.progress === "started" && <small>Сбор начался</small>}{item.progress === "awaitingOutcome" && <small>Ожидается подтверждение исхода</small>}</span>{!compact && item.isOrganizer && <span className="badge accent">Организатор</span>}</button>;
+      return <button type="button" className="card profile-schedule-item" data-schedule-role={scheduleRole(item)} key={item.publicId} onClick={() => open(item.communityKey, item.publicId)}><time className="schedule-time" dateTime={item.localTime}>{item.localTime}</time>{!compact && <CommunityAvatar community={itemCommunity} />}<span><strong>{item.gameName}</strong><small>{compact && item.isOrganizer ? "Вы организатор · " : ""}{item.communityName}</small>{item.waitlistPosition && <small>Лист ожидания · позиция {item.waitlistPosition}</small>}{item.progress === "started" && <small>Сбор начался</small>}{item.progress === "awaitingOutcome" && <small>Ожидается подтверждение исхода</small>}</span>{!compact && item.isOrganizer && <span className="badge accent">Организатор</span>}</button>;
     })}</div>
   </section>)}</div>;
 }

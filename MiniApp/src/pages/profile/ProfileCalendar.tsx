@@ -6,7 +6,7 @@ import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { Empty, ErrorState, Loading, Notice } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
-import { formatScheduleDay, ProfileScheduleList, profileScheduleEmptyText } from "./ProfileScheduleList";
+import { formatScheduleDay, ProfileScheduleList, profileScheduleEmptyText, scheduleRole, scheduleRoles } from "./ProfileScheduleList";
 
 function civilDate(value: string) { return new Date(`${value}T00:00:00Z`); }
 function dayKey(date: Date) { return date.toISOString().slice(0, 10); }
@@ -101,16 +101,19 @@ function CalendarMonth({ items, communities, timeZoneId, contextKey, open }: {
     <table ref={grid} className="calendar-grid" role="grid" aria-labelledby={monthId}>
       <thead><tr>{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <th scope="col" key={day}>{day}</th>)}</tr></thead>
       <tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, column) => {
-        const count = value ? items.filter(item => item.localDate === value).length : 0;
-        return <td key={value ?? column} aria-selected={value ? value === selected : undefined}>{value && <button type="button" data-calendar-date={value}
+        const dayItems = value ? items.filter(item => item.localDate === value) : [];
+        const roles = scheduleRoles.map(role => ({ ...role, count: dayItems.filter(item => scheduleRole(item) === role.key).length })).filter(role => role.count > 0);
+        return <td key={value ?? column} data-weekend={column >= 5 || undefined} aria-selected={value ? value === selected : undefined}>{value && <button type="button" data-calendar-date={value}
+          data-has-events={dayItems.length > 0 || undefined} data-organizing={roles.some(role => role.key === "organizing") || undefined}
           tabIndex={value === selected ? 0 : -1} aria-current={value === today ? "date" : undefined}
-          aria-label={`${formatDate(value)}, ${plural(count, "сбор", "сбора", "сборов")}`} onClick={() => choose(value)} onKeyDown={event => keyDown(event, value)}>
-          <span>{Number(value.slice(-2))}</span><span className="calendar-day-markers" aria-hidden="true">{Array.from({ length: Math.min(count, 3) }, (_, dot) => <i key={dot} />)}</span>
+          aria-label={`${formatDate(value)}, ${plural(dayItems.length, "сбор", "сбора", "сборов")}${roles.map(role => ` · ${role.label}: ${role.count}`).join("")}`} onClick={() => choose(value)} onKeyDown={event => keyDown(event, value)}>
+          <span>{Number(value.slice(-2))}</span><span className="calendar-day-markers" aria-hidden="true">{roles.map(role => <i key={role.key} data-schedule-role={role.key} />)}</span>
         </button>}</td>;
       })}</tr>)}</tbody>
     </table>
+    {items.length > 0 && <div className="calendar-legend" aria-label="Обозначения календаря">{scheduleRoles.filter(role => items.some(item => scheduleRole(item) === role.key)).map(role => <span key={role.key} data-schedule-role={role.key}><i aria-hidden="true" />{role.label}</span>)}</div>}
     <section className="calendar-selected-day" aria-label="Сборы выбранного дня">
-      <header><div><h3><time dateTime={selected}>{formatScheduleDay(selected)}</time></h3><small>Местное время сообществ</small></div><button type="button" className="ghost" onClick={() => choose(today)}>Сегодня</button></header>
+      <header><div><h3><time dateTime={selected}>{formatScheduleDay(selected)}</time></h3><small className="visually-hidden">Местное время сообществ</small></div><button type="button" className="ghost" onClick={() => choose(today)}>Сегодня</button></header>
       {selectedItems.length ? <ProfileScheduleList compact items={selectedItems} communities={communities} open={open} />
         : !items.length ? <Empty>{profileScheduleEmptyText}</Empty> : <div className="calendar-empty"><p>На этот день сборов нет.</p>{nearest && <button type="button" className="ghost" onClick={() => choose(nearest)}>К ближайшему сбору</button>}</div>}
     </section>

@@ -41,7 +41,10 @@ it("marks community-local dates and shows just the selected day's chronological 
   await mount();
   expect(api).toHaveBeenCalledWith("/profile/gatherings", { cache: "no-store" });
   expect(selected()).toBe("2026-10-31"); expect(day("2026-10-31").getAttribute("aria-label")).toContain("3 сбора");
+  expect(day("2026-10-31").getAttribute("aria-label")).toContain("Участвую: 1 · Организую: 1 · Лист ожидания: 1");
+  expect([...day("2026-10-31").querySelectorAll("[data-schedule-role]")].map(x => x.getAttribute("data-schedule-role"))).toEqual(["participating", "organizing", "waitlisted"]);
   expect(host.querySelectorAll(".profile-schedule-item")).toHaveLength(3);
+  expect([...host.querySelectorAll(".profile-schedule-item")].map(x => x.getAttribute("data-schedule-role"))).toEqual(["participating", "organizing", "waitlisted"]);
   expect([...host.querySelectorAll(".schedule-time")].map(x => x.textContent)).toEqual(["02:00", "12:00", "21:00"]);
   expect(host.textContent).toContain("Вы организатор"); expect(host.textContent).toContain("Сбор начался");
   expect(host.textContent).toContain("Лист ожидания · позиция 2");

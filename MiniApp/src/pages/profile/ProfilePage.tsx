@@ -32,7 +32,7 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   if (profile.loading && !profile.data) return <Page title="Профиль" hideTitle><Loading /></Page>;
   if (profile.error) return <Page title="Профиль" hideTitle><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
-  return <BackButtonScope><div className="profile-screen"><Page title="Профиль" hideTitle subtitle={profile.data.preferredDisplayName || profile.data.telegramDisplayName}
+  return <BackButtonScope><div className="profile-screen"><Page title="Профиль" hideTitle
     actions={<button type="button" className="ghost profile-changelog" onClick={() => setShowChangelog(true)}>Что нового?</button>}>
     {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
