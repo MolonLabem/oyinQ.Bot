@@ -57,6 +57,7 @@ public sealed class CampConfigurationApiTests
             const string path = "/api/miniapp/camp/registration";
             var choices = new { communityKey = "camp", selectedDates = new[] { "2026-10-31", "2026-11-01" }, answers = CampConfigurationTests.Answers(), city = "Алматы", needsAccommodation = true, displayName = "Игрок", total = 1 };
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync(path + "/quote", choices)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync(path + "/unregister", new { communityKey = "camp" })).StatusCode);
             void Login(long actor) { client.DefaultRequestHeaders.Remove("X-Telegram-Init-Data"); client.DefaultRequestHeaders.Add("X-Telegram-Init-Data", Signed(actor, clock)); }
             Login(42);
             const string adminPreview = "/api/miniapp/admin/camps/pricing-preview";
@@ -89,6 +90,36 @@ public sealed class CampConfigurationApiTests
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path + "?community=camp")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync(path + "/quote", choices)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync(path, choices)).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync(path + "/unregister", new { communityKey = "camp" })).StatusCode);
+            membership.Allowed = true;
+            Guid ownId, otherId; long otherParticipantId;
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var camp = await db.Camps.SingleAsync();
+                var actor = await db.Participants.SingleAsync(x => x.TelegramUserId == 42);
+                var otherParticipant = await db.Participants.SingleAsync(x => x.TelegramUserId == 43);
+                otherParticipantId = otherParticipant.Id;
+                db.CampRegistrations.Add(new() { CampId = camp.Id, ParticipantId = otherParticipantId, City = "Астана", NeedsAccommodation = false,
+                    SelectedDays = [new() { Date = new(2026, 10, 31) }] });
+                GameGathering Gathering(long owner) => new() { PublicId = Guid.NewGuid(), CommunityKey = "camp", OrganizerParticipantId = owner,
+                    StartsAtUtc = DateTimeOffset.Parse("2026-10-31T13:00:00Z"), MinimumPlayers = 1, DesiredPlayers = 2, MaximumPlayers = 4, Status = GatheringStatus.Recruiting,
+                    GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(new(GatheringGameSnapshot.CurrentVersion, 42, "Игра", null, null, 1, 4, null, [], "test", [])) };
+                var own = Gathering(actor.Id); var otherGathering = Gathering(otherParticipantId);
+                own.Participants.Add(new() { ParticipantId = otherParticipantId, Status = GatheringParticipationStatus.Confirmed, JoinedAt = clock.GetUtcNow() });
+                db.GameGatherings.AddRange(own, otherGathering); await db.SaveChangesAsync(); ownId = own.PublicId; otherId = otherGathering.PublicId;
+            }
+            Login(42);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync(path + "/unregister", new { communityKey = "camp", participantId = otherParticipantId })).StatusCode);
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var own = await db.GameGatherings.SingleAsync(x => x.PublicId == ownId);
+                Assert.Equal(GatheringStatus.Cancelled, own.Status); Assert.Equal(GatheringPublicationStatus.NotRequired, own.PublicationStatus);
+                Assert.Equal(GatheringStatus.Recruiting, (await db.GameGatherings.SingleAsync(x => x.PublicId == otherId)).Status);
+                Assert.Equal(otherParticipantId, (await db.CampRegistrations.SingleAsync()).ParticipantId);
+                Assert.Contains(await db.Notifications.ToArrayAsync(), x => x.Kind == NotificationKind.GatheringCancelled && x.ParticipantId == otherParticipantId);
+            }
         }
         finally { await app.StopAsync(); }
     }

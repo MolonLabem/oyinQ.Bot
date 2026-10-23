@@ -7,11 +7,12 @@ import { useAsync } from "../../hooks/useAsync";
 import { useBackButton } from "../../hooks/useBackButton";
 import { telegram } from "../../telegram/webApp";
 import { CampRegistrationForm, type RegistrationState } from "../camp/CampRegistration";
+import { CampRegistrationCancellation } from "../camp/CampRegistrationCancellation";
 import { CampPrivacy, useCampProfile } from "./CampProfileContext";
 import { NotificationSettings } from "./NotificationSettings";
 import { ProfileDeletion } from "./ProfileDeletion";
 
-export type ProfileSettingSection = "identity" | "registration" | "privacy" | "notifications" | "deletion";
+export type ProfileSettingSection = "identity" | "registration" | "privacy" | "notifications" | "cancel-registration" | "deletion";
 
 export function ProfileSettings({ community, profile, reloadProfile, section, open }: {
   community?: Community; profile: Profile; reloadProfile: () => Promise<boolean>;
@@ -27,7 +28,8 @@ export function ProfileSettings({ community, profile, reloadProfile, section, op
   useBackButton(Boolean(section), () => open());
   useEffect(() => {
     if (section) window.scrollTo({ top: 0, behavior: "auto" });
-    else if (lastSection.current) overview.current?.querySelector<HTMLButtonElement>(`[data-setting="${lastSection.current}"]`)?.focus({ preventScroll: true });
+    else if (lastSection.current) (overview.current?.querySelector<HTMLButtonElement>(`[data-setting="${lastSection.current}"]`)
+      ?? overview.current?.querySelector<HTMLButtonElement>("[data-setting]"))?.focus({ preventScroll: true });
     lastSection.current = section;
   }, [section]);
 
@@ -42,6 +44,8 @@ export function ProfileSettings({ community, profile, reloadProfile, section, op
     {section === "identity" && <IdentitySettings profile={profile} reload={reloadProfile} />}
     {section === "privacy" && camp && <CampPrivacy community={camp} />}
     {section === "notifications" && <NotificationSettings />}
+    {section === "cancel-registration" && camp && <CampRegistrationCancellation community={camp}
+      registered={Boolean(registration.data?.registration?.registered)} done={() => { void registration.reload(); void campProfile?.reload(); }} />}
     {section === "deletion" && <ProfileDeletion />}
   </div>;
 
@@ -58,6 +62,7 @@ export function ProfileSettings({ community, profile, reloadProfile, section, op
       <SettingsRow id="privacy" title="Видимость в этом кэмпе" summary={privacySummary} open={open} />
     </>}
     <SettingsRow id="notifications" title="Уведомления" summary={profile.botStartRequired ? "Для личных уведомлений запустите бота" : "Личный чат с ботом открыт"} open={open} />
+    {camp && saved?.registered && <SettingsRow id="cancel-registration" title="Отменить регистрацию" summary="Выход из кэмпа и отмена ваших будущих сборов" open={open} danger />}
     <SettingsRow id="deletion" title="Удалить профиль" summary="Личные данные во всех сообществах" open={open} danger />
   </section>;
 }

@@ -77,16 +77,6 @@ export function CampRegistrationForm({ community, state, done, cancel }: { commu
       } else setError(e instanceof Error ? e.message : String(e));
     } finally { setBusy(false); }
   }
-  async function unregister() {
-    if (busy || !await telegram.confirm("Отменить регистрацию?\n\nОтметки доступности в этом кэмпе будут удалены. Личная коллекция сохранится. Вы выйдете из будущих сборов, а история прошедших сборов сохранится.")) return;
-    setBusy(true); setError(undefined);
-    try { await api("/camp/registration/unregister", json("POST", { communityKey: community.key })); telegram.success("Регистрация отменена"); done(); }
-    catch (e) {
-      if (e instanceof ApiError && e.code === "registration_organizer_conflict" && e.affectedGatherings?.length)
-        setError(`Сначала отмените свои будущие сборы:\n${e.affectedGatherings.map(item => `• ${item.gameName} · ${formatInstant(item.startsAtUtc, community.timeZoneId)}`).join("\n")}`);
-      else setError(e instanceof Error ? e.message : String(e));
-    } finally { setBusy(false); }
-  }
   return <div className="camp-registration-screen"><Page as="section" title={state.registration?.registered ? "Редактировать регистрацию" : "Регистрация на кэмп"}
     subtitle={`${formatDate(state.startDate)} — ${formatDate(state.endDate)}`} actions={cancel && <BackButton onClick={cancel} />}>
     {hasCampInformation(state.configuration) && <CampInformationSummary config={state.configuration!} />}
@@ -121,9 +111,5 @@ export function CampRegistrationForm({ community, state, done, cancel }: { commu
         {busy ? "Сохраняем…" : state.registration?.registered ? "Сохранить изменения" : "Зарегистрироваться"}
       </button>
     </form></Card>
-    {state.registration?.registered && <details className="danger-zone registration-cancel"><summary>Отменить регистрацию</summary>
-      <p>Отметки доступности в этом кэмпе будут удалены. Личная коллекция сохранится, а места в будущих сборах освободятся. История сохранится.</p>
-      <button type="button" className="danger ghost" disabled={busy} onClick={unregister}>Отменить регистрацию</button>
-    </details>}
   </Page></div>;
 }

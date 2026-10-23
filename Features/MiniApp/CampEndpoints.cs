@@ -185,11 +185,6 @@ internal static class CampEndpoints
             await PublishRegistrationChangesAsync(result, publication, cancellationToken);
             return Results.NoContent();
         }
-        catch (CampRegistrationConflictException exception)
-        {
-            return Results.Json(new { Code = "registration_organizer_conflict", exception.Message,
-                AffectedGatherings = exception.Gatherings }, statusCode: StatusCodes.Status409Conflict);
-        }
         catch (Exception exception) { return MiniAppEndpointSupport.FromException(exception); }
     }
 

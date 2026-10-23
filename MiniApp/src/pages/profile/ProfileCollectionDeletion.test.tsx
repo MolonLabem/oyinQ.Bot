@@ -22,7 +22,7 @@ function button(text: string) {
 }
 async function click(text: string) { await act(async () => button(text).click()); }
 async function search(value: string) {
-  const input = host.querySelector<HTMLInputElement>('.profile-collection > .field input[type="search"]')!;
+  const input = host.querySelector<HTMLInputElement>('.collection-search input[type="search"]')!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -34,6 +34,7 @@ async function mount(community?: Community) {
 }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); localStorage.clear(); sessionStorage.clear();
+  history.replaceState({}, "", "/");
   vi.spyOn(window, "scrollTo").mockImplementation(() => {}); HTMLElement.prototype.scrollIntoView = vi.fn();
   vi.mocked(telegram.confirm).mockResolvedValue(true);
   items = [base, other, expansion];
@@ -55,7 +56,7 @@ it("deletes directly only after confirmation, even without a community or BGG", 
   await mount();
   expect(host.querySelector(".collection-menu")).toBeNull(); expect(deletes()).toHaveLength(0);
   const remove = () => host.querySelector<HTMLButtonElement>('button[aria-label="Удалить «Немезида» из коллекции"]')!;
-  expect(remove().textContent).toBe("×");
+  expect(remove().querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   vi.mocked(telegram.confirm).mockResolvedValueOnce(false);
   await act(async () => remove().click());
   expect(deletes()).toHaveLength(0); expect(remove()).toBeTruthy();
@@ -163,4 +164,57 @@ it("retains blocked items after partial deletion and retries only those items wh
     "/profile/collection/BaseGame/42", "/profile/collection/BaseGame/43", "/profile/collection/BaseGame/42"
   ]);
   expect(checks()).toHaveLength(0);
+});
+
+function largeCollection() {
+  items = Array.from({ length: 23 }, (_, index) => ({ ...base, bggId: index + 1, snapshot: { name: `Игра ${index + 1}` } }));
+}
+const cards = () => host.querySelectorAll(".collection-results > .stack > .card");
+async function nextPage() { await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Следующая страница"]')!.click()); }
+
+it("defaults to ten games, retains selection across pages, and remembers a changed page size", async () => {
+  largeCollection(); await mount();
+  expect(cards()).toHaveLength(10); expect(host.textContent).toContain("1–10 из 23");
+  await click("Выбрать"); await act(async () => checks()[0].click()); await nextPage();
+  expect(host.textContent).toContain("Страница 2 из 3"); expect(checks().some(x => x.checked)).toBe(false);
+  await act(async () => checks()[0].click()); expect(host.textContent).toContain("Выбрано: 2");
+  await click("Выбрать страницу"); expect(host.textContent).toContain("Выбрано: 11");
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Предыдущая страница"]')!.click());
+  expect(checks()[0].checked).toBe(true);
+  await act(async () => {
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="Игр на странице"]')!;
+    select.value = "20"; select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(cards()).toHaveLength(20); expect(host.textContent).toContain("Выбрано: 11");
+  await act(async () => root.render(null)); await mount();
+  expect(cards()).toHaveLength(20); expect(deletes()).toHaveLength(0);
+});
+
+it("searches the entire collection and returns to page one when the query changes", async () => {
+  largeCollection(); items[22].snapshot.name = "Уникальная коробка"; await mount(); await nextPage(); await nextPage();
+  expect(cards()).toHaveLength(3); await search("Уникальная");
+  expect(cards()).toHaveLength(1); expect(host.querySelector('[data-box-game="BaseGame:23"]')).not.toBeNull();
+  expect(host.querySelector(".collection-pagination")).toBeNull();
+  await search(""); expect(cards()).toHaveLength(10); expect(host.textContent).toContain("Страница 1 из 3");
+});
+
+it("opens a linked game on its page, keeps expansions with their base, and clamps the last page after deletion", async () => {
+  largeCollection(); items.push({ ...expansion, bggId: 900, snapshot: { name: "Дополнение", parentBggIds: [1, 23] } });
+  history.replaceState({}, "", "/?box=23"); await mount();
+  expect(host.textContent).toContain("Страница 3 из 3"); expect(cards()).toHaveLength(3);
+  expect(host.querySelector('[data-box-game="Expansion:900"]')).not.toBeNull();
+  await click("Выбрать"); await click("Выбрать страницу"); await click("Удалить (4)");
+  expect(host.textContent).toContain("Страница 2 из 2"); expect(cards()).toHaveLength(10);
+  expect(items).toHaveLength(20);
+});
+
+it("restores the saved Camp filter page after its availability data arrives", async () => {
+  largeCollection(); sessionStorage.setItem("oyinq-collection-filter:camp", "Bringing"); sessionStorage.setItem("oyinq-collection-page:camp", "2");
+  const previous = vi.mocked(api).getMockImplementation()!;
+  let finish!: (value: unknown) => void;
+  vi.mocked(api).mockImplementation((path, options) => path.startsWith("/camp/contributions")
+    ? new Promise(resolve => { finish = resolve; }) : previous(path, options));
+  await mount({ key: "camp", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" });
+  await act(async () => finish(items.map(item => ({ ...item, commitment: "Bringing", allAttendanceDays: true }))));
+  expect(host.textContent).toContain("Страница 2 из 3"); expect(cards()).toHaveLength(10);
 });

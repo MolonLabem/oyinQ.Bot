@@ -10,7 +10,9 @@ namespace oyinQ.Bot.Features.Communities;
 public sealed record CampRegistrationGatheringImpact(Guid PublicId, string GameName, DateTimeOffset StartsAtUtc);
 public sealed record CampRegistrationMutationResult(IReadOnlyList<GatheringWithdrawalOutcome> Withdrawals)
 {
-    public IReadOnlyList<Guid> ChangedGatheringIds => Withdrawals.Select(x => x.GatheringPublicId).Distinct().ToArray();
+    public IReadOnlyList<Guid> CancelledGatheringIds { get; init; } = [];
+    public IReadOnlyList<Guid> ChangedGatheringIds => Withdrawals.Select(x => x.GatheringPublicId)
+        .Concat(CancelledGatheringIds).Distinct().ToArray();
 }
 
 public sealed class CampRegistrationConflictException(
@@ -107,11 +109,15 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
     public async Task<CampRegistrationMutationResult> UnregisterAsync(long campId, long participantId,
         CancellationToken cancellationToken)
     {
+        // The Camp lock serializes creation and registration mutations. Read a fresh
+        // snapshot after waiting so a creation committed first is included below.
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
-            IsolationLevel.Serializable, cancellationToken);
+            IsolationLevel.ReadCommitted, cancellationToken);
+        var campQuery = IsNpgsql
+            ? dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {campId} FOR UPDATE")
+            : dbContext.Camps.Where(x => x.Id == campId);
+        var camp = await campQuery.Include(x => x.BotChat).SingleAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
-        var camp = await dbContext.Camps.Include(x => x.BotChat).SingleAsync(x => x.Id == campId,
-            cancellationToken);
         var registration = await dbContext.CampRegistrations.Include(x => x.SelectedDays)
             .SingleOrDefaultAsync(x => x.CampId == campId && x.ParticipantId == participantId,
                 cancellationToken);
@@ -120,36 +126,39 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             await transaction.CommitAsync(cancellationToken);
             return new([]);
         }
-        var gatherings = await dbContext.GameGatherings
+        var references = await dbContext.GameGatherings
             .Where(x => x.CommunityKey == camp.BotChatKey && x.StartsAtUtc > now
                 && GatheringLifecycle.ScheduledStatuses.Contains(x.Status)
                 && (x.OrganizerParticipantId == participantId
                     || x.Participants.Any(p => p.ParticipantId == participantId
                         && (p.Status == GatheringParticipationStatus.Confirmed
                             || p.Status == GatheringParticipationStatus.Waitlisted))))
-            .Include(x => x.Participants).ThenInclude(x => x.Participant)
-            .Include(x => x.OrganizerParticipant)
-            .Include(x => x.Guests)
+            .OrderBy(x => x.Id).Select(x => x.PublicId)
             .ToArrayAsync(cancellationToken);
-        var organized = gatherings.Where(x => x.OrganizerParticipantId == participantId).ToArray();
-        if (organized.Length > 0)
-            throw new CampRegistrationConflictException(
-                $"Сначала отмените сборы, которые вы организуете ({organized.Length}).",
-                organized.Select(ToImpact).ToArray());
-
         var withdrawals = new List<GatheringWithdrawalOutcome>();
-        foreach (var gathering in gatherings)
+        var cancelled = new List<Guid>();
+        foreach (var publicId in references)
         {
-            var membership = gathering.Participants.Single(x => x.ParticipantId == participantId);
-            var withdrawal = GatheringRules.WithdrawParticipant(gathering, membership, now)!;
-            withdrawals.Add(GatheringWithdrawalOutcome.Capture(gathering, withdrawal));
+            var gathering = await GatheringWriteStore.LockAsync(dbContext, publicId, camp.BotChatKey, cancellationToken);
+            now = timeProvider.GetUtcNow();
+            if (!GatheringLifecycle.IsUpcoming(gathering, now)) continue;
+            if (gathering.OrganizerParticipantId == participantId)
+            {
+                GatheringRules.Cancel(gathering, "Организатор отменил регистрацию на кэмп", now);
+                GatheringPublication.Request(gathering);
+                cancelled.Add(publicId);
+            }
+            else if (gathering.Participants.SingleOrDefault(x => x.ParticipantId == participantId) is { } membership
+                && GatheringRules.WithdrawParticipant(gathering, membership, now) is { } withdrawal)
+                withdrawals.Add(GatheringWithdrawalOutcome.Capture(gathering, withdrawal));
         }
         await RemoveContributionsAndCancelImportsAsync(campId, participantId, now, cancellationToken);
         dbContext.CampRegistrations.Remove(registration);
         await dbContext.SaveChangesAsync(cancellationToken);
         foreach (var withdrawal in withdrawals) await notifications.NotifyWithdrawalAsync(withdrawal, cancellationToken);
+        foreach (var publicId in cancelled) await notifications.NotifyCancellationAsync(publicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(withdrawals);
+        return new(withdrawals) { CancelledGatheringIds = cancelled };
     }
 
     private async Task<IReadOnlyList<ImpactedGathering>> LoadImpactedGatheringsAsync(string communityKey,

@@ -201,6 +201,41 @@ public sealed class GatheringNotificationReliabilityTests
     }
 
     [Fact]
+    public async Task CampUnregister_CancelsOwnUpcomingGatheringsAndNotifiesWithoutChangingHistoryOrOtherCommunities()
+    {
+        await using var f = await CampFixture.CreateAsync(twoGatherings: true);
+        var own = Gathering("camp", f.Departing, 2, 4, 4, f.Gatherings[0].StartsAtUtc.AddHours(2));
+        own.Participants.Add(Membership(f.Organizer, GatheringParticipationStatus.Confirmed, Now));
+        own.Participants.Add(Membership(f.Waitlisted, GatheringParticipationStatus.Waitlisted, Now));
+        var closed = Gathering("camp", f.Departing, 2, 4, 4, own.StartsAtUtc.AddHours(2)); closed.Status = GatheringStatus.Closed;
+        var past = Gathering("camp", f.Departing, 2, 4, 4, Now.AddHours(-1)); past.Status = GatheringStatus.Completed;
+        var started = Gathering("camp", f.Departing, 2, 4, 4, Now);
+        var other = Gathering("elsewhere", f.Departing, 2, 4, 4, own.StartsAtUtc);
+        var cancelled = Gathering("camp", f.Departing, 2, 4, 4, own.StartsAtUtc); cancelled.Status = GatheringStatus.Cancelled; cancelled.CancellationReason = "Ранее отменён";
+        f.Db.AddRange(own, closed, past, started, other, cancelled); await f.Db.SaveChangesAsync();
+
+        var result = await f.Registrations.UnregisterAsync(f.Camp.Id, f.Departing.Id, default);
+
+        Assert.Equal(new[] { own.PublicId, closed.PublicId }.Order(), result.CancelledGatheringIds.Order());
+        Assert.Equal(4, result.ChangedGatheringIds.Count);
+        Assert.All(new[] { own, closed }, g => {
+            Assert.Equal(GatheringStatus.Cancelled, g.Status);
+            Assert.Equal("Организатор отменил регистрацию на кэмп", g.CancellationReason);
+            Assert.Equal(GatheringPublicationStatus.Pending, g.PublicationStatus);
+        });
+        Assert.Equal(GatheringParticipationStatus.Waitlisted, own.Participants.Single(x => x.ParticipantId == f.Waitlisted.Id).Status);
+        Assert.Equal(GatheringStatus.Completed, past.Status); Assert.Equal(GatheringStatus.Recruiting, started.Status);
+        Assert.Equal(GatheringStatus.Recruiting, other.Status); Assert.Equal("Ранее отменён", cancelled.CancellationReason);
+        Assert.Empty(await f.Db.CampRegistrations.ToArrayAsync());
+        var noticeCount = await f.Db.Notifications.CountAsync();
+        Assert.Empty((await f.Registrations.UnregisterAsync(f.Camp.Id, f.Departing.Id, default)).ChangedGatheringIds);
+        Assert.Equal(noticeCount, await f.Db.Notifications.CountAsync());
+        await DeliverAsync(f.Db, f.Telegram);
+        Assert.All(new[] { f.Organizer, f.Waitlisted }, p => Assert.Single(f.Telegram.Requests,
+            x => x.ChatId == p.TelegramUserId && x.Text.Contains("Организатор отменил регистрацию на кэмп")));
+    }
+
+    [Fact]
     public async Task TelegramFailure_IsLoggedAndDoesNotUndoCommittedMutation()
     {
         await using var fixture = await ClubFixture.CreateAsync(2, 2, confirmed: 1, waitlisted: 1,

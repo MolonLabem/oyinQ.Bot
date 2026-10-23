@@ -1,7 +1,7 @@
 export type NavigationIconName = "gatherings" | "games" | "profile" | "communities" | "export" | "updates";
 export type Tab = { id: string; label: string; icon: NavigationIconName };
 export function Navigation({ tabs, active, onChange }: { tabs: Tab[]; active: string; onChange: (id: string) => void }) {
-  return <nav className="bottom-nav" aria-label="Основная навигация">{tabs.map(tab => <button key={tab.id} aria-current={active === tab.id ? "page" : undefined} className={active === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}><NavigationIcon name={tab.icon} />{tab.label}</button>)}</nav>;
+  return <nav className="bottom-nav" aria-label="Основная навигация">{tabs.map(tab => <button type="button" key={tab.id} aria-current={active === tab.id ? "page" : undefined} className={active === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}><NavigationIcon name={tab.icon} /><span>{tab.label}</span></button>)}</nav>;
 }
 
 function NavigationIcon({ name }: { name: NavigationIconName }) {

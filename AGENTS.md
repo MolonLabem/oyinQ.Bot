@@ -23,6 +23,8 @@
 
 ## Architecture
 
+- Camp unregistration has its own Profile Settings screen. `CampRegistrationService.UnregisterAsync` cancels the actor's upcoming gatherings in that Camp through `GatheringRules.Cancel`, withdraws other future memberships, and plans cancellation/withdrawal notifications in the same transaction. Changed IDs include both cancellations and withdrawals for publication after commit. It locks Camp before gatherings; use a fresh read after waiting so a concurrent creation committed first is cancelled, while later creation fails registration checks. Past history, global ownership, other Camps/Clubs, and date-edit organizer restrictions remain unchanged.
+
 ### Wishlist and recruitment
 
 - Ownership editing and advanced box dates belong to Profile «Игры». Camp wishlist cards, wish details and own collection use the same `components/CampBoxControl` native status selector and actor-bound contribution/request endpoints: selecting saves in place; opening, dismissal and selecting the current status do not mutate. Refusal and withdrawal remain distinct. Batch wishlist projections include only the viewer's saved status/date intent, even when effective dates are empty; do not add a per-card settings fetch. Camp visibility controls share one `CampProfileProvider` state and appear only in Profile → Settings → «Видимость в этом кэмпе». Games/Wishes have no consent gate or permission banner; registration has a short disclosure. Settings never optimistically publish data. Club/global collection never receives Camp controls. See `docs/profile-collection.md`.

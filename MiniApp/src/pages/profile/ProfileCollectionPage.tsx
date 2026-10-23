@@ -39,6 +39,16 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [removing, setRemoving] = useState(false);
+  const pageKey = `oyinq-collection-page:${community?.key ?? "global"}`;
+  const [page, setPage] = useState(() => {
+    const saved = Number(sessionStorage.getItem(pageKey));
+    return Number.isSafeInteger(saved) && saved > 0 ? saved : 1;
+  });
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = Number(sessionStorage.getItem("oyinq-collection-page-size"));
+    return [10, 20, 50].includes(saved) ? saved : 10;
+  });
+  const resultsStart = useRef<HTMLDivElement>(null);
   const removalLock = useRef(false);
   const detailScroll = useRef(0);
   const restoreDetailScroll = useRef(false);
@@ -49,16 +59,47 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
   useRefresh(state.reload); useRefresh(campState.reload);
   useEffect(() => { sessionStorage.setItem(`oyinq-collection-search:${community?.key ?? "global"}`, listQuery); }, [listQuery, community?.key]);
   useEffect(() => { sessionStorage.setItem(`oyinq-collection-filter:${community?.key ?? "global"}`, filter); }, [filter, community?.key]);
-  useEffect(() => { if (focusGame && state.data) { document.getElementById(`owned-game-${focusGame}`)?.scrollIntoView({ block: "center" }); setFocusGame(undefined); } }, [focusGame, state.data]);
+  useEffect(() => { sessionStorage.setItem(pageKey, String(page)); }, [page, pageKey]);
+  useEffect(() => { sessionStorage.setItem("oyinq-collection-page-size", String(pageSize)); }, [pageSize]);
   const collectionGroups = useMemo(() => {
     const values = state.data ?? [];
     const matches = new Set(searchGames(values.map(item => ({ bggId: item.bggId, ...item.snapshot, expansions: [] })), listQuery).map(game => game.bggId));
     return groupCollectionItems(values, item => (!listQuery.trim() || matches.has(item.bggId)) &&
       (community?.mode !== "Camp" || filter === "all" || filter === "demand" && Boolean(profile?.data?.suggestedGameIds.includes(item.bggId)) || Boolean(campState.data?.some(c => c.bggId === item.bggId && c.itemType === item.itemType && c.commitment === filter))));
   }, [state.data, listQuery, filter, campState.data, profile?.data, community?.mode]);
+  const pageCount = Math.max(1, Math.ceil(collectionGroups.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageGroups = useMemo(() => collectionGroups.slice((currentPage - 1) * pageSize, currentPage * pageSize), [collectionGroups, currentPage, pageSize]);
+  const listReady = Boolean(state.data) && (community?.mode !== "Camp" || filter === "all"
+    || (filter === "demand" ? Boolean(profile?.data) : Boolean(campState.data)));
+  useEffect(() => { if (listReady && page > pageCount) setPage(pageCount); }, [listReady, page, pageCount]);
+  useEffect(() => {
+    if (!focusGame || !state.data) return;
+    const index = collectionGroups.findIndex(group => group.item.bggId === focusGame || group.expansions.some(item => item.bggId === focusGame));
+    if (index >= 0) {
+      const targetPage = Math.floor(index / pageSize) + 1;
+      if (currentPage !== targetPage) { setPage(targetPage); return; }
+      document.getElementById(`owned-game-${focusGame}`)?.scrollIntoView({ block: "center" });
+    }
+    setFocusGame(undefined);
+  }, [focusGame, state.data, collectionGroups, currentPage, pageSize]);
   const listedItems = useMemo(() => [...new Map(collectionGroups.flatMap(group => [group.item, ...group.expansions])
     .map(item => [collectionItemKey(item), item])).values()], [collectionGroups]);
   const selectedItems = listedItems.filter(item => selected.has(collectionItemKey(item)));
+  const pageItems = [...new Map(pageGroups.flatMap(group => [group.item, ...group.expansions]).map(item => [collectionItemKey(item), item])).values()];
+  const pageSelected = pageItems.length > 0 && pageItems.every(item => selected.has(collectionItemKey(item)));
+  function selectPage() {
+    setSelected(current => {
+      const next = new Set(current);
+      for (const item of pageItems) pageSelected ? next.delete(collectionItemKey(item)) : next.add(collectionItemKey(item));
+      return next;
+    });
+  }
+  function changePage(next: number) {
+    setPage(next);
+    requestAnimationFrame(() => resultsStart.current?.scrollIntoView({ block: "start" }));
+  }
+  function changeFilter(next: string) { setFilter(next); setPage(1); }
   useEffect(() => {
     const listed = new Set(listedItems.map(collectionItemKey));
     setSelected(current => current.size && [...current].some(key => !listed.has(key))
@@ -68,7 +109,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
   function toggleSelection(item: PersonalCollectionItem) {
     setSelected(current => { const next = new Set(current); const key = collectionItemKey(item); next.has(key) ? next.delete(key) : next.add(key); return next; });
   }
-  const anchor = useListAnchor(collectionGroups);
+  const anchor = useListAnchor(pageGroups);
   useBackButton(Boolean(importId && importOpen && !detail), () => setImportOpen(false));
   useBackButton(selecting && !detail && !(importId && importOpen), () => { if (!removalLock.current) closeSelection(); });
   async function startImport(input?: string) { setError(undefined); try { const result = await api<{ publicId: string }>("/profile/collection/imports", json("POST", { bggInput: input })); setLegacyImport(false); localStorage.setItem("oyinq-profile-import", result.publicId); setImportId(result.publicId); setImportOpen(true); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } }
@@ -105,7 +146,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
       <div className="collection-item-heading">
         <div className="media"><Cover src={item.snapshot.thumbnailImageUrl} name={item.snapshot.name} /><div><h3>{item.snapshot.name}</h3><GameMeta game={{ bggId: item.bggId, ...item.snapshot, expansions: [] }} compact /></div></div>
         {selecting ? <label className="collection-select"><input type="checkbox" aria-label={`Выбрать «${item.snapshot.name}»`} checked={selected.has(collectionItemKey(item))} disabled={removing} onChange={() => toggleSelection(item)} /></label>
-          : <button type="button" className="danger collection-delete" aria-label={`Удалить «${item.snapshot.name}» из коллекции`} title="Удалить из коллекции" disabled={removing || adding} onClick={() => void remove([item])}>×</button>}
+          : <button type="button" className="danger collection-delete" aria-label={`Удалить «${item.snapshot.name}» из коллекции`} title="Удалить из коллекции" disabled={removing || adding} onClick={() => void remove([item])}><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 4 16 16M16 4 4 16" /></svg></button>}
       </div>
       {community?.mode === "Camp" && <div hidden={selecting}><CampBoxControl communityKey={community.key} item={item} contribution={contribution} disabled={selecting || removing || !profile?.data?.canAct || !campState.data || Boolean(campState.error)} declined={item.itemType === "BaseGame" && profile?.data?.declinedGameIds.includes(item.bggId)} attendanceDates={profile?.data?.myDates} beforeChange={() => anchor.capture(`${item.itemType}:${item.bggId}`)} changed={async () => (await Promise.all([campState.reload(), profile?.reload()])).every(Boolean)} /></div>}
     </div>;
@@ -140,21 +181,31 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
           <p>Новая отметка «Могу привезти» или «Точно привезу» действует на все дни участия. Для отдельных игр можно выбрать другие дни.</p>
           {editRegistration && <button type="button" disabled={removing} onClick={editRegistration}>Изменить регистрацию</button>}
         </details>
-        <Incoming allowDecline communityKey={community.key} open={id => { setFocusGame(id); requestAnimationFrame(() => document.getElementById(`owned-game-${id}`)?.scrollIntoView({ block: "center" })); setFilter("all"); setListQuery(""); if (!state.data?.some(x => x.bggId === id && x.itemType === "BaseGame")) openDetail({ game: id }); }} openProfile={person => openDetail({ person })} />
-        {!!profile?.data?.suggestedGameIds.length && <button className="ghost" disabled={removing} onClick={() => setFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
+        <Incoming allowDecline communityKey={community.key} open={id => { setFocusGame(id); setFilter("all"); setListQuery(""); if (!state.data?.some(x => x.bggId === id && x.itemType === "BaseGame")) openDetail({ game: id }); }} openProfile={person => openDetail({ person })} />
+        {!!profile?.data?.suggestedGameIds.length && <button className="ghost" disabled={removing} onClick={() => changeFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
       </>}
-      <Field label="Найти игру"><input type="search" disabled={removing} value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Название игры" /></Field>
-      {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} disabled={removing} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</div>}
+      <div className="collection-search">
+        <Field label="Найти игру"><input type="search" disabled={removing} value={listQuery} onChange={event => { setListQuery(event.target.value); setPage(1); }} placeholder="Название игры" /></Field>
+        {collectionGroups.length > 10 && <label className="collection-page-size">На странице<select aria-label="Игр на странице" disabled={removing} value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label>}
+      </div>
+      {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} disabled={removing} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{label}</button>)}</div>}
       {selecting && <div className="row collection-selection" aria-busy={removing}>
         <span role="status">Выбрано: {selectedItems.length}</span>
-        <button disabled={removing || !listedItems.length} onClick={() => setSelected(selectedItems.length === listedItems.length ? new Set() : new Set(listedItems.map(collectionItemKey)))}>{selectedItems.length && selectedItems.length === listedItems.length ? "Снять выбор" : "Выбрать все"}</button>
+        <button disabled={removing || !pageItems.length} onClick={selectPage}>{pageSelected ? "Снять выбор" : pageCount > 1 ? "Выбрать страницу" : "Выбрать все"}</button>
         <button className="danger" disabled={removing || !selectedItems.length} onClick={() => void remove(selectedItems)}>{removing ? "Удаляем…" : `Удалить (${selectedItems.length})`}</button>
       </div>}
       {state.loading && !state.data && <Loading />}{state.error && <ErrorState message={state.error} retry={state.reload} />}
-      {state.data && (!state.data.length ? <Empty>В коллекции пока нет игр. <button onClick={() => setAddOpen(true)}>Добавить игры</button></Empty> : !collectionGroups.length ? <Empty>Ничего не найдено. Измените поиск или фильтр.</Empty> : <div className="stack">{collectionGroups.map(group => <Card key={`${group.item.itemType}-${group.item.bggId}`}>
+      <div ref={resultsStart} className="collection-results">
+      {state.data && (!state.data.length ? <Empty>В коллекции пока нет игр. <button onClick={() => setAddOpen(true)}>Добавить игры</button></Empty> : !collectionGroups.length ? <Empty>Ничего не найдено. Измените поиск или фильтр.</Empty> : <div className="stack">{pageGroups.map(group => <Card key={`${group.item.itemType}-${group.item.bggId}`}>
         {renderItem(group.item)}
         {group.expansions.length > 0 && <details className="collection-expansions" open={selecting || listQuery.trim() || filter !== "all" ? true : undefined}><summary>Дополнения ({group.expansions.length})</summary>{group.expansions.map(item => <div className="collection-expansion" key={item.bggId}>{renderItem(item)}</div>)}</details>}
       </Card>)}</div>)}
+      {pageCount > 1 && <nav className="collection-pagination" aria-label="Страницы коллекции">
+        <button type="button" disabled={removing || currentPage === 1} onClick={() => changePage(currentPage - 1)} aria-label="Предыдущая страница">Назад</button>
+        <span className="muted" role="status"><span>Страница {currentPage} из {pageCount}</span><small>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, collectionGroups.length)} из {collectionGroups.length}</small></span>
+        <button type="button" disabled={removing || currentPage === pageCount} onClick={() => changePage(currentPage + 1)} aria-label="Следующая страница">Дальше</button>
+      </nav>}
+      </div>
       {anchor.notice && <p role="status">{anchor.notice}</p>}
     </section>
   </>;
