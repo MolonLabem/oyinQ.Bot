@@ -14,7 +14,7 @@ let host: HTMLDivElement; let root: Root;
 const community = { key: "camp", name: "Хэллоуин", mode: "Camp" as const, timeZoneId: "UTC" };
 const state = () => ({ configuration: config, campStatus: "Active", startDate: "2026-10-31", endDate: "2026-11-01", availableDates: ["2026-10-31", "2026-11-01"], baseGameIds: [], displayName: "Игрок", registration: { registered: true, selectedDates: ["2026-10-31"], city: "Алматы", needsAccommodation: false, data: { answers: {} } } });
 const quote = (total: number) => ({ currency: "KZT", total, lines: [{ label: "Участие", quantity: 1, unitAmount: total, amount: total }], calculatedAtUtc: "2026-10-26T00:00:00Z" });
-beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.stubGlobal("scrollTo", vi.fn()); host = document.createElement("div"); document.body.append(host); root = createRoot(host); vi.mocked(api).mockImplementation(async path => path.includes("/quote") ? { quote: quote(7500) } : state()); });
+beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.stubGlobal("scrollTo", vi.fn()); HTMLElement.prototype.scrollIntoView = vi.fn(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); vi.mocked(api).mockImplementation(async path => path.includes("/quote") ? { quote: quote(7500) } : state()); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 async function mount() { await act(async () => root.render(<CampRegistrationSettings community={community} />)); }
 async function choose(value: string) { await act(async () => { const select = host.querySelector<HTMLSelectElement>("select")!; select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); }); }
@@ -36,4 +36,31 @@ it("hides stale quotes during a choice change and ignores late responses", async
   expect(host.querySelector(".camp-quote-total")?.textContent).toContain("8 500");
   await act(async () => resolveOld({ quote: quote(1) }));
   expect(host.querySelector(".camp-quote-total")?.textContent).toContain("8 500");
+});
+
+it("keeps the registration form before the long programme and reveals the first invalid field on every attempt", async () => {
+  const incomplete = { ...state(), registration: { ...state().registration, city: " ", selectedDates: [] } };
+  vi.mocked(api).mockImplementation(async path => path.includes("/quote") ? { quote: quote(7500) } : incomplete);
+  await mount();
+  expect(host.querySelector<HTMLDetailsElement>(".camp-information-summary details")!.open).toBe(false);
+  expect(host.querySelector(".camp-information-summary")!.textContent).toContain("7 500");
+  await act(async () => save().click());
+  const city = host.querySelector<HTMLInputElement>('input[required]')!;
+  expect(document.activeElement).toBe(city);
+  expect(city.getAttribute("aria-invalid")).toBe("true");
+  expect(city.scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "auto" });
+  expect(host.querySelector('form [role="alert"].notice')?.textContent).toContain("Город, Дни участия, Будете в костюме?");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(city, "Астана");
+    city.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => save().click());
+  expect(document.activeElement).toBe(host.querySelector(".registration-days"));
+  await act(async () => host.querySelector<HTMLInputElement>('.registration-days input')!.click());
+  await act(async () => save().click());
+  expect(document.activeElement).toBe(host.querySelector("select"));
+  expect(vi.mocked(api).mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+  await choose("yes"); await act(async () => save().click());
+  const request = vi.mocked(api).mock.calls.find(([, options]) => options?.method === "PUT")!;
+  expect(JSON.parse(String(request[1]?.body))).toMatchObject({ city: "Астана", selectedDates: ["2026-10-31"], answers: { costume: "yes" } });
 });

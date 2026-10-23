@@ -49,6 +49,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
 {
     public async Task<IReadOnlyList<GameDemand>> DemandAsync(string key, BotMode mode, long telegramUserId, CancellationToken ct)
     {
+        await RequireDemandRegistrationAsync(key, mode, telegramUserId, ct);
         var wishes = await dbContext.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key).OrderBy(x => x.CreatedAt).ThenBy(x => x.ParticipantId).ToArrayAsync(ct);
         var effective = (await LoadAsync(key, mode, telegramUserId, ct)).Where(x => x.IsBaseGame).ToDictionary(x => x.Game.BggId);
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
@@ -66,14 +67,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
 
     public async Task<ClubCollectionGame> DemandGameAsync(string key, BotMode mode, long telegramUserId, long bggId, CancellationToken ct)
     {
-        if (mode == BotMode.Camp)
-        {
-            var scope = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat).SingleAsync(x => x.BotChatKey == key, ct);
-            var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
-                .SingleOrDefaultAsync(x => x.CampId == scope.Id && x.Participant.TelegramUserId == telegramUserId, ct);
-            if (!CampParticipationPolicy.IsRegistrationComplete(registration, scope))
-                throw new UnauthorizedAccessException("Сначала завершите регистрацию на этот кэмп.");
-        }
+        await RequireDemandRegistrationAsync(key, mode, telegramUserId, ct);
         var available = (await LoadAsync(key, mode, telegramUserId, ct)).SingleOrDefault(x => x.Game.BggId == bggId && x.IsBaseGame);
         if (available is not null) return available.Game;
         var wish = await dbContext.GameWishes.AsNoTracking().Where(x => x.CommunityKey == key && x.BggId == bggId)
@@ -95,6 +89,20 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             if (requested != null) return CollectionItemSnapshotSerializer.Deserialize(requested).ToCollectionGame(bggId) with { Expansions = [] };
         }
         throw new KeyNotFoundException("Игра больше не представлена в спросе сообщества. Выберите игру заново.");
+    }
+
+    private async Task RequireDemandRegistrationAsync(string key, BotMode mode, long telegramUserId, CancellationToken ct)
+    {
+        if (mode != BotMode.Camp) return;
+        var camp = await dbContext.Camps.AsNoTracking().Include(x => x.BotChat)
+            .SingleOrDefaultAsync(x => x.BotChatKey == key, ct)
+            ?? throw new KeyNotFoundException("Кэмп не найден.");
+        if (!camp.BotChat.IsActive || camp.BotChat.DeletedAt is not null)
+            throw new UnauthorizedAccessException("Кэмп недоступен.");
+        var registration = await dbContext.CampRegistrations.AsNoTracking().Include(x => x.SelectedDays)
+            .SingleOrDefaultAsync(x => x.CampId == camp.Id && x.Participant.TelegramUserId == telegramUserId, ct);
+        if (!CampParticipationPolicy.IsRegistrationComplete(registration, camp))
+            throw new UnauthorizedAccessException("Сначала завершите регистрацию на этот кэмп.");
     }
 
     public async Task<GameCatalogResponse> ListAsync(string communityKey, BotMode mode, long telegramUserId,

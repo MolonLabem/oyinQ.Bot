@@ -44,8 +44,9 @@ public sealed class TelegramUpdateHandler(
         var callback = update.CallbackQuery;
         var user = callback?.From ?? update.Message?.From;
         if (user is null) return;
+        var command = await TelegramUpdateRouting.GetCommandAsync(update.Message?.Text, botClient, cancellationToken);
+        if (command is null && update.Message?.Text?.StartsWith('/') == true) return;
         await using var profileOperation = await ParticipantOperationLock.AcquireAsync(dbContext, user.Id, cancellationToken);
-        var command = TelegramUpdateRouting.GetCommand(update.Message?.Text);
         if (update.Message is { Chat.Type: ChatType.Private }
             && (command == "/deleteprofile" || await dbContext.DeletedProfiles.AnyAsync(x => x.TelegramUserId == user.Id, cancellationToken)))
         {

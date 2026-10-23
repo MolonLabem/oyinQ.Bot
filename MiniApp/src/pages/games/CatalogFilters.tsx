@@ -26,6 +26,7 @@ export function CatalogFilters({ community, applied, options, search, sort, onAp
   const [draft, setDraft] = useState(() => normalizeFilters(applied, community.mode, options));
   const [preview, setPreview] = useState<{ request: { params: string; retry: number }; total?: number; error?: boolean }>();
   const [retry, setRetry] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(applied.complexities.length || applied.mechanics.length || applied.types.length || applied.categories.length || applied.fromYear || applied.toYear));
   const dialog = useMobileDialog(onClose);
   const normalized = normalizeFilters(draft, community.mode, options);
   const yearError = yearFilterError(draft);
@@ -49,7 +50,20 @@ export function CatalogFilters({ community, applied, options, search, sort, onAp
       <header><div><h2 id="catalog-filter-title">Фильтры</h2><small className="muted">{activeGroups(normalized) ? `Выбрано групп: ${activeGroups(normalized)}` : "Подберите игру для вашей компании"}</small></div><button type="button" aria-label="Закрыть без применения" onClick={onClose}>×</button></header>
       <div className="catalog-dialog-scroll">
         {community.mode === "Camp" && <FilterSection title="День кэмпа" summary={normalized.attendanceDate || "Все дни"}><Field label="День кэмпа"><input type="date" min={community.startDate} max={community.endDate} value={normalized.attendanceDate ?? ""} onChange={e => setDraft({ ...draft, attendanceDate: e.target.value })} /></Field></FilterSection>}
+        <FilterSection title="Игроки" summary={normalized.players ? `${normalized.playerCountMode === "best" ? "Лучше всего" : "Подходит"}: ${normalized.players}` : "Любое количество"}>
+          <Field label="Подбор по числу игроков"><select value={normalized.playerCountMode} onChange={e => setDraft({ ...draft, playerCountMode: e.target.value === "best" ? "best" : "supported" })}>
+            <option value="supported">Подходит для</option><option value="best">Лучше всего для</option>
+          </select></Field>
+          <div className="choice-row">{[1,2,3,4,5,6].map(value => <button type="button" key={value} aria-pressed={normalized.players === value} className={normalized.players === value ? "active" : ""} onClick={() => setDraft({ ...draft, players: normalized.players === value ? undefined : value })}>{value}</button>)}</div>
+          <Field label="Количество игроков"><input type="number" min="1" inputMode="numeric" value={normalized.players ?? ""} onChange={e => setDraft({ ...draft, players: e.target.value ? Number(e.target.value) : undefined })} /></Field>
+        </FilterSection>
         <FilterSection title="Длительность" summary={normalized.maxDurationMinutes ? `До ${normalized.maxDurationMinutes} мин` : "Любая"}><Field label="Не дольше, минут"><input type="number" min="1" max="10080" value={normalized.maxDurationMinutes ?? ""} onChange={e => setDraft({ ...draft, maxDurationMinutes: e.target.value ? Number(e.target.value) : undefined })} /></Field></FilterSection>
+        {community.mode === "Camp" && <FilterSection title="Коробка на кэмпе" summary={availabilityLabels[normalized.availability] ?? "Любая"}>{select("availability", availabilityLabels, "Любая")}</FilterSection>}
+        <FilterSection title="Чья игра" summary={ownershipLabels[normalized.ownership] ?? "Все источники"}>{select("ownership", ownershipLabels, "Все источники")}</FilterSection>
+        {community.mode === "Camp" && normalized.ownership === "participants" && <FilterChoices title="Кто может привезти" values={(options.providers ?? []).map(x => ({ key: x.participantId, value: x.displayName }))} selected={normalized.providers} change={x => setDraft({ ...draft, providers: toggleValue(normalized.providers, x) })} />}
+        <FilterSection title="Сборы" summary={planningLabels[normalized.planning] ?? "Все игры"}>{select("planning", planningLabels, "Все игры")}</FilterSection>
+        <details className="catalog-advanced" open={advancedOpen} onToggle={event => { if (event.target === event.currentTarget) setAdvancedOpen(event.currentTarget.open); }}>
+          <summary><strong>Другие фильтры</strong><span>Сложность, механики, год и категории</span></summary>
         <FilterChoices title="Сложность BGG" values={(options.complexities ?? []).map(x => ({ key: x.level, value: x.displayName }))} selected={normalized.complexities} change={x => setDraft({ ...draft, complexities: toggleValue(normalized.complexities, x) })} />
         <FilterChoices title="Механики" values={(options.mechanics ?? []).map(x => ({ key: x.bggId, value: x.name }))} selected={normalized.mechanics} change={x => setDraft({ ...draft, mechanics: toggleValue(normalized.mechanics, x) })} />
         <FilterSection title="Год выпуска" summary={yearFilterLabel(normalized)}>
@@ -59,19 +73,9 @@ export function CatalogFilters({ community, applied, options, search, sort, onAp
               onChange={e => setDraft({ ...draft, [key]: e.target.value === "" ? undefined : e.target.valueAsNumber })} />
           </Field>)}</div>
         </FilterSection>
-        <FilterSection title="Игроки" summary={normalized.players ? `${normalized.playerCountMode === "best" ? "Лучше всего" : "Подходит"}: ${normalized.players}` : "Любое количество"}>
-          <Field label="Подбор по числу игроков"><select value={normalized.playerCountMode} onChange={e => setDraft({ ...draft, playerCountMode: e.target.value === "best" ? "best" : "supported" })}>
-            <option value="supported">Подходит для</option><option value="best">Лучше всего для</option>
-          </select></Field>
-          <div className="choice-row">{[1,2,3,4,5,6].map(value => <button type="button" key={value} aria-pressed={normalized.players === value} className={normalized.players === value ? "active" : ""} onClick={() => setDraft({ ...draft, players: normalized.players === value ? undefined : value })}>{value}</button>)}</div>
-          <Field label="Количество игроков"><input type="number" min="1" inputMode="numeric" value={normalized.players ?? ""} onChange={e => setDraft({ ...draft, players: e.target.value ? Number(e.target.value) : undefined })} /></Field>
-        </FilterSection>
-        <FilterSection title="Чья игра" summary={ownershipLabels[normalized.ownership] ?? "Все источники"}>{select("ownership", ownershipLabels, "Все источники")}</FilterSection>
-        {community.mode === "Camp" && normalized.ownership === "participants" && <FilterChoices title="Кто может привезти" values={(options.providers ?? []).map(x => ({ key: x.participantId, value: x.displayName }))} selected={normalized.providers} change={x => setDraft({ ...draft, providers: toggleValue(normalized.providers, x) })} />}
-        {community.mode === "Camp" && <FilterSection title="Коробка на кэмпе" summary={availabilityLabels[normalized.availability] ?? "Любая"}>{select("availability", availabilityLabels, "Любая")}</FilterSection>}
-        <FilterSection title="Сборы" summary={planningLabels[normalized.planning] ?? "Все игры"}>{select("planning", planningLabels, "Все игры")}</FilterSection>
         <FilterChoices title="Тип игры" values={options.types} selected={normalized.types} change={x => setDraft({ ...draft, types: toggleValue(normalized.types, x) })} />
         <FilterChoices title="Категории" values={options.categories.map(x => ({ key: x.bggId, value: x.name }))} selected={normalized.categories} change={x => setDraft({ ...draft, categories: toggleValue(normalized.categories, x) })} />
+        </details>
         {chips.length > 0 && <p className="muted">Изменения появятся в каталоге после нажатия «Показать».</p>}
       </div>
       <footer>{yearError ? <div id="catalog-year-error" role="alert">{yearError}</div> : <div role="status" aria-live="polite">{current?.error ? <>Не удалось посчитать игры. <button className="ghost" onClick={() => { setPreview(undefined); setRetry(x => x + 1); }}>Повторить</button></> : current?.total === undefined ? "Считаем подходящие игры…" : `Подходят: ${current.total}`}</div>}<div className="catalog-filter-actions"><button type="button" onClick={() => setDraft(emptyFilters())}>Сбросить</button><button className="primary" type="button" disabled={Boolean(yearError)} onClick={() => { if (!yearError) onApply(normalized); }}>{!yearError && current?.total !== undefined ? showGames(current.total) : "Показать игры"}</button></div></footer>

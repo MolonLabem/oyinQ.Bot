@@ -15,6 +15,30 @@ public sealed class CampVisibilityTests
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);
     private static GameCatalogService Catalog(AppDbContext db, TimeProvider clock) => new(db, new(db, new(db, new(db, clock), clock)), clock);
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("city")]
+    [InlineData("accommodation")]
+    [InlineData("days")]
+    public async Task DemandBrowsingAndSelectionRequireCompleteRegistrationInTheTargetCamp(string missing)
+    {
+        await using var f = new PlanningFixture(); var s = await CampWishSeed.Create(f.Db, f.Clock);
+        var catalog = Catalog(f.Db, f.Clock);
+        Assert.Equal(42, Assert.Single(await catalog.DemandAsync("camp-wishes", BotMode.Camp, s.B.TelegramUserId, default)).Game.BggId);
+        Assert.Equal(42, (await catalog.DemandGameAsync("camp-wishes", BotMode.Camp, s.B.TelegramUserId, 42, default)).BggId);
+        var registration = await f.Db.CampRegistrations.Include(x => x.SelectedDays)
+            .SingleAsync(x => x.CampId == s.Camp.Id && x.ParticipantId == s.B.Id);
+        if (missing == "missing") f.Db.Remove(registration);
+        else if (missing == "city") registration.City = null;
+        else if (missing == "accommodation") registration.NeedsAccommodation = null;
+        else { f.Db.CampRegistrationDays.RemoveRange(registration.SelectedDays); registration.SelectedDays.Clear(); }
+        await f.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => catalog.DemandAsync("camp-wishes", BotMode.Camp, s.B.TelegramUserId, default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => catalog.DemandGameAsync("camp-wishes", BotMode.Camp, s.B.TelegramUserId, 42, default));
+        var selection = new Features.Gatherings.GatheringGameSelectionService(f.Db, null!);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => selection.FromDemandAsync("camp-wishes", BotMode.Camp, s.B.TelegramUserId, 42, [], default));
+    }
+
     [Fact]
     public async Task NoSettingsOpensBothDirectionsWithoutMakingBoxesAvailableOrSendingAnything()
     {

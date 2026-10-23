@@ -137,7 +137,7 @@ describe("catalog panel", () => {
   });
   it("separates section expansion, five-option preview, draft, apply and reset", async () => {
     await mount(); await click("Фильтры");
-    const section = Array.from(host.querySelectorAll("details")).find(x => x.textContent?.includes("Категории"))!;
+    const section = Array.from(host.querySelectorAll<HTMLDetailsElement>("details.catalog-filter-section")).find(x => x.querySelector("summary strong")?.textContent === "Категории")!;
     expect(section.open).toBe(false); expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(5);
     await act(async () => { section.open = true; });
     await click("Показать ещё · 15", true);
@@ -157,6 +157,20 @@ describe("catalog panel", () => {
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Закрыть без применения"]')!.click());
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Убрать фильтр: Категория 9"]')!.click());
     expect(listCalls().at(-1)![0]).not.toContain("categories");
+  });
+  it("puts practical filters first and keeps advanced choices available without applying them early", async () => {
+    await mount(); await click("Фильтры");
+    const titles = [...host.querySelectorAll(".catalog-dialog-scroll > .catalog-filter-section > summary strong")].map(x => x.textContent);
+    expect(titles.slice(0, 4)).toEqual(["День кэмпа", "Игроки", "Длительность", "Коробка на кэмпе"]);
+    const advanced = host.querySelector<HTMLDetailsElement>(".catalog-advanced")!;
+    expect(advanced.open).toBe(false);
+    await act(async () => { advanced.open = true; });
+    await changeField("От", "2018");
+    expect(listCalls()).toHaveLength(1);
+    await tick(); await click("Показать 3 игры", true);
+    expect(listCalls().at(-1)![0]).toContain("fromYear=2018");
+    await click("Фильтры · 1");
+    expect(host.querySelector<HTMLDetailsElement>(".catalog-advanced")!.open).toBe(true);
   });
   it("ignores stale preview responses immediately and supports Telegram Back", async () => {
     let finish!: (value: { total: number }) => void;

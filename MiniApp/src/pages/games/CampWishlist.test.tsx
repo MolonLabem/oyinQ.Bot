@@ -15,7 +15,7 @@ const person = { id: "owner", name: "Виктор", dates: ["2026-09-24"] };
 const result = { items: [game], total: 48, suggestions: 3, hasMore: true, canAct: true, shareCollection: false, shareWishes: false, myDates: person.dates, updatedAt: "2026-09-23T12:00:00Z" };
 const detail = { item: game, interested: [person], anonymousCount: 7, owners: [], requests: [], canAct: true, myDates: person.dates };
 const visible = (selector: string) => [...host.querySelectorAll<HTMLElement>(selector)].filter(x => !x.closest("[hidden]"));
-async function click(text: string) { const button = visible("button").find(x => x.textContent?.trim() === text || x.querySelector("strong")?.textContent === text); expect(button, text).toBeTruthy(); await act(async () => button!.click()); }
+async function click(text: string) { const button = visible("button").find(x => x.textContent?.trim() === text || x.getAttribute("role") === "tab" && x.textContent?.startsWith(`${text} ·`) || x.querySelector("strong")?.textContent === text); expect(button, text).toBeTruthy(); await act(async () => button!.click()); }
 async function mount() { await act(async () => root.render(<CampWishlist community={community} bggAvailable={false} />)); }
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); sessionStorage.clear();
@@ -39,6 +39,19 @@ it("defaults to all, keeps picker closed, sends filters and pagination to the se
   await click("Дальше"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("page=2"));
   await click("Мои"); expect(api).toHaveBeenCalledWith(expect.stringContaining("mode=mine"));
   expect(api).toHaveBeenCalledWith(expect.stringContaining("view=outgoing"));
+});
+
+it("keeps one What to bring entry and puts creation before people without requiring a confirmed box", async () => {
+  await mount();
+  const bring = visible('[role="tab"]').filter(x => x.textContent?.startsWith("Что взять"));
+  expect(bring).toHaveLength(1); expect(bring[0].textContent).toBe("Что взять · 3");
+  expect(visible("button.person-link").some(x => x.textContent?.startsWith("Что взять"))).toBe(false);
+  await click(game.game.name);
+  const create = host.querySelector<HTMLAnchorElement>('[data-wish-section="create"] a')!;
+  const people = host.querySelector('[data-wish-section="interested"]')!;
+  expect(create.href).toContain("createGame=42");
+  expect(create.compareDocumentPosition(people) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(vi.mocked(api).mock.calls.every(([, options]) => !options?.method || options.method === "GET")).toBe(true);
 });
 
 it("keeps loaded cards through refresh and error, and never posts during reads", async () => {
@@ -130,7 +143,7 @@ it.each(["Все", "Мои", "Что взять"])("saves own box in place in %s
   expect(box().value).toBe("Bringing"); expect(visible(".wish-card")[0].textContent).toContain("Вы точно привезёте");
   expect(visible(".wish-card")[0].textContent).not.toContain("Коробку пока не нашли");
   expect(visible("h2")).toHaveLength(0); expect(host.textContent).toContain("Страница 2");
-  expect(visible('[aria-selected="true"]')[0].textContent).toBe(mode);
+  expect(visible('[aria-selected="true"]')[0].textContent).toBe(mode === "Что взять" ? "Что взять · 3" : mode);
   await choose("Bringing"); expect(writes()).toHaveLength(1);
 });
 

@@ -1,3 +1,5 @@
+using Telegram.Bot;
+
 namespace oyinQ.Bot.Integrations.Telegram;
 
 public static class TelegramUpdateRouting
@@ -12,10 +14,26 @@ public static class TelegramUpdateRouting
         return parts.Length == 2 && string.Equals(parts[1], "topic", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static string? GetCommand(string? text)
+    public static async Task<string?> GetCommandAsync(string? text, ITelegramBotClient botClient,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(text) || text[0] != '/') return null;
-        var token = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)[0];
-        return token.Split('@', 2)[0].ToLowerInvariant();
+        var token = CommandToken(text);
+        if (token is null) return null;
+        var username = token.Contains('@') ? (await botClient.GetMe(cancellationToken)).Username : null;
+        return GetCommand(text, username);
     }
+
+    public static string? GetCommand(string? text, string? botUsername = null)
+    {
+        var token = CommandToken(text);
+        if (token is null) return null;
+        var parts = token.Split('@', 2);
+        if (parts.Length == 2 && (string.IsNullOrWhiteSpace(botUsername)
+            || !string.Equals(parts[1], botUsername, StringComparison.OrdinalIgnoreCase))) return null;
+        return parts[0].ToLowerInvariant();
+    }
+
+    private static string? CommandToken(string? text) =>
+        string.IsNullOrWhiteSpace(text) || text[0] != '/' ? null
+            : text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)[0];
 }

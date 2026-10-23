@@ -64,7 +64,7 @@ public sealed class CampVisibilityApiTests
             Task<JsonElement> Get(string suffix) => client.GetFromJsonAsync<JsonElement>("/api/miniapp/camp-wishlist" + query + suffix);
             string[] urls = ["/camp-wishlist" + query, "/camp-wishlist" + query + "&view=settings",
                 "/camp-wishlist" + query + "&game=99", "/camp-wishlist" + query + "&view=profile&person=" + seed.Owner.PublicId,
-                "/catalog/demand/99" + query];
+                "/catalog/demand" + query, "/catalog/demand/99" + query];
             foreach (var url in urls) Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/miniapp" + url)).StatusCode);
             Login(seed.A.TelegramUserId);
             // A supplied owner ID never delegates ownership mutations to another participant.
@@ -82,6 +82,8 @@ public sealed class CampVisibilityApiTests
             Assert.Equal(1, (await Get("")).GetProperty("total").GetInt32());
             Assert.Equal("owned", (await Get("&game=99")).GetProperty("owners")[0].GetProperty("status").GetString());
             Assert.Equal(seed.A.PublicId, (await Get("&game=42")).GetProperty("interested")[0].GetProperty("id").GetGuid());
+            var demand = await client.GetFromJsonAsync<JsonElement>("/api/miniapp/catalog/demand" + query);
+            Assert.Equal(42, Assert.Single(demand.EnumerateArray()).GetProperty("game").GetProperty("bggId").GetInt64());
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/miniapp/catalog/demand/99" + query)).StatusCode);
             Login(seed.Owner.TelegramUserId);
             Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/miniapp/camp-wishlist" + query,
@@ -99,6 +101,21 @@ public sealed class CampVisibilityApiTests
             // Knowing IDs is insufficient: registration and current community access are independently required.
             Login(999999);
             foreach (var url in urls) Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/miniapp" + url)).StatusCode);
+            // An existing row with an incomplete registration grants no access either.
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                (await db.CampRegistrations.SingleAsync(x => x.CampId == seed.Camp.Id && x.ParticipantId == seed.A.Id)).City = null;
+                await db.SaveChangesAsync();
+            }
+            Login(seed.A.TelegramUserId);
+            foreach (var url in urls) Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/miniapp" + url)).StatusCode);
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                (await db.CampRegistrations.SingleAsync(x => x.CampId == seed.Camp.Id && x.ParticipantId == seed.A.Id)).City = "Алматы";
+                await db.SaveChangesAsync();
+            }
             Login(seed.A.TelegramUserId); membership.Allowed = false;
             foreach (var url in urls) Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/miniapp" + url)).StatusCode);
         }

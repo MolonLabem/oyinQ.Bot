@@ -123,6 +123,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
           <button className="primary" disabled={removing} aria-expanded={addOpen} aria-controls="collection-add" onClick={() => setAddOpen(!addOpen)}>{addOpen ? "Закрыть" : "Добавить"}</button>
         </>}
       </div></div>
+      <p className="muted collection-scope">Личная коллекция · во всех сообществах</p>
       {!bggAvailable && <Notice kind="warning">Поиск и загрузка из BGG временно недоступны.</Notice>}
       {campState.error && <Notice kind="warning">{campState.error}</Notice>}
       {error && <Notice kind="danger">{error}</Notice>}
@@ -135,7 +136,10 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
         <details className="import-options"><summary>Импорт из BGG</summary>{importSource.error && <ErrorState message={importSource.error} retry={importSource.reload} />}<BggImportButton available={bggAvailable} username={importSource.data?.source?.bggUsername} lastImportedAt={importSource.data?.source?.lastImportedAt} start={startImport} /></details>
       </div>
       {community?.mode === "Camp" && <>
-        {editRegistration && <button onClick={editRegistration}>Дни участия{profile?.data?.myDates.length ? `: ${attendanceLabel(profile.data.myDates)}` : ""}</button>}
+        <details className="collection-attendance"><summary>Дни кэмпа{profile?.data?.myDates.length ? ` · ${attendanceLabel(profile.data.myDates)}` : " и доступность игр"}</summary>
+          <p>Новая отметка «Могу привезти» или «Точно привезу» действует на все дни участия. Для отдельных игр можно выбрать другие дни.</p>
+          {editRegistration && <button type="button" disabled={removing} onClick={editRegistration}>Изменить регистрацию</button>}
+        </details>
         <Incoming allowDecline communityKey={community.key} open={id => { setFocusGame(id); requestAnimationFrame(() => document.getElementById(`owned-game-${id}`)?.scrollIntoView({ block: "center" })); setFilter("all"); setListQuery(""); if (!state.data?.some(x => x.bggId === id && x.itemType === "BaseGame")) openDetail({ game: id }); }} openProfile={person => openDetail({ person })} />
         {!!profile?.data?.suggestedGameIds.length && <button className="ghost" disabled={removing} onClick={() => setFilter(filter === "demand" ? "all" : "demand")}>У участников в хотелках: {profile.data.suggestedGameIds.length} ваших игр{filter === "demand" ? " · Показать все" : ""}</button>}
       </>}

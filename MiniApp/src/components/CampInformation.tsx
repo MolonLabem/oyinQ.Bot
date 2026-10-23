@@ -5,6 +5,19 @@ import { Field, FormSection } from "./Ui";
 export function hasCampInformation(config?: CampConfiguration) {
   return Boolean(config && (config.description || config.locationName || config.locationUrl || config.paymentInstructions || config.pricing));
 }
+export function CampInformationSummary({ config }: { config: CampConfiguration }) {
+  const price = config.pricing;
+  return <section className="camp-information-summary" aria-label="Кратко о кэмпе">
+    {(config.locationName || config.locationUrl) && <p>{config.locationUrl
+      ? <a href={config.locationUrl} target="_blank" rel="noreferrer">{config.locationName || "Место проведения"}</a>
+      : config.locationName}</p>}
+    {price && <p><strong>{formatMoney(price.amount, price.currency)}</strong>{price.perDay ? " за день" : " за кэмп"}
+      {Boolean(price.accommodationAmount) && <> · жильё +{formatMoney(price.accommodationAmount!, price.currency)}{price.accommodationPerDay ? " за день" : " за кэмп"}</>}
+      {price.earlyAmount != null && price.earlyUntil && <><br />Ранняя цена: {formatMoney(price.earlyAmount, price.currency)} до {formatDate(price.earlyUntil)} включительно.</>}
+    </p>}
+    <details><summary>Программа, стоимость и условия</summary><CampInformation config={config} /></details>
+  </section>;
+}
 export function CampInformation({ config }: { config: CampConfiguration }) {
   const price = config.pricing;
   return <FormSection title="О кэмпе">
@@ -32,8 +45,8 @@ export function CampRegistrationFields({ fields, answers, onChange, validated, c
     const error = validated && !requiredAnswersComplete([field], answers) ? "Заполните обязательный вопрос." : undefined;
     const label = `${field.label}${field.required ? " *" : ""}`;
     if (field.type === "Checkbox") return <div key={field.id}><label className="check"><input type="checkbox" required={field.required} checked={value === "true"} aria-invalid={Boolean(error)} onChange={e => change(String(e.target.checked))} /><span>{label}{currency && field.amount > 0 && <small> +{formatMoney(field.amount, currency)}{field.perDay ? " за день" : ""}</small>}</span></label>{field.hint && <p className="muted">{field.hint}</p>}{error && <small className="field-error" role="alert">{error}</small>}</div>;
-    return <Field key={field.id} label={label} hint={field.hint ?? undefined} error={error}>{field.type === "Choice" ? <select required={field.required} value={value} onChange={e => change(e.target.value)}><option value="">Выберите вариант</option>{field.options.map(option => <option key={option.id} value={option.id}>{option.label}{currency && option.amount > 0 ? ` (+${formatMoney(option.amount, currency)}${field.perDay ? " за день" : ""})` : ""}</option>)}</select>
-      : field.type === "Multiline" ? <textarea required={field.required} maxLength={2000} value={value} onChange={e => change(e.target.value)} /> : <input required={field.required} maxLength={400} value={value} onChange={e => change(e.target.value)} />}</Field>;
+    return <Field key={field.id} label={label} hint={field.hint ?? undefined} error={error}>{field.type === "Choice" ? <select required={field.required} aria-invalid={Boolean(error)} value={value} onChange={e => change(e.target.value)}><option value="">Выберите вариант</option>{field.options.map(option => <option key={option.id} value={option.id}>{option.label}{currency && option.amount > 0 ? ` (+${formatMoney(option.amount, currency)}${field.perDay ? " за день" : ""})` : ""}</option>)}</select>
+      : field.type === "Multiline" ? <textarea required={field.required} aria-invalid={Boolean(error)} maxLength={2000} value={value} onChange={e => change(e.target.value)} /> : <input required={field.required} aria-invalid={Boolean(error)} maxLength={400} value={value} onChange={e => change(e.target.value)} />}</Field>;
   })}</div>;
 }
 export function CampQuote({ quote, title = "Расчёт стоимости" }: { quote: CampRegistrationQuote; title?: string }) {

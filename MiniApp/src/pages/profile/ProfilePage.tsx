@@ -1,20 +1,18 @@
 import { useBackButton, BackButtonScope } from "../../hooks/useBackButton";
-import { CampPrivacy, CampProfileProvider } from "./CampProfileContext";
+import { CampProfileProvider } from "./CampProfileContext";
 import { WishlistPanel } from "../../components/Wishlist";
 import { PlayedHistory } from "./PlayedHistory";
 import { CampPersonalWishes } from "../games/CampWishlist";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { ChangelogPage } from "./ChangelogPage";
-import { NotificationSettings } from "./NotificationSettings";
-import { ProfileDeletion } from "./ProfileDeletion";
+import { ProfileSettings, type ProfileSettingSection } from "./ProfileSettings";
 import { useEffect, useState } from "react";
-import { api, json, download } from "../../api/client";
+import { api, download } from "../../api/client";
 import type { Community, Profile, ProfileGathering } from "../../api/types";
-import { BackButton, Empty, ErrorState, Field, Loading, Notice, Page, ProductFooter, SaveButton, Tabs } from "../../components/Ui";
+import { BackButton, Empty, ErrorState, Loading, Notice, Page, ProductFooter, Tabs } from "../../components/Ui";
 import { useAsync } from "../../hooks/useAsync";
-import { telegram } from "../../telegram/webApp";
 import { BotStartNotice } from "../../components/BotStartNotice";
-import { ProfileCollectionPage, CampRegistrationSettings } from "./ProfileCollectionPage";
+import { ProfileCollectionPage } from "./ProfileCollectionPage";
 import { ProfileScheduleList, profileScheduleEmptyText } from "./ProfileScheduleList";
 
 type ProfileProps = { initialTab?: string; initialGameId?: number; back?: () => void; community?: Community; communities: Community[]; bggAvailable: boolean; editRequest?: number; onEditRequestConsumed?: () => void; openGathering: (communityKey: string, gatheringId: string) => void };
@@ -27,23 +25,11 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   const [tab, setTab] = useState(() => initialTab ?? new URLSearchParams(location.search).get("profileTab") ?? sessionStorage.getItem(`oyinq-profile-tab:${community?.key ?? "global"}`) ?? "collection");
   useBackButton(Boolean(back), () => back?.());
   const [showChangelog, setShowChangelog] = useState(false);
+  const [setting, setSetting] = useState<ProfileSettingSection>();
   useEffect(() => { sessionStorage.setItem(`oyinq-profile-tab:${community?.key ?? "global"}`, tab); }, [tab, community?.key]);
-  useEffect(() => { if (editRequest > 0) { setTab("settings"); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
-  const [name, setName] = useState("");
+  useEffect(() => { if (editRequest > 0) { setTab("settings"); setSetting("registration"); onEditRequestConsumed?.(); } }, [editRequest, onEditRequestConsumed]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (profile.data) setName(profile.data.preferredDisplayName ?? ""); }, [profile.data]);
-
-  async function save() {
-    if (busy) return;
-    setBusy(true); setError(undefined);
-    try {
-      await api<Profile>("/profile", json("PUT", { displayName: name }));
-      telegram.success("Профиль сохранён");
-      profile.reload();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
-  }
 
   if (showChangelog) return <BackButtonScope><ChangelogPage back={() => setShowChangelog(false)} /></BackButtonScope>;
   if (profile.loading && !profile.data) return <Page title="Профиль"><Loading /></Page>;
@@ -52,24 +38,10 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   return <BackButtonScope><div className="profile-screen"><Page title="Профиль" subtitle={profile.data.preferredDisplayName || profile.data.telegramDisplayName}>
     {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
-    <ProfileTabs active={tab} select={setTab} />
-    <div hidden={tab !== "collection"}><BackButtonScope active={tab === "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => setTab("settings")} /></BackButtonScope></div>
+    <ProfileTabs active={tab} select={next => { setSetting(undefined); setTab(next); }} />
+    <div hidden={tab !== "collection"}><BackButtonScope active={tab === "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => { setSetting("registration"); setTab("settings"); }} /></BackButtonScope></div>
     {tab === "wishes" && (community ? community.mode === "Camp" ? <CampPersonalWishes key={community.key} community={community} bggAvailable={bggAvailable} openGathering={id => openGathering(community.key, id)} /> : <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <Empty>Выберите сообщество, чтобы посмотреть свои хотелки. <a href="?tab=communities">Выбрать сообщество</a></Empty>)}
-    {tab === "settings" && <>
-    <section className="content-section form-grid profile-identity">
-      <h2>Как вас показывать</h2>
-      <Field label="Имя" hint="Так вас будут видеть в сборах, уведомлениях и других сообществах. Если оставить поле пустым, возьмём имя из Telegram.">
-        <input maxLength={128} value={name} onChange={event => setName(event.target.value)} placeholder={profile.data.telegramDisplayName} />
-      </Field>
-      <div><span className="muted">В Telegram</span><p>{profile.data.telegramDisplayName}{profile.data.telegramUsername ? ` · @${profile.data.telegramUsername}` : ""}</p></div>
-      {error && <Notice kind="danger">{error}</Notice>}
-      <SaveButton busy={busy} label="Сохранить профиль" onClick={save} />
-    </section>
-    {community?.mode === "Camp" && <CampPrivacy community={community} />}
-    {!profile.data.botStartRequired && <p className="profile-bot-status">Личный чат с ботом открыт</p>}
-    <NotificationSettings />
-    {community?.mode === "Camp" && <CampRegistrationSettings community={community} />}
-    <ProfileDeletion /></>}
+    {tab === "settings" && <ProfileSettings community={community} profile={profile.data} reloadProfile={profile.reload} section={setting} open={setSetting} />}
     {tab === "calendar" && <section className="profile-schedule"><h2>Моё расписание</h2>
       <button disabled={busy} onClick={async () => { setBusy(true); setError(undefined); try { await download("/profile/gatherings.ics", "oyinq-agenda.ics"); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }}>Скачать календарь (.ics)</button>
       <p className="muted">Файл текущего расписания. После изменений скачайте его заново; окончание игр оценочное.</p>

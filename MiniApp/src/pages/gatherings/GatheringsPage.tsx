@@ -23,7 +23,7 @@ import { resolvePlayerCountRange, fitPlayerLimits, type PlayerLimits } from "./p
 import { GatheringPlayerLimits } from "./GatheringPlayerLimits";
 import { GatheringExpansionPicker, emptyExpansionOwnership } from "./GatheringExpansionPicker";
 import { gatheringDateTimeBounds, isWithinCampDateRange, revalidateGatheringStart } from "./gatheringDateRange";
-import { GatheringBggLink, GatheringCollectionAction, GatheringTypeTag } from "./GatheringGameMetadata";
+import { GatheringCollectionAction, GatheringTypeTag } from "./GatheringGameMetadata";
 import { BotStartNotice } from "../../components/BotStartNotice";
 import { GameTaxonomy } from "../../components/GameTaxonomy";
 import { gatheringStatusTone, participationStatusTone } from "../../app/semanticTones";
@@ -72,9 +72,9 @@ function GatheringList({ community, listState, setListState, open, create }: { c
               {item.card.recruitment?.belowDesired && item.status !== "Closed" && <p className="gathering-card-activity">{item.card.recruitment.text}</p>}
               <div className="gathering-card-meta"><span>{item.card.rulesText}</span><ComplexityBadge info={item.card.complexityInfo} /></div>
               {item.card.cancellationReason && <p className="gathering-card-cancellation">Причина: {item.card.cancellationReason}</p>}
+              <span className="gathering-card-open">Открыть сбор <span aria-hidden>→</span></span>
             </div>
           </button>
-          <footer className="gathering-card-footer"><button className="ghost" onClick={() => open(item.card.publicId)}>Открыть сбор <span aria-hidden>→</span></button><GatheringBggLink bggUrl={item.card.bggUrl} compact /></footer>
         </article>)}</div>
       </section>)}</div>{(result.hasPrevious || result.hasNext) && <div className="row gathering-pagination"><button disabled={!result.hasPrevious} onClick={() => setListState({ ...listState, page: page - 1 })}>Назад</button><span className="muted">Страница {page}</span><button disabled={!result.hasNext} onClick={() => setListState({ ...listState, page: page + 1 })}>Дальше</button></div>}</>}
   </Page></div>;

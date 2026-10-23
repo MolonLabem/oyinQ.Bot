@@ -95,6 +95,8 @@ it("shows optional hiding only in Camp settings and saves each server choice sep
   await click("Хотелки"); expect(host.querySelector(".camp-privacy")).toBeNull();
   expect(host.querySelector('[href*="camp-privacy"]')).toBeNull();
   await click("Настройки");
+  expect(host.querySelector(".camp-privacy")).toBeNull();
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-setting="privacy"]')!.click());
   const choices = host.querySelectorAll<HTMLInputElement>('.camp-privacy input[type="checkbox"]');
   expect(choices).toHaveLength(2); expect([...choices].every(x => !x.checked)).toBe(true);
   expect(host.querySelector(".camp-privacy")?.textContent).toContain("Видимость в этом кэмпе");

@@ -20,7 +20,8 @@ internal static class CatalogEndpoints
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, ct);
         if (access is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
-        return Results.Ok(await service.DemandAsync(community, access.Community.Mode, access.Identity.TelegramUserId, ct));
+        try { return Results.Ok(await service.DemandAsync(community, access.Community.Mode, access.Identity.TelegramUserId, ct)); }
+        catch (Exception e) { return MiniAppEndpointSupport.FromException(e); }
     }
 
     private static async Task<IResult> DemandGameAsync(HttpRequest request, string community, long bggId,
