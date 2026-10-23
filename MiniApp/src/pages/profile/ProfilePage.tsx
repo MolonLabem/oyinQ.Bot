@@ -32,11 +32,10 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   if (profile.loading && !profile.data) return <Page title="Профиль" hideTitle><Loading /></Page>;
   if (profile.error) return <Page title="Профиль" hideTitle><ErrorState message={profile.error} retry={profile.reload} /></Page>;
   if (!profile.data) return null;
-  return <BackButtonScope><div className="profile-screen"><Page title="Профиль" hideTitle
-    actions={<button type="button" className="ghost profile-changelog" onClick={() => setShowChangelog(true)}>Что нового?</button>}>
+  return <BackButtonScope><div className="profile-screen"><Page title="Профиль" hideTitle>
     {back && <BackButton onClick={back} />}
     <BotStartNotice required={profile.data.botStartRequired} startUrl={profile.data.startUrl} refresh={profile.reload} />
-    <ProfileTabs active={tab} select={next => { setSetting(undefined); setTab(next); }} />
+    <ProfileTabs active={tab} select={next => { setSetting(undefined); setTab(next); }} showUpdates={() => setShowChangelog(true)} />
     <div hidden={tab !== "collection"}><BackButtonScope active={tab === "collection"}><ProfileCollectionPage key={`collection-${community?.key ?? "global"}`} community={community} bggAvailable={bggAvailable} initialGameId={initialGameId} editRegistration={() => { setSetting("registration"); setTab("settings"); }} /></BackButtonScope></div>
     {tab === "wishes" && (community ? community.mode === "Camp" ? <CampPersonalWishes key={community.key} community={community} bggAvailable={bggAvailable} openGathering={id => openGathering(community.key, id)} /> : <WishlistPanel community={community} bggAvailable={bggAvailable} /> : <Empty>Выберите сообщество, чтобы посмотреть свои хотелки. <a href="?tab=communities">Выбрать сообщество</a></Empty>)}
     {tab === "settings" && <ProfileSettings community={community} profile={profile.data} reloadProfile={profile.reload} section={setting} open={setSetting} />}
@@ -48,9 +47,9 @@ function ProfileContent({ community, communities, openGathering, bggAvailable, e
   </Page></div></BackButtonScope>;
 }
 
-export function ProfileTabs({ active, select }: { active: string; select: (tab: string) => void }) {
-  return <Tabs className="profile-tabs" label="Разделы профиля" active={active} onChange={select} items={[
+export function ProfileTabs({ active, select, showUpdates }: { active: string; select: (tab: string) => void; showUpdates?: () => void }) {
+  return <div className="profile-toolbar"><Tabs className="profile-tabs" label="Разделы профиля" active={active} onChange={select} items={[
     { id: "collection", label: "Игры" }, { id: "wishes", label: "Хотелки" }, { id: "calendar", label: "Календарь" },
     { id: "settings", label: "Настройки" }
-  ]} />;
+  ]} />{showUpdates && <button type="button" className="profile-changelog" aria-label="Что нового?" title="Что нового?" onClick={showUpdates}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 5 2.2 5.8L20 13l-5.8 2.2L12 21l-2.2-5.8L4 13l5.8-2.2L12 5ZM4 3v4M2 5h4M20 2v4M18 4h4" /></svg></button>}</div>;
 }
