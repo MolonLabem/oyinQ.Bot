@@ -7,7 +7,7 @@ import type { GameProvider, RecruitmentState } from "../api/types";
 type DashboardItem = { recruitment?: RecruitmentState; publicId: string; communityKey: string; community: string; gameName: string; localDateTime: string; isOrganizer: boolean; isToday: boolean; waitlistPosition?: number; belowMinimum: boolean; fullWithWaitlist: boolean; startingSoon: boolean; recentlyCancelled: boolean; publicationFailed: boolean; deliveryProblems: number; notificationUnavailableParticipants: number; needsPlayConfirmation?: boolean; provider: GameProvider };
 type Dashboard = { items: DashboardItem[]; hasMore: boolean; camp?: { registeredToday: number; gatheringsToday: number; bringingGames: number; availableGames: number } };
 
-export function GatheringDashboard({ communityKey, open }: { communityKey?: string; open: (key: string, id: string) => void }) {
+export function GatheringDashboard({ communityKey, open, collapsible = false }: { communityKey?: string; open: (key: string, id: string) => void; collapsible?: boolean }) {
   const personal = communityKey === undefined;
   const state = useAsync(() => api<Dashboard>(personal ? "/profile/dashboard" : `/gatherings/dashboard?community=${encodeURIComponent(communityKey!)}`), [communityKey]);
   const [busyId, setBusyId] = useState<string>(); const [error, setError] = useState<string>();
@@ -20,8 +20,8 @@ export function GatheringDashboard({ communityKey, open }: { communityKey?: stri
     : item.recentlyCancelled || item.recruitment?.belowDesired
     || item.fullWithWaitlist || !item.provider.isConfirmed || item.startingSoon || item.publicationFailed
     || item.deliveryProblems > 0 || item.notificationUnavailableParticipants > 0 || item.needsPlayConfirmation);
-  return <section className="planning-dashboard" aria-label="Сборы, требующие внимания">
-    <h2>{personal ? "Сегодня и требует внимания" : "Требуют внимания"}</h2>
+  if (collapsible && !rows.length && !state.data?.hasMore) return null;
+  const content = <>
     {state.data?.camp && <Notice>Сегодня зарегистрированы: {state.data.camp.registeredToday}. Игр точно привезут: {state.data.camp.bringingGames}, могут привезти: {state.data.camp.availableGames}.</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}
     {!rows.length && <Empty>{personal ? "Здесь появятся ваши сборы, ожидание места и игры, для которых вы можете привезти коробку." : "Нет сборов, требующих действий администратора."}</Empty>}
@@ -40,5 +40,9 @@ export function GatheringDashboard({ communityKey, open }: { communityKey?: stri
       {item.deliveryProblems > 0 && <Notice kind="warning">Не подтверждена доставка важных уведомлений: {item.deliveryProblems}. Свяжитесь с участниками через сбор.</Notice>}
     </Card>)}
     {state.data?.hasMore && <Notice>Обзор ограничен первыми 200 сборами каждой выборки. Полное расписание доступно в календаре и списке сборов.</Notice>}
+  </>;
+  return <section className="planning-dashboard" aria-label="Сборы, требующие внимания">
+    {collapsible ? <details className="calendar-attention"><summary>Требуют внимания · {rows.length}{state.data?.hasMore ? "+" : ""}</summary><div className="stack">{content}</div></details>
+      : <><h2>{personal ? "Сегодня и требует внимания" : "Требуют внимания"}</h2>{content}</>}
   </section>;
 }

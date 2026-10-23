@@ -3,10 +3,10 @@ import { successEventName } from "../telegram/webApp";
 import { telegram } from "../telegram/webApp";
 import type { BadgeTone } from "../app/semanticTones";
 
-export function Page({ as: Element = "main", title, titleHref, subtitle, actions, children, preserveScroll = false }: { as?: "main" | "section"; title?: string; titleHref?: string; subtitle?: string; actions?: ReactNode; children: ReactNode; preserveScroll?: boolean }) {
+export function Page({ as: Element = "main", title, titleHref, subtitle, actions, children, preserveScroll = false, hideTitle = false }: { as?: "main" | "section"; title?: string; titleHref?: string; subtitle?: string; actions?: ReactNode; children: ReactNode; preserveScroll?: boolean; hideTitle?: boolean }) {
   useEffect(() => { if (!preserveScroll) window.scrollTo({ top: 0, behavior: "auto" }); }, [title, preserveScroll]);
-  const hasHeading = Boolean(title || subtitle);
-  return <Element className="page">{(hasHeading || actions) && <header className={`page-header${hasHeading ? "" : " actions-only"}`}>{hasHeading && <div>{title && <h1>{titleHref ? <a className="page-title-link" href={titleHref} target="_blank" rel="noreferrer">{title}</a> : title}</h1>}{subtitle && <p>{subtitle}</p>}</div>}{actions}</header>}{children}</Element>;
+  const hasHeading = Boolean(!hideTitle && title || subtitle);
+  return <Element className="page">{hideTitle && title && <h1 className="visually-hidden">{title}</h1>}{(hasHeading || actions) && <header className={`page-header${hideTitle ? " compact" : hasHeading ? "" : " actions-only"}`}>{hasHeading && <div>{!hideTitle && title && <h1>{titleHref ? <a className="page-title-link" href={titleHref} target="_blank" rel="noreferrer">{title}</a> : title}</h1>}{subtitle && <p>{subtitle}</p>}</div>}{actions}</header>}{children}</Element>;
 }
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <section className={`card ${className}`}>{children}</section>; }
 export function FormSection({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {

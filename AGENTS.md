@@ -225,6 +225,7 @@ BG Stats — только документированная HTTPS-ссылка,
 
 ## Connected planning
 
+- `ProfileCalendar` presents the authorized profile agenda as a read-only month/day picker. Markers and selected-day rows use server-owned `localDate`/`localTime`; never regroup those values by browser-zone UTC conversion. Navigation is client-only, selected dates persist per context, and keyboard focus follows date navigation. Keep the global ICS source and the existing gathering open callbacks; attention actions and played history remain available through compact disclosures.
 - Creation replay is scoped by participant/community/operation ID and checked again under CommunityMutationLock. GatheringPublication.Request owns publication revisions; mutations must preserve Preparing, Delivering and DeliveryUnknown. Only the publication service/worker claim and finish send attempts. No automatic repost after an ambiguous new send.
 - GatheringPlayTiming owns estimated duration for conflict intervals, agenda, ICS and play-confirmation reminders. Profile agenda and ICS share the same independently authorized community selection. Copying a gathering goes through GatheringManagementService with a server-loaded original snapshot and an empty new roster; demand creation uses a scoped server-owned wish snapshot without changing ownership or enrolling interested participants.
 - Contracts, migration rollout and cross-module verification: docs/connected-planning.md.

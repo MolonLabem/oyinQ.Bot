@@ -53,8 +53,11 @@ function GatheringList({ community, listState, setListState, open, create }: { c
   useRefresh(state.reload);
   const selectView = (next: GatheringListView) => setListState(changeGatheringView(listState, next));
   const selectHistoryFilter = (next: GatheringHistoryFilter) => setListState(changeGatheringHistoryFilter(listState, next));
-  return <div className="gathering-list-screen"><Page title="Сборы" actions={<button className="primary" onClick={create}>Создать сбор</button>}>
+  return <div className="gathering-list-screen"><Page title="Сборы" hideTitle>
+    <div className="gathering-list-toolbar">
     <Tabs label="Раздел сборов" active={view} onChange={id => selectView(id as GatheringListView)} items={[{ id: "upcoming", label: "Предстоящие" }, { id: "history", label: "История" }]} />
+    <button className="primary" onClick={create}>Создать сбор</button>
+    </div>
     {view === "upcoming" && <SegmentedControl label="Наличие мест" active={seats} onChange={id => setListState(changeGatheringSeats(listState, id as GatheringSeatFilter))} items={[{ id: "all", label: "Все" }, { id: "available", label: "Есть места" }, { id: "full", label: "Мест нет" }]} />}
     {view === "history" && <SegmentedControl className="history-filters" label="Фильтр истории" active={historyFilter} onChange={id => selectHistoryFilter(id as GatheringHistoryFilter)} items={[{ id: "all", label: "Все" }, { id: "completed", label: "Завершены" }, { id: "cancelled", label: "Отменены" }]} />}
     {result && state.error && <ErrorState message={state.error} retry={state.reload} />}
