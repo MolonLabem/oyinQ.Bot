@@ -181,13 +181,13 @@ it("defaults to ten games, retains selection across pages, and remembers a chang
   await click("Выбрать страницу"); expect(host.textContent).toContain("Выбрано: 11");
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Предыдущая страница"]')!.click());
   expect(checks()[0].checked).toBe(true);
-  await act(async () => {
-    const select = host.querySelector<HTMLSelectElement>('[aria-label="Игр на странице"]')!;
-    select.value = "20"; select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await nextPage();
+  await act(async () => host.querySelector<HTMLInputElement>('.collection-page-size input[value="20"]')!.click());
   expect(cards()).toHaveLength(20); expect(host.textContent).toContain("Выбрано: 11");
+  expect(host.textContent).toContain("Страница 1 из 2");
   await act(async () => root.render(null)); await mount();
   expect(cards()).toHaveLength(20); expect(deletes()).toHaveLength(0);
+  expect(host.querySelector<HTMLInputElement>('.collection-page-size input[value="20"]')!.checked).toBe(true);
 });
 
 it("searches the entire collection and returns to page one when the query changes", async () => {

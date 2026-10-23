@@ -8,7 +8,7 @@ import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import { ExpansionPicker } from "../../components/ExpansionPicker";
 import { groupCollectionItems } from "../../app/collectionGroups";
 import { BrowseSearch } from "../../components/BrowseSearch";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { api, json } from "../../api/client";
 import type { CampImport, ClubGame, Community, Contribution, PersonalCollectionItem, ImportDraftItem } from "../../api/types";
 import { Badge, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
@@ -45,6 +45,7 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
     const saved = Number(sessionStorage.getItem(pageKey));
     return Number.isSafeInteger(saved) && saved > 0 ? saved : 1;
   });
+  const pageSizeName = useId();
   const [pageSize, setPageSize] = useState(() => {
     const saved = Number(sessionStorage.getItem("oyinq-collection-page-size"));
     return [10, 20, 50].includes(saved) ? saved : 10;
@@ -186,7 +187,6 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
       </>}
       <div className="collection-search">
         <BrowseSearch label="Найти игру" placeholder="Найти игру" disabled={removing} value={listQuery} onChange={value => { setListQuery(value); setPage(1); }} />
-        {collectionGroups.length > 10 && <label className="collection-page-size"><span className="visually-hidden">На странице</span><select aria-label="Игр на странице" disabled={removing} value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{[10, 20, 50].map(size => <option key={size} value={size}>{size} / стр.</option>)}</select></label>}
       </div>
       {community?.mode === "Camp" && <div className="wish-filters">{[["all", "Все"], ["Bringing", "Точно привезу"], ["Available", "Могу привезти"]].map(([value, label]) => <button key={value} disabled={removing} className={filter === value ? "filter-chip active" : "filter-chip"} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{label}</button>)}</div>}
       {selecting && <div className="row collection-selection" aria-busy={removing}>
@@ -205,6 +205,12 @@ export function ProfileCollectionPage({ community, bggAvailable, editRegistratio
         <span className="muted" role="status"><span>Страница {currentPage} из {pageCount}</span><small>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, collectionGroups.length)} из {collectionGroups.length}</small></span>
         <button type="button" disabled={removing || currentPage === pageCount} onClick={() => changePage(currentPage + 1)} aria-label="Следующая страница">Дальше</button>
       </nav>}
+      {collectionGroups.length > 10 && <fieldset className="collection-page-size" disabled={removing}>
+        <legend className="visually-hidden">Игр на странице</legend><span aria-hidden="true">На странице</span>
+        <div className="page-size-options">{[10, 20, 50].map(size => <label key={size}>
+          <input type="radio" name={pageSizeName} value={size} aria-label={`${size} игр на странице`} checked={pageSize === size} onChange={() => { setPageSize(size); setPage(1); }} /><span>{size}</span>
+        </label>)}</div>
+      </fieldset>}
       </div>
       {anchor.notice && <p role="status">{anchor.notice}</p>}
     </section>
