@@ -1,5 +1,5 @@
 import { BackButtonScope } from "../hooks/useBackButton";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Bootstrap, Capabilities, Community } from "../api/types";
 import { Navigation } from "../components/Navigation";
@@ -42,7 +42,7 @@ function ActiveApp() {
       const url = new URL(link.href);
       if (url.searchParams.get("community") !== communityKey) return;
       event.preventDefault();
-      setProfileVisit(current => ({ tab: url.searchParams.get("profileTab") ?? "collection", game: positiveGameId(url.searchParams.get("box")), scroll: current?.scroll ?? window.scrollY }));
+      setProfileVisit(current => ({ tab: url.searchParams.get("profileTab") ?? "collection", game: positiveGameId(url.searchParams.get("box")), scroll: current?.scroll ?? window.scrollY, trigger: current?.trigger ?? link }));
       window.scrollTo(0, 0);
     };
     document.addEventListener("click", openProfile);
@@ -56,7 +56,10 @@ function ActiveApp() {
   const [collectionReturnGatheringId, setCollectionReturnGatheringId] = useState<string>();
   const [profileReturnCommunityKey, setProfileReturnCommunityKey] = useState<string>();
   const [registrationEditRequest, setRegistrationEditRequest] = useState(0);
-  const [profileVisit, setProfileVisit] = useState<{ tab: string; game?: number; scroll: number }>();
+  const [profileVisit, setProfileVisit] = useState<{ tab: string; game?: number; scroll: number; trigger: HTMLAnchorElement }>();
+  const profileEntry = useRef<HTMLDivElement>(null);
+  const profileSource = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (profileVisit) profileEntry.current?.focus({ preventScroll: true }); }, [profileVisit]);
   useEffect(() => { if (!communityKey && bootstrap?.communities.length === 1) setCommunityKey(bootstrap.communities[0].key); }, [bootstrap]);
   useEffect(() => { if (communityKey) localStorage.setItem("oyinq-community", communityKey); }, [communityKey]);
   const community = useMemo(() => bootstrap?.communities.find(x => x.key === communityKey), [bootstrap, communityKey]);
@@ -88,7 +91,7 @@ function ActiveApp() {
   const backToProfile = profileReturnCommunityKey !== undefined ? () => { setCommunityKey(profileReturnCommunityKey); setProfileReturnCommunityKey(undefined); setTab("profile"); } : undefined;
   const content = activeTab === "gatherings" ? <GatheringsPage initialGameId={creationGameId} onGameConsumed={() => setCreationGameId(undefined)} key={community.key} community={community} bggAvailable={capabilities.boardGameGeekAvailable} initialGatheringId={initialGatheringId} onInitialConsumed={() => setInitialGatheringId(undefined)} editRegistration={editRegistration} openCollection={openCollection} backFromInitial={backToProfile} /> : activeTab === "games" ? <GamesPage createGathering={id => { setCreationGameId(id); setInitialGatheringId(undefined); setTab("gatherings"); }} openGathering={id => { setInitialGatheringId(id); setTab("gatherings"); }} bggAvailable={capabilities.boardGameGeekAvailable} community={community} initialGameId={initialCollectionGameId} onInitialConsumed={() => setInitialCollectionGameId(undefined)} backToGathering={backToGathering} /> : <ProfilePage community={community} communities={bootstrap.communities} openGathering={openProfileGathering} bggAvailable={capabilities.boardGameGeekAvailable} editRequest={registrationEditRequest} onEditRequestConsumed={() => setRegistrationEditRequest(0)} />;
   const gatedContent = community.mode === "Camp" && activeTab !== "profile" ? <CampRegistrationGate community={community} canOpenAdminPanel={bootstrap.canOpenAdminPanel}>{content}</CampRegistrationGate> : content;
-  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} /><span className="context-name">{community.name}</span><span className="context-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="m4 6 4 4 4-4" /></svg></span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}<FullscreenButton /></div></header><div className="content"><div hidden={Boolean(profileVisit)}><BackButtonScope active={!profileVisit}>{gatedContent}</BackButtonScope></div>{profileVisit && <ProfilePage key={`${profileVisit.tab}:${profileVisit.game ?? ""}`} community={community} communities={bootstrap.communities} bggAvailable={capabilities.boardGameGeekAvailable} openGathering={openProfileGathering} initialTab={profileVisit.tab} initialGameId={profileVisit.game} back={() => { const scroll = profileVisit.scroll; setProfileVisit(undefined); requestAnimationFrame(() => window.scrollTo(0, scroll)); }} />}</div><Navigation tabs={tabs} active={profileVisit ? "profile" : activeTab} onChange={next => { setProfileVisit(undefined); setTab(next); }} /></div>;
+  return <div className="app-shell"><header className="context-bar"><button className="context-button" onClick={() => setCommunityKey("")}><span className={`mode-dot ${community.mode.toLowerCase()}`} /><span className="context-name">{community.name}</span><span className="context-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="m4 6 4 4 4-4" /></svg></span></button><div className="context-actions">{!capabilities.boardGameGeekAvailable && <span className="bgg-off" title={capabilities.boardGameGeekUnavailableReason}>BGG недоступен</span>}<FullscreenButton /></div></header><div className="content"><div ref={profileSource} role="region" aria-label={tabs.find(item => item.id === activeTab)?.label} tabIndex={-1} hidden={Boolean(profileVisit)}><BackButtonScope active={!profileVisit}>{gatedContent}</BackButtonScope></div>{profileVisit && <div ref={profileEntry} role="region" aria-label="Профиль" tabIndex={-1}><ProfilePage key={`${profileVisit.tab}:${profileVisit.game ?? ""}`} community={community} communities={bootstrap.communities} bggAvailable={capabilities.boardGameGeekAvailable} openGathering={openProfileGathering} initialTab={profileVisit.tab} initialGameId={profileVisit.game} back={() => { const { scroll, trigger } = profileVisit; setProfileVisit(undefined); requestAnimationFrame(() => { (trigger.isConnected && !trigger.closest("[hidden]") ? trigger : profileSource.current)?.focus({ preventScroll: true }); window.scrollTo(0, scroll); }); }} /></div>}</div><Navigation tabs={tabs} active={profileVisit ? "profile" : activeTab} onChange={next => { setProfileVisit(undefined); setTab(next); }} /></div>;
 }
 
 export function GlobalProfileShell({ profile, select, communities, children }: {

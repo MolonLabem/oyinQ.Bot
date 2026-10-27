@@ -38,7 +38,7 @@ beforeEach(() => {
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 async function telegramBack() { await act(async () => nativeBack.onClick.mock.calls.at(-1)![0]()); }
 async function profileTab(label: string) {
@@ -104,6 +104,67 @@ it("opens own box management in the unified profile and returns to the same wish
   await telegramBack(); // The retained original detail now handles Back again.
   expect(link.isConnected).toBe(false);
   expect(nativeBack.hide).toHaveBeenCalled();
+});
+
+it.each([
+  { savedTab: "settings", importId: undefined, refresh: false },
+  { savedTab: "calendar", importId: "active-import", refresh: false },
+  { savedTab: "settings", importId: undefined, refresh: true },
+])("opens the empty Camp recovery from $savedTab and preserves its import and Back context", async ({ savedTab, importId, refresh }) => {
+  sessionStorage.clear(); history.replaceState({}, "", "/?community=camp&tab=games");
+  sessionStorage.setItem("oyinq-profile-tab:camp", savedTab);
+  if (importId) localStorage.setItem("oyinq-profile-import", importId);
+  vi.stubGlobal("scrollY", 143);
+  const frames: FrameRequestCallback[] = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.push(callback); return frames.length; });
+  const community = { key: "camp", name: "Текущий кэмп", mode: "Camp" as const, timeZoneId: "UTC" };
+  discovery = async () => ({ communities: [community], canOpenAdminPanel: false, isSuperAdmin: false });
+  const previous = vi.mocked(api).getMockImplementation()!;
+  let populated = false;
+  vi.mocked(api).mockImplementation(async (path, options) => {
+    if (path.startsWith("/camp/registration")) return { startDate: "2026-10-27", endDate: "2026-10-28", registration: { registered: true } };
+    if (path.startsWith("/catalog")) return { total: populated ? 1 : 0, items: populated ? [{ bggId: 42, name: "Игра появилась", typeNames: [], expansions: [] }] : [], filters: { types: [], categories: [], providers: [] } };
+    if (path.startsWith("/camp-wishlist")) return new URL(path, "https://test").searchParams.get("view") === "settings"
+      ? { canAct: true, shareCollection: false, shareWishes: false, myDates: ["2026-10-27"], declinedGameIds: [], suggestedGameIds: [] } : [];
+    if (path.startsWith("/profile/collection/imports/active-import")) return { publicId: importId, status: "Running", stage: "Queued", bggUsername: "example", foundGames: 1, foundExpansions: 0, progressCurrent: 1, progressTotal: 2 };
+    return previous(path, options);
+  });
+  await act(async () => root.render(<App />));
+  const link = host.querySelector<HTMLAnchorElement>('.empty a[data-profile-nav]')!;
+  expect(link.textContent).toBe("Открыть «Игры» в профиле");
+  expect(new URL(link.href).searchParams.get("community")).toBe("camp");
+  expect(new URL(link.href).searchParams.get("profileTab")).toBe("collection");
+  link.focus();
+  await act(async () => link.click());
+  expect(document.activeElement).toBe(host.querySelector('[role="region"][aria-label="Профиль"]'));
+  expect(link.closest("[hidden]")).not.toBeNull();
+  expect(host.querySelector('.profile-tabs [aria-selected="true"]')?.textContent).toBe("Игры");
+  expect(host.querySelector(".context-name")?.textContent).toBe("Текущий кэмп");
+  if (importId) {
+    expect(host.textContent).toContain("Импорт выполняется в фоне");
+    expect(host.querySelector(".profile-collection")?.hasAttribute("hidden")).toBe(true);
+  } else expect(host.querySelector(".profile-collection")?.closest("[hidden]")).toBeNull();
+  if (importId) {
+    await telegramBack();
+    expect(link.closest("[hidden]")).not.toBeNull();
+    expect(host.textContent).toContain("Импорт BGG: выполняется");
+    const resume = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Открыть" && !button.closest("[hidden]"))!;
+    await act(async () => resume.click());
+    expect(host.querySelector(".profile-collection")?.hasAttribute("hidden")).toBe(true);
+    await telegramBack();
+  }
+  if (refresh) {
+    populated = true;
+    await act(async () => window.dispatchEvent(new Event("success")));
+  }
+  await telegramBack();
+  expect(link.isConnected).toBe(!refresh);
+  expect(link.closest("[hidden]")).toBeNull();
+  await act(async () => frames.splice(0).forEach(callback => callback(0)));
+  expect(document.activeElement).toBe(refresh ? host.querySelector('[role="region"][aria-label="Игры"]') : link);
+  expect(window.scrollTo).toHaveBeenCalledWith(0, 143);
+  expect(localStorage.getItem("oyinq-profile-import")).toBe(importId ?? null);
+  expect(vi.mocked(api).mock.calls.some(([, options]) => options?.method && options.method !== "GET")).toBe(false);
 });
 
 it("keeps the real personal collection available when community discovery fails", async () => {
