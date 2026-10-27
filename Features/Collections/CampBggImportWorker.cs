@@ -131,15 +131,22 @@ public sealed class CampBggImportWorker(
 
         await using var completionTransaction = await dbContext.Database.BeginTransactionAsync(CancellationToken.None);
         import.LeaseId = null; import.LeaseExpiresAt = null; import.UpdatedAt = timeProvider.GetUtcNow();
+        // Cancellation can commit after the last reload. Resolve it in the atomic write,
+        // preserving cancelled data rather than publishing this worker's staged result.
         var completed = await dbContext.CampBggImports.Where(x => x.Id == import.Id && x.LeaseId == leaseId)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.LeaseId, (Guid?)null).SetProperty(x => x.LeaseExpiresAt, (DateTimeOffset?)null)
-                .SetProperty(x => x.Status, import.Status).SetProperty(x => x.Stage, import.Stage)
-                .SetProperty(x => x.DraftJson, import.DraftJson).SetProperty(x => x.Error, import.Error)
-                .SetProperty(x => x.ProgressCurrent, import.ProgressCurrent).SetProperty(x => x.ProgressTotal, import.ProgressTotal)
-                .SetProperty(x => x.UpdatedAt, import.UpdatedAt), CancellationToken.None);
+                .SetProperty(x => x.Status, x => x.CancellationRequestedAt == null ? import.Status : CampBggImportStatus.Cancelled)
+                .SetProperty(x => x.Stage, x => x.CancellationRequestedAt == null ? import.Stage : BggImportStage.Cancelled)
+                .SetProperty(x => x.DraftJson, x => x.CancellationRequestedAt == null ? import.DraftJson : x.DraftJson)
+                .SetProperty(x => x.Error, x => x.CancellationRequestedAt == null ? import.Error : x.Error)
+                .SetProperty(x => x.ProgressCurrent, x => x.CancellationRequestedAt == null ? import.ProgressCurrent : x.ProgressCurrent)
+                .SetProperty(x => x.ProgressTotal, x => x.CancellationRequestedAt == null ? import.ProgressTotal : x.ProgressTotal)
+                .SetProperty(x => x.UpdatedAt, x => x.CancellationRequestedAt == null ? import.UpdatedAt : x.UpdatedAt), CancellationToken.None);
         dbContext.Entry(import).State = EntityState.Detached;
         if (completed == 0) return true;
-        if (import.Status == CampBggImportStatus.Completed)
+        var savedStatus = await dbContext.CampBggImports.Where(x => x.Id == import.Id)
+            .Select(x => x.Status).SingleAsync(CancellationToken.None);
+        if (savedStatus == CampBggImportStatus.Completed)
         {
             var userId = await dbContext.Participants.Where(x => x.Id == import.ParticipantId).Select(x => x.TelegramUserId).SingleAsync(stoppingToken);
             var communityKey = import.CampId is { } campId ? await dbContext.Camps.Where(x => x.Id == campId).Select(x => x.BotChatKey).SingleAsync(stoppingToken) : null;

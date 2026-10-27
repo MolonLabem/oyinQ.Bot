@@ -96,7 +96,7 @@ public sealed class CommunityDeletionService(
         foreach (var gathering in future)
         {
             GatheringRules.Cancel(gathering, "Сообщество удалено из OyinQ", now);
-            gathering.PublicationStatus = GatheringPublicationStatus.Pending;
+            GatheringPublication.Request(gathering);
         }
 
         var permissions = await dbContext.ChatAdminPermissions

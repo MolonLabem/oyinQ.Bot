@@ -63,6 +63,44 @@ public sealed partial class PostgreSqlStabilizationTests
     }
 
     [PostgreSqlFact]
+    public async Task CommunityDeletionDuringPublicationQueuesTheCancellationEdit()
+    {
+        await using var database = await Database.CreateAsync(); var actor = await SeedAsync(database);
+        Guid id;
+        await using (var seed = database.Open())
+            id = (await Management(seed, new Bgg()).CreateAsync((await seed.OyinQCommunities.SingleAsync()).ToBotCommunity(),
+                new(actor.TelegramUserId), Command(), default)).PublicId;
+        var entered = Signal(); var resume = Signal(); var sender = new PublicationSender(entered, resume);
+        using var handler = new PublicationBotHandler(); using var http = new HttpClient(handler);
+        var bot = new TelegramBotClient("123456:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO", http);
+        GatheringPublicationService Service(oyinQ.Bot.Data.AppDbContext db) => new(db, new CommunityStore(db),
+            new(sender, bot, new GatheringPresentationService(), NullLogger<GatheringTelegramPublisher>.Instance),
+            Time, NullLogger<GatheringPublicationService>.Instance);
+        await using var publishing = database.Open();
+        var sending = Service(publishing).PublishAsync(id, default);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            await using var deleting = database.Open();
+            await Deletion(deleting, actor.TelegramUserId).DeleteClubAsync(actor.TelegramUserId,
+                await deleting.Clubs.Select(x => x.Id).SingleAsync(), default);
+        }
+        finally { resume.TrySetResult(); }
+
+        Assert.True(await sending.WaitAsync(TimeSpan.FromSeconds(10)));
+        await using var verify = database.Open();
+        var saved = await verify.GameGatherings.SingleAsync();
+        Assert.Equal(oyinQ.Bot.Data.Entities.GatheringStatus.Cancelled, saved.Status);
+        Assert.Equal(oyinQ.Bot.Data.Entities.GatheringPublicationStatus.Pending, saved.PublicationStatus);
+        Assert.Equal(123, saved.TelegramMessageId);
+        Assert.True(await Service(verify).PublishAsync(id, default));
+        Assert.Equal(1, sender.Calls); Assert.Equal(1, handler.EditCount);
+        using var edited = System.Text.Json.JsonDocument.Parse(handler.LastBody);
+        Assert.Contains("Сообщество удалено из OyinQ", edited.RootElement.GetProperty("caption").GetString());
+        Assert.Equal(oyinQ.Bot.Data.Entities.GatheringPublicationStatus.Published, saved.PublicationStatus);
+    }
+
+    [PostgreSqlFact]
     public async Task ConcurrentCreationOperationCommitsOneGatheringAndReplaysWithoutBgg()
     {
         await using var database = await Database.CreateAsync(); var actor = await SeedAsync(database);

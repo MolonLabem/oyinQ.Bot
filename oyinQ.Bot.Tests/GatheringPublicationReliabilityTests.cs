@@ -2,7 +2,10 @@ using System.Net;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
+using oyinQ.Bot.Features.Admin;
 using oyinQ.Bot.Features.Communities;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Integrations.Telegram;
@@ -16,6 +19,31 @@ namespace oyinQ.Bot.Tests;
 
 public sealed class GatheringPublicationReliabilityTests
 {
+    [Fact]
+    public async Task CommunityDeletionDuringSendKeepsCancellationPendingAfterTheReceipt()
+    {
+        await using var f = new PlanningFixture();
+        var gathering = f.Gathering("club", f.Clock.Now.AddHours(1));
+        await f.Db.SaveChangesAsync();
+        var deletion = new CommunityDeletionService(f.Db,
+            new AdminAuthorizationService(f.Db, null!, Options.Create(new AdministrationOptions
+            { SuperAdminTelegramUserIds = new HashSet<long> { f.Me.TelegramUserId } }), f.Clock), f.Clock);
+        var revision = gathering.PublicationRevision;
+        var sender = new Sender
+        {
+            Sending = async () => await deletion.DeleteClubAsync(f.Me.TelegramUserId,
+                await f.Db.Clubs.Select(x => x.Id).SingleAsync(), default)
+        };
+
+        Assert.True(await Service(f, sender).PublishAsync(gathering.PublicId, default));
+
+        Assert.Equal(GatheringStatus.Cancelled, gathering.Status);
+        Assert.Equal(GatheringPublicationStatus.Pending, gathering.PublicationStatus);
+        Assert.Equal(revision + 1, gathering.PublicationRevision);
+        Assert.Equal(123, gathering.TelegramMessageId);
+        Assert.Equal(1, sender.Calls);
+    }
+
     [Fact]
     public async Task RecoveryDoesNotPublishOldNeverAnnouncedHistory()
     {
@@ -107,11 +135,16 @@ public sealed class GatheringPublicationReliabilityTests
 
     private sealed class Sender : ITelegramGroupMessageSender
     {
-        public int Calls; public Exception? Failure; public Func<Task>? Prepare;
+        public int Calls; public Exception? Failure; public Func<Task>? Prepare; public Func<Task>? Sending;
         public async Task<Func<CancellationToken, Task<Message>>> PrepareMessageAsync(string key, string text, ParseMode mode, ReplyMarkup? markup, CancellationToken ct)
         { if (Prepare is not null) await Prepare(); return token => SendMessageAsync(key, text, mode, markup, token); }
-        public Task<Message> SendMessageAsync(string key, string text, ParseMode mode, ReplyMarkup? markup, CancellationToken ct)
-        { Calls++; return Failure is null ? Task.FromResult(new Message { Id = 123, Chat = new Chat { Id = -1001 } }) : Task.FromException<Message>(Failure); }
+        public async Task<Message> SendMessageAsync(string key, string text, ParseMode mode, ReplyMarkup? markup, CancellationToken ct)
+        {
+            Calls++;
+            if (Sending is not null) await Sending();
+            if (Failure is not null) throw Failure;
+            return new Message { Id = 123, Chat = new Chat { Id = -1001 } };
+        }
         public Task<Message> SendPhotoAsync(string key, InputFile photo, string caption, ParseMode mode, ReplyMarkup? markup, CancellationToken ct) => SendMessageAsync(key, caption, mode, markup, ct);
     }
     private sealed class BotHandler : HttpMessageHandler
