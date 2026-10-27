@@ -34,10 +34,25 @@ export function Badge({ children, tone = "neutral", className = "" }: { children
 export type TabItem = { id: string; label: string };
 export function Tabs({ items, active, onChange, label, className = "", scrollActiveIntoView = true }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string; scrollActiveIntoView?: boolean }) {
   const activeButton = useRef<HTMLButtonElement>(null);
+  const [focused, setFocused] = useState(active);
+  const tabStop = items.some(item => item.id === focused) ? focused : active;
+  useEffect(() => { setFocused(active); }, [active]);
   useEffect(() => { if (scrollActiveIntoView) activeButton.current?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [active, scrollActiveIntoView]);
-  return <div className={`page-tabs ${className}`.trim()} role="tablist" aria-label={label}>{items.map(item => <button
+  return <div className={`page-tabs ${className}`.trim()} role="tablist" aria-label={label}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(active); }}>{items.map((item, index) => <button
     key={item.id} ref={active === item.id ? activeButton : undefined} type="button" role="tab"
+    tabIndex={item.id === tabStop ? 0 : -1} onFocus={() => setFocused(item.id)}
     aria-selected={active === item.id} className={active === item.id ? "active" : ""}
+    onKeyDown={event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const next = event.key === "ArrowRight" ? (index + 1) % items.length
+        : event.key === "ArrowLeft" ? (index + items.length - 1) % items.length
+        : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : undefined;
+      if (next === undefined) return;
+      event.preventDefault();
+      // Moving focus does not load a different section; Enter/Space use native button activation.
+      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+    }}
     onClick={() => onChange(item.id)}>{item.label}</button>)}</div>;
 }
 export function SegmentedControl({ items, active, onChange, label, className = "" }: { items: TabItem[]; active: string; onChange: (id: string) => void; label: string; className?: string }) {
