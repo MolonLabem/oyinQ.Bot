@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileScheduleList, profileScheduleEmptyText } from "./ProfileScheduleList";
 
 describe("profile gathering schedule", () => {
@@ -55,3 +55,6 @@ describe("profile gathering schedule", () => {
     expect(markup.match(/class="schedule-day"/g)).toHaveLength(2);
   });
 });
+
+beforeEach(() => vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" }));
+afterEach(() => vi.unstubAllGlobals());

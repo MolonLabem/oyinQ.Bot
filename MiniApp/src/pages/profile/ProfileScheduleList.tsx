@@ -1,3 +1,4 @@
+import { formatCalendarDate, formatLocalTime } from "../../app/format";
 import type { Community, ProfileGathering } from "../../api/types";
 import { CommunityAvatar } from "../../components/CommunityAvatar";
 
@@ -29,13 +30,11 @@ export function ProfileScheduleList({ items, communities, open, compact = false 
     <div className="stack">{day.items.map(item => {
       const itemCommunity = communities.find(value => value.key === item.communityKey)
         ?? { key: item.communityKey, name: item.communityName, mode: item.communityMode, timeZoneId: "UTC" };
-      return <button type="button" className="card profile-schedule-item" data-schedule-role={scheduleRole(item)} key={item.publicId} onClick={() => open(item.communityKey, item.publicId)}><time className="schedule-time" dateTime={item.localTime}>{item.localTime}</time>{!compact && <CommunityAvatar community={itemCommunity} />}<span><strong>{item.gameName}</strong><small>{compact && item.isOrganizer ? "Вы организатор · " : ""}{item.communityName}</small>{item.waitlistPosition && <small>Лист ожидания · позиция {item.waitlistPosition}</small>}{item.progress === "started" && <small>Сбор начался</small>}{item.progress === "awaitingOutcome" && <small>Ожидается подтверждение исхода</small>}</span>{!compact && item.isOrganizer && <span className="badge accent">Организатор</span>}</button>;
+      return <button type="button" className="card profile-schedule-item" data-schedule-role={scheduleRole(item)} key={item.publicId} onClick={() => open(item.communityKey, item.publicId)}><time className="schedule-time" dateTime={item.localTime}>{formatLocalTime(item.localTime)}</time>{!compact && <CommunityAvatar community={itemCommunity} />}<span><strong>{item.gameName}</strong><small>{compact && item.isOrganizer ? "Вы организатор · " : ""}{item.communityName}</small>{item.waitlistPosition && <small>Лист ожидания · позиция {item.waitlistPosition}</small>}{item.progress === "started" && <small>Сбор начался</small>}{item.progress === "awaitingOutcome" && <small>Ожидается подтверждение исхода</small>}</span>{!compact && item.isOrganizer && <span className="badge accent">Организатор</span>}</button>;
     })}</div>
   </section>)}</div>;
 }
 
 export function formatScheduleDay(value: string): string {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "long" })
-    .format(new Date(year, month - 1, day));
+  return formatCalendarDate(value, { weekday: "short", day: "numeric", month: "long" });
 }

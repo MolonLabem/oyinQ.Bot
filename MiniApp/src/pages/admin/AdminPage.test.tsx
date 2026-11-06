@@ -70,6 +70,7 @@ async function createCampFromKnownChat() {
 function title() { return host.querySelector("h1")?.textContent; }
 
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   vi.clearAllMocks();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal("scrollTo", vi.fn());
@@ -143,8 +144,8 @@ describe("camp creation", () => {
     await createCampFromKnownChat();
     await changeDate(0, "2026-10-10T18:30");
     await changeDate(1, "2026-10-12T11:45");
-    expect(host.querySelector(".review-list")?.textContent).toContain("10 октября 2026 г., 18:30");
-    expect(host.querySelector(".review-list")?.textContent).toContain("12 октября 2026 г., 11:45");
+    expect(host.querySelector(".review-list")?.textContent).toContain("10.10.2026, 18:30");
+    expect(host.querySelector(".review-list")?.textContent).toContain("12.10.2026, 11:45");
     await click("Создать кэмп");
     const request = writes().find(([path]) => path === "/admin/camps")!;
     expect(JSON.parse(String(request[1]?.body))).toEqual({

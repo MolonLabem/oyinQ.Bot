@@ -1,3 +1,4 @@
+import { formatCalendarDate } from "../app/format";
 import { useEffect, useRef, useState } from "react";
 import { api, json } from "../api/client";
 import type { Contribution } from "../api/types";
@@ -6,7 +7,7 @@ import { telegram } from "../telegram/webApp";
 
 export function attendanceLabel(dates: string[]) {
   const sorted = [...new Set(dates)].sort();
-  const format = (date: string) => new Date(`${date}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" });
+  const format = (date: string) => formatCalendarDate(date, { day: "numeric", month: "long" });
   const contiguous = sorted.every((d, i) => i === 0 || Date.parse(d) - Date.parse(sorted[i - 1]) === 86400000);
   return sorted.length > 1 && contiguous ? `${format(sorted[0])} — ${format(sorted[sorted.length - 1])}` : sorted.map(format).join(", ");
 }

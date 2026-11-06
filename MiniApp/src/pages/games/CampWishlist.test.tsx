@@ -18,6 +18,7 @@ const visible = (selector: string) => [...host.querySelectorAll<HTMLElement>(sel
 async function click(text: string) { const button = visible("button").find(x => x.getAttribute("aria-label") === text || x.textContent?.trim() === text || x.getAttribute("role") === "tab" && x.textContent?.startsWith(`${text} ·`) || x.querySelector("strong")?.textContent === text); expect(button, text).toBeTruthy(); await act(async () => button!.click()); }
 async function mount() { await act(async () => root.render(<CampWishlist community={community} bggAvailable={false} />)); }
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); sessionStorage.clear();
   HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); }; HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
   HTMLElement.prototype.scrollIntoView = vi.fn(); vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -30,7 +31,7 @@ beforeEach(() => {
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("defaults to all, keeps picker closed, sends filters and pagination to the server", async () => {
   await mount(); expect(visible('[aria-selected="true"]')[0].textContent).toBe("Все");

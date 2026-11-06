@@ -10,11 +10,12 @@ let host: HTMLDivElement; let root: Root;
 const open = vi.fn();
 const item = { gatheringId: "gathering", communityKey: "club", play: { publicId: "play", gameName: "Каркассон", endedAtUtc: "2026-10-23T23:30:00Z", community: "Клуб", timeZoneId: "Asia/Almaty", players: [{ name: "Анна" }] } };
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   vi.mocked(api).mockResolvedValue({ items: [item], hasNext: true });
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 async function toggle(value: boolean) { await act(async () => { const details = host.querySelector("details")!; details.open = value; details.dispatchEvent(new Event("toggle")); }); }
 async function click(text: string) { await act(async () => { [...host.querySelectorAll("button")].find(button => button.textContent?.includes(text))!.click(); }); }
 

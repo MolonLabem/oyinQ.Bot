@@ -15,6 +15,7 @@ const gathering = (id: string, date: string, utc: string, overrides: Partial<Pro
 let host: HTMLDivElement; let root: Root; let items: ProfileGathering[];
 const open = vi.fn();
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   vi.clearAllMocks(); vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-23T12:00:00Z"));
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); sessionStorage.clear();
   items = [
@@ -27,7 +28,7 @@ beforeEach(() => {
   vi.mocked(download).mockResolvedValue(undefined);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 async function mount(contextKey = "global") {
   await act(async () => root.render(<ProfileCalendar contextKey={contextKey} timeZoneId="Asia/Almaty" communities={[]} open={open} />));
 }

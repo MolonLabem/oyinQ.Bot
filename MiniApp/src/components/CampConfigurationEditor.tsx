@@ -1,3 +1,4 @@
+import { DateInput } from "./DateInput";
 import type { CampConfiguration, CampRegistrationField } from "../api/types";
 import { useEffect, useRef, useState } from "react";
 import { CampPricingPreview } from "./CampPricingPreview";
@@ -50,7 +51,7 @@ export function CampConfigurationEditor({ value, onChange, fieldsLocked = false,
         <div className="date-range"><Amount label="Доплата за жильё" value={pricing.accommodationAmount ?? 0} onChange={accommodationAmount => update({ pricing: { ...pricing, accommodationAmount } })} />
           <Field label="Доплата за жильё указана" hint="0 — без доплаты. Применяется при выборе «Нужно жильё»."><select value={pricing.accommodationPerDay ? "day" : "camp"} onChange={e => update({ pricing: { ...pricing, accommodationPerDay: e.target.value === "day" } })}><option value="camp">За весь кэмп</option><option value="day">За каждый выбранный день</option></select></Field></div>
         <div className="date-range"><Field label="Ранняя цена участия" hint="Необязательно. Оставьте пустым, если ранней цены нет."><input type="number" min="0" max="10000000" step="0.01" value={pricing.earlyAmount == null ? "" : Number.isFinite(pricing.earlyAmount) ? pricing.earlyAmount : ""} onChange={e => update({ pricing: { ...pricing, earlyAmount: e.target.value === "" ? null : e.target.valueAsNumber, earlyUntil: e.target.value === "" ? null : pricing.earlyUntil } })} /></Field>
-          <Field label="Последний день ранней цены" hint="Включительно, по часовому поясу кэмпа. Цена фиксируется при регистрации."><input type="date" disabled={pricing.earlyAmount == null} required={pricing.earlyAmount != null} value={pricing.earlyUntil ?? ""} onChange={e => update({ pricing: { ...pricing, earlyUntil: e.target.value || null } })} /></Field></div>
+          <Field label="Последний день ранней цены" hint="Включительно, по часовому поясу кэмпа. Цена фиксируется при регистрации."><DateInput disabled={pricing.earlyAmount == null} required={pricing.earlyAmount != null} value={pricing.earlyUntil ?? ""} onChange={value => update({ pricing: { ...pricing, earlyUntil: value || null } })} /></Field></div>
         <CampPricingPreview configuration={value} timeZoneId={timeZoneId} />
         <p className="muted">Сохранённая сумма меняется при изменении дней, жилья или ответов; изменение имени или города сохраняет прежнюю сумму.</p>
       </>}

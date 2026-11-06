@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { GatheringListItem } from "../../api/types";
 import { gatheringDays } from "./gatheringListPresentation";
 
@@ -39,3 +39,6 @@ it("keeps cards from older responses readable without guessing from localized da
   expect(days[0].items[0].time).toBeUndefined();
   expect(days[1].label).toBe("Сегодня");
 });
+
+beforeEach(() => vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" }));
+afterEach(() => vi.unstubAllGlobals());

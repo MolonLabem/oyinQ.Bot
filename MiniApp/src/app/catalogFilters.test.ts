@@ -1,3 +1,4 @@
+import { formatDate } from "./format";
 import { describe, expect, it } from "vitest";
 import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, normalizeFilters, showGames, yearFilterError } from "./catalogFilters";
 const options = { categories: [{ bggId: 2, name: "Экономика" }], types: [{ key: "Strategy" as const, value: "Стратегия" }], providers: [{ participantId: 4, displayName: "Анна" }] };
@@ -53,7 +54,7 @@ describe("contextual catalog filters", () => {
     expect(query.get("maxDurationMinutes")).toBe("90");
     expect(query.get("attendanceDate")).toBe("2026-09-18");
     expect(activeGroups(f)).toBe(4);
-    expect(filterChips(f, available).map(x => x.label)).toEqual(["2026-09-18", "До 90 мин", "Сложная", "Аукцион"]);
+    expect(filterChips(f, available).map(x => x.label)).toEqual([formatDate("2026-09-18"), "До 90 мин", "Сложная", "Аукцион"]);
     expect(normalizeFilters(f, "Club", available).attendanceDate).toBeUndefined();
   });
   it("removes obsolete and camp-only constraints from Club, including requests and counts", () => {

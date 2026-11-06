@@ -5,7 +5,7 @@ import { BackButton, Card, ErrorState, Field, Loading, Notice, Page } from "../.
 import { CampInformation, CampInformationSummary, CampQuote, CampRegistrationFields, hasCampInformation, requiredAnswersComplete } from "../../components/CampInformation";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
-import { formatDate, formatInstant } from "../../app/format";
+import { formatCalendarDate, formatDate, formatInstant } from "../../app/format";
 import { registrationSubmitEnabled, toggleRegistrationDate } from "./registrationLogic";
 
 export type RegistrationState = { shareCollection?: boolean; shareWishes?: boolean; campStatus: string; startsAtUtc?: string; endsAtUtc?: string; startDate?: string; endDate?: string; dateLabels?: Record<string, string>; availableDates: string[]; baseGameIds: number[]; configuration?: CampConfiguration; displayName?: string; registration?: { registered: boolean; daysStaying: number; selectedDates: string[]; suggestedDates: string[]; needsAccommodation: boolean; city?: string; displayName?: string; data?: { answers?: Record<string, string>; quote?: CampRegistrationQuote | null } } };
@@ -92,7 +92,7 @@ export function CampRegistrationForm({ community, state, done, cancel }: { commu
         <p className="muted">В выбранные дни можно создавать сборы и участвовать в них.</p>
         {state.availableDates.map(date => <label className={`check registration-day${selectedDates.includes(date) ? " selected" : ""}`} key={date}>
           <input type="checkbox" checked={selectedDates.includes(date)} onChange={() => setSelectedDates(current => toggleRegistrationDate(current, date))} />
-          {new Date(`${date}T00:00:00`).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" })}{state.dateLabels?.[date] ? ` · ${state.dateLabels[date]}` : ""}
+          {formatCalendarDate(date, { weekday: "short", day: "numeric", month: "long" })}{state.dateLabels?.[date] ? ` · ${state.dateLabels[date]}` : ""}
         </label>)}
         {validated && !selectedDates.length && <small className="field-error" role="alert">Выберите хотя бы один день.</small>}
       </fieldset>

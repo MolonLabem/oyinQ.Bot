@@ -1,4 +1,4 @@
-import { formatTime } from "../../app/format";
+import { formatCalendarDate, formatTime } from "../../app/format";
 import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
 import { useCampWishlistAction } from "../../hooks/useCampWishlistAction";
@@ -30,7 +30,7 @@ const defaults: Selection = { mode: "all", search: "", needsBox: false, withoutG
 function restore(key: string): Selection { try { return normalizeSelection({ ...defaults, ...JSON.parse(sessionStorage.getItem(key) ?? "{}") }); } catch { return defaults; } }
 function normalizeSelection(value: Selection): Selection { return { ...value, owned: value.mode === "bring" ? false : value.owned, showDeclined: value.mode === "bring" && value.showDeclined }; }
 const filterLabels = { needsBox: "Нужна коробка", withoutGathering: "Без сбора", owned: "Есть у меня", showDeclined: "Включая те, что не беру" } as const;
-const days = (dates: string[]) => dates.map(d => new Date(`${d}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" })).join(", ");
+const days = (dates: string[]) => dates.map(d => formatCalendarDate(d, { day: "numeric", month: "short" })).join(", ");
 const endpoint = (key: string, params = "") => `/camp-wishlist?community=${encodeURIComponent(key)}${params}`;
 export function CampWishlist(props: Props) { return <CampWishBrowser key={props.community.key} {...props} />; }
 export function CampPersonalWishes(props: Props) { return <CampWishBrowser key={props.community.key} {...props} personal />; }

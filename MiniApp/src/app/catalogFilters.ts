@@ -1,3 +1,4 @@
+import { formatDate } from "./format";
 import { wishlistCopy } from "./productCopy";
 import type { CatalogResponse, CommunityMode, GameType } from "../api/types";
 import { plural } from "./format";
@@ -57,7 +58,7 @@ export function gameCount(n: number) { return plural(n, "игра", "игры", 
 export function showGames(n: number) { return `Показать ${gameCount(n).replace(/игра$/, "игру")}`; }
 export function filterChips(f: Filters, options?: FilterOptions): { key: string; label: string; remove: Filters }[] {
   return [
-    ...(f.attendanceDate ? [{ key: "day", label: f.attendanceDate, remove: { ...f, attendanceDate: undefined } }] : []),
+    ...(f.attendanceDate ? [{ key: "day", label: formatDate(f.attendanceDate), remove: { ...f, attendanceDate: undefined } }] : []),
     ...(f.maxDurationMinutes ? [{ key: "duration", label: `До ${f.maxDurationMinutes} мин`, remove: { ...f, maxDurationMinutes: undefined } }] : []),
     ...(f.fromYear !== undefined || f.toYear !== undefined ? [{ key: "year", label: `Год выпуска: ${yearFilterLabel(f)}`, remove: { ...f, fromYear: undefined, toYear: undefined } }] : []),
     ...f.complexities.map(x => ({ key: `complexity-${x}`, label: options?.complexities?.find(o => o.level === x)?.displayName ?? x, remove: { ...f, complexities: f.complexities.filter(v => v !== x) } })),

@@ -1,3 +1,5 @@
+import { formatDate } from "../../app/format";
+import { DateInput } from "../../components/DateInput";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../../api/client";
 import type { Community } from "../../api/types";
@@ -49,7 +51,7 @@ export function CatalogFilters({ community, applied, options, search, sort, onAp
     <div className="catalog-dialog-layout">
       <header><div><h2 id="catalog-filter-title">Фильтры</h2><small className="muted">{activeGroups(normalized) ? `Выбрано групп: ${activeGroups(normalized)}` : "Подберите игру для вашей компании"}</small></div><button type="button" aria-label="Закрыть без применения" onClick={onClose}>×</button></header>
       <div className="catalog-dialog-scroll">
-        {community.mode === "Camp" && <FilterSection title="День кэмпа" summary={normalized.attendanceDate || "Все дни"}><Field label="День кэмпа"><input type="date" min={community.startDate} max={community.endDate} value={normalized.attendanceDate ?? ""} onChange={e => setDraft({ ...draft, attendanceDate: e.target.value })} /></Field></FilterSection>}
+        {community.mode === "Camp" && <FilterSection title="День кэмпа" summary={normalized.attendanceDate ? formatDate(normalized.attendanceDate) : "Все дни"}><Field label="День кэмпа"><DateInput min={community.startDate} max={community.endDate} value={normalized.attendanceDate ?? ""} onChange={value => setDraft({ ...draft, attendanceDate: value })} /></Field></FilterSection>}
         <FilterSection title="Игроки" summary={normalized.players ? `${normalized.playerCountMode === "best" ? "Лучше всего" : "Подходит"}: ${normalized.players}` : "Любое количество"}>
           <Field label="Подбор по числу игроков"><select value={normalized.playerCountMode} onChange={e => setDraft({ ...draft, playerCountMode: e.target.value === "best" ? "best" : "supported" })}>
             <option value="supported">Подходит для</option><option value="best">Лучше всего для</option>

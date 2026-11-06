@@ -22,6 +22,7 @@ const visible = (selector: string) => [...host.querySelectorAll<HTMLElement>(sel
 async function click(text: string) { const b = [...host.querySelectorAll<HTMLButtonElement>("button")].find(x => x.textContent === text)!; expect(b).toBeTruthy(); await act(async () => b.click()); }
 async function mount(privacy = false) { await act(async () => root.render(<CampProfileProvider key={camp.key} community={camp}>{privacy && <CampPrivacy community={camp} />}<ProfileCollectionPage community={camp} bggAvailable /></CampProfileProvider>)); }
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); vi.clearAllMocks(); sessionStorage.clear(); localStorage.clear();
   vi.spyOn(window, "scrollTo").mockImplementation(() => {}); HTMLElement.prototype.scrollIntoView = vi.fn();
   contributions = []; settings = { canAct: true, shareCollection: true, shareWishes: true, myDates: ["2026-09-26", "2026-09-27"], declinedGameIds: [], suggestedGameIds: [42] };
@@ -36,7 +37,7 @@ beforeEach(() => {
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("keeps the collection free of visibility controls and addition closed without losing the selected game", async () => {
   await mount();

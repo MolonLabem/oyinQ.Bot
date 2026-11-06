@@ -1,3 +1,4 @@
+import { dateTimeFormatter } from "../../app/dateTimeLocale";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { api, download } from "../../api/client";
 import type { Community, ProfileGathering } from "../../api/types";
@@ -67,7 +68,7 @@ function CalendarMonth({ items, communities, timeZoneId, contextKey, open }: {
   const cells = Array.from({ length: Math.ceil((leading + length) / 7) * 7 }, (_, index) =>
     index < leading || index >= leading + length ? undefined : moveDay(dayKey(start), index - leading));
   const rows = Array.from({ length: cells.length / 7 }, (_, index) => cells.slice(index * 7, index * 7 + 7));
-  const monthLabel = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).format(start);
+  const monthLabel = dateTimeFormatter({ month: "long", year: "numeric", timeZone: "UTC" }).format(start);
   const selectedItems = items.filter(item => item.localDate === selected);
   const nearest = dates.find(value => value >= today) ?? dates.at(-1);
   function choose(value: string, focus = false) { focusPending.current = focus; setSelected(value); }

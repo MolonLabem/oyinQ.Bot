@@ -1,5 +1,6 @@
+import { dateTimeFormatter } from "../../app/dateTimeLocale";
 import type { GatheringListItem } from "../../api/types";
-import { currentLocalMinute } from "../../app/format";
+import { currentLocalMinute, formatLocalTime } from "../../app/format";
 
 export type GatheringDay = { date?: string; label?: string; items: { item: GatheringListItem; time?: string }[] };
 
@@ -17,14 +18,14 @@ export function gatheringDays(items: GatheringListItem[], timeZoneId: string, no
     // Keep the backend's order and page boundaries, including older responses without the new timestamp.
     if (!group || group.date !== date) {
       const label = date === today ? "Сегодня" : date === tomorrowDate ? "Завтра"
-        : instant && date ? new Intl.DateTimeFormat("ru-RU", {
+        : instant && date ? dateTimeFormatter({
           timeZone: timeZoneId, weekday: "short", day: "numeric", month: "long",
           ...(date.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" as const } : {})
         }).format(instant) : undefined;
       group = { date, label, items: [] };
       groups.push(group);
     }
-    group.items.push({ item, time: local?.slice(11) });
+    group.items.push({ item, time: local ? formatLocalTime(local.slice(11)) : undefined });
   }
   return groups;
 }

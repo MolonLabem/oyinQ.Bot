@@ -26,6 +26,7 @@ function Settings({ community }: { community?: Community }) {
   return <ProfileSettings community={community} profile={profile} reloadProfile={async () => true} section={section} open={open} />;
 }
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   vi.clearAllMocks(); Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   sessionStorage.clear(); localStorage.clear(); history.replaceState({}, "", "/");
   vi.spyOn(window, "scrollTo").mockImplementation(() => {}); HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -38,7 +39,7 @@ beforeEach(() => {
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function openSetting(name: ProfileSettingSection) {
   await act(async () => host.querySelector<HTMLButtonElement>(`[data-setting="${name}"]`)!.click());
 }

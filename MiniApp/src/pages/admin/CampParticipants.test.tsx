@@ -35,6 +35,7 @@ async function change(label: string, value: string) {
 }
 const writes = () => vi.mocked(api).mock.calls.filter(([, options]) => options?.method === "POST");
 beforeEach(() => {
+  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
   vi.clearAllMocks(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); window.scrollTo = vi.fn(); intercept = undefined;
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   vi.mocked(download).mockResolvedValue();
