@@ -1,5 +1,9 @@
 # OyinQ implementation guide
 
+## Delivery workflow
+
+- When changes are committed and pushed, complete delivery by merging them into `master` and pushing `master`. A feature-branch push alone is not final delivery unless the user explicitly requests it.
+
 ## Сквозные изменения и единые правила
 
 - Перед изменением функции, доступной в нескольких местах, составить карту всех её потребителей во всём проекте: Mini App, Telegram, профиль, Club/Camp, создание/редактирование, импорт, каталог, фоновые обновления и сохранённые снимки. Найти канонического владельца правила и менять его, а не добавлять очередной локальный обход.
