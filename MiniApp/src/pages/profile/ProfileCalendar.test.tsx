@@ -57,7 +57,7 @@ it("marks community-local dates and shows just the selected day's chronological 
 
 it("navigates months, empty days, Today and the nearest gathering without writing data", async () => {
   await mount(); await click(action("Следующий месяц")); expect(selected()).toBe("2026-11-01");
-  expect(host.textContent).toContain("Ожидается подтверждение исхода");
+  expect(host.textContent).toContain("Партия ещё не подтверждена");
   await click(day("2026-11-02")); expect(host.textContent).toContain("На этот день сборов нет");
   await click([...host.querySelectorAll<HTMLButtonElement>("button")].find(x => x.textContent === "К ближайшему сбору")!);
   expect(selected()).toBe("2026-10-31");
@@ -103,7 +103,7 @@ it("retries a failed read and retains selection while calendar export fails and 
 
 it("keeps an empty calendar usable with no community, no events and an invalid saved date", async () => {
   items = []; sessionStorage.setItem("oyinq-profile-calendar:global", "2026-02-31"); await mount();
-  expect(selected()).toBe("2026-10-23"); expect(host.textContent).toContain("не записаны");
+  expect(selected()).toBe("2026-10-23"); expect(host.textContent).toContain("Предстоящих сборов пока нет");
   expect(host.querySelector(".calendar-attention")).toBeNull();
   await click(action("Следующий месяц")); expect(selected()).toBe("2026-11-01");
 });

@@ -99,7 +99,7 @@ function CalendarMonth({ items, communities, timeZoneId, contextKey, open }: {
       <button type="button" aria-label="Следующий месяц" onClick={() => month(1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></button>
       <button type="button" disabled={exporting} aria-busy={exporting} aria-label="Скачать календарь" title="Скачать календарь (.ics). После изменений скачайте заново; окончание игр оценочное." onClick={() => void exportCalendar()}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4" /></svg></button>
     </div>
-    {exported && <Notice>Календарь скачан. Он не обновляется автоматически: после изменений скачайте его заново. Окончание игр указано примерно.</Notice>}
+    {exported && <Notice>Календарь скачан без автообновления. После изменений скачайте заново. Время окончания примерное.</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}
     <table ref={grid} className="calendar-grid" role="grid" aria-labelledby={monthId}>
       <thead><tr>{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <th scope="col" key={day}>{day}</th>)}</tr></thead>

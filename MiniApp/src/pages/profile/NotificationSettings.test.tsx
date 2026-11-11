@@ -23,7 +23,7 @@ it("groups all existing preferences and saves the full edited configuration", as
   expect([...host.querySelectorAll("legend")].map(x => x.textContent)).toEqual(["Когда вы участвуете", "Когда вы организуете", "Ваша коллекция"]);
   expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(8);
   expect(host.querySelector("details")!.open).toBe(false);
-  expect(host.textContent).toContain("Важные изменения приходят всегда");
+  expect(host.textContent).toContain("Перенос, отмена и место из очереди не отключаются");
   await act(async () => { host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1].click(); const select = host.querySelector("select")!; select.value = "120"; select.dispatchEvent(new Event("change", { bubbles: true })); });
   await submit();
   expect(api).toHaveBeenLastCalledWith("/profile/notifications", expect.objectContaining({ method: "PUT", body: JSON.stringify({ ...settings, gatheringFull: true, reminderLeadMinutes: 120 }) }));

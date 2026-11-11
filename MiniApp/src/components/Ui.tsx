@@ -22,7 +22,20 @@ export function validateForm(form: HTMLFormElement | null) {
 }
 // Screens wire the native button through telegram.back; retain navigation in ordinary browsers.
 export function BackButton({ onClick }: { onClick: () => void }) {
-  return telegram.hasBackButton ? null : <button className="ghost page-back" onClick={onClick}><span aria-hidden>← </span>Назад</button>;
+  return telegram.hasBackButton ? null : <button type="button" className="ghost page-back" aria-label="Назад" title="Назад" onClick={onClick}><NavigationArrow direction="previous" /></button>;
+}
+function NavigationArrow({ direction }: { direction: "previous" | "next" }) {
+  return <svg className="navigation-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={direction === "previous" ? "M19 12H5m7-7-7 7 7 7" : "M5 12h14m-7-7 7 7-7 7"} /></svg>;
+}
+export function Pagination({ page, hasPrevious, hasNext, onChange, disabled = false, label = "Страницы", children }: {
+  page: number; hasPrevious: boolean; hasNext: boolean; onChange: (page: number) => void; disabled?: boolean; label?: string; children?: ReactNode;
+}) {
+  if (!hasPrevious && !hasNext) return null;
+  return <nav className="pagination" aria-label={label}>
+    <button type="button" disabled={disabled || !hasPrevious} onClick={() => onChange(page - 1)} aria-label="Предыдущая страница" title="Предыдущая страница"><NavigationArrow direction="previous" /></button>
+    <span className="muted" role="status">{children ?? `Страница ${page}`}</span>
+    <button type="button" disabled={disabled || !hasNext} onClick={() => onChange(page + 1)} aria-label="Следующая страница" title="Следующая страница"><NavigationArrow direction="next" /></button>
+  </nav>;
 }
 export function Loading({ label = "Загрузка…" }: { label?: string }) { return <div className="stack" aria-live="polite"><div className="skeleton" /><div className="skeleton short" /><span className="muted">{label}</span></div>; }
 export function Empty({ children }: { children: ReactNode }) { return <Card><p className="empty">{children}</p></Card>; }
@@ -68,16 +81,10 @@ export function SaveButton({ busy, label, busyLabel = "Сохраняем…", d
 }) {
   return <button type="button" className={className} disabled={busy || disabled} aria-busy={busy} onClick={onClick}>{busy ? busyLabel : label}</button>;
 }
-export function BggAttribution() {
-  return <a className="bgg-attribution" href="https://boardgamegeek.com" target="_blank" rel="noreferrer" aria-label="Powered by BoardGameGeek">
-    <img src="https://dm1i7q1ruvbhg.cloudfront.net/assets/powered_by_bgg-9f2993c7fad826d5407c35b5c8117b08d2a6cdf5beb1f0c02d06a7dc7f5cdd7f.png" alt="Powered by BGG" />
-  </a>;
-}
 export function ProductFooter() {
   return <footer className="product-footer">
-    <BggAttribution />
-    <p>Автор бота — <ContactLink url="https://t.me/MolonLabe">@MolonLabe</ContactLink></p>
     <button className="privacy-link" onClick={() => telegram.openLink(`${location.origin}/privacy`)}>О ваших данных</button>
+    <p className="footer-author">Автор бота <ContactLink url="https://t.me/MolonLabe">@MolonLabe</ContactLink></p>
   </footer>;
 }
 export function ContactLink({ url, children }: { url?: string; children: ReactNode }) {

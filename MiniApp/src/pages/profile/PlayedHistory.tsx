@@ -2,7 +2,7 @@ import { dateTimeFormatter } from "../../app/dateTimeLocale";
 import { useState } from "react";
 import { api } from "../../api/client";
 import { useAsync } from "../../hooks/useAsync";
-import { Empty, ErrorState, Loading } from "../../components/Ui";
+import { Pagination, Empty, ErrorState, Loading } from "../../components/Ui";
 
 type History = { items: { gatheringId: string; communityKey: string; play: { publicId: string; gameName: string; endedAtUtc: string; community: string; timeZoneId: string; players: { name: string }[] } }[]; hasNext: boolean };
 type Props = { communityKey?: string; open: (key: string, id: string) => void; compact?: boolean };
@@ -16,8 +16,8 @@ export function PlayedHistoryDisclosure(props: Props) {
 export function PlayedHistory({ communityKey, open, compact = false }: Props) {
   const [page, setPage] = useState(1);
   const state = useAsync(() => api<History>(`/profile/plays?page=${page}`), [communityKey, page]);
-  return <section>{!compact && <h2>Сыгранные партии</h2>}<p className={compact ? "muted" : undefined}>Партии с вашим участием, которые подтвердил организатор или администратор.</p>
+  return <section>{!compact && <h2>Сыгранные партии</h2>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length ? <Empty>Подтверждённых партий пока нет.</Empty> : <div className="played-history-list">{state.data.items.map(x => <button className="played-history-item" key={x.play.publicId} onClick={() => open(x.communityKey, x.gatheringId)}><span><strong>{x.play.gameName}</strong><small>{dateTimeFormatter({ day: "2-digit", month: "2-digit", year: "numeric", timeZone: x.play.timeZoneId }).format(new Date(x.play.endedAtUtc))} · {x.play.players.length} игроков · {x.play.community}</small></span><span aria-hidden>›</span></button>)}</div>}
-    {(page > 1 || state.data?.hasNext) && <nav className="history-pagination" aria-label="Страницы сыгранных партий"><button disabled={page <= 1 || state.loading} onClick={() => setPage(page - 1)}>Назад</button><span className="muted">{page}</span><button disabled={!state.data?.hasNext || state.loading || Boolean(state.error)} onClick={() => setPage(page + 1)}>Далее</button></nav>}
+    <Pagination page={page} hasPrevious={page > 1} hasNext={Boolean(state.data?.hasNext) && !state.error} disabled={state.loading} onChange={setPage} label="Страницы сыгранных партий" />
   </section>;
 }

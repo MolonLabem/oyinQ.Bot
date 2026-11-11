@@ -27,7 +27,7 @@ describe("профиль", () => {
 
   it("показывает честное приглашение запустить бота только до первого личного сообщения", () => {
     const markup = renderToStaticMarkup(<BotStartNotice required startUrl="https://t.me/RuntimeBot?start=context" refresh={() => {}} />);
-    expect(markup).toContain("Чтобы получать уведомления о сборах, один раз запустите бота.");
+    expect(markup).toContain("Запустите бота для уведомлений о сборах.");
     expect(markup).toContain("Запустить OyinQ");
     const notice = BotStartNotice({ required: true, startUrl: "https://t.me/RuntimeBot?start=context", refresh: () => {} })!;
     const children = notice.props.children as ReactElement<{ onClick: () => void }>[];

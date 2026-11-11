@@ -15,7 +15,7 @@ import { profileGeneration } from "../../app/profileLifecycle";
 import { readGatheringDraft, saveGatheringDraft, clearGatheringDraft, type GatheringDraft } from "./gatheringDraft";
 import { ApiError, api, gatheringMutation, json } from "../../api/client";
 import type { ClubGame, Community, GatheringDetail, GatheringListPage } from "../../api/types";
-import { BackButton, Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page, SegmentedControl, Tabs } from "../../components/Ui";
+import { Pagination, BackButton, Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page, SegmentedControl, Tabs } from "../../components/Ui";
 import { GameMeta, GamePicker } from "../../components/GamePicker";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
@@ -81,7 +81,7 @@ function GatheringList({ community, listState, setListState, open, create, hasDr
             </div>
           </button>
         </article>)}</div>
-      </section>)}</div>{(result.hasPrevious || result.hasNext) && <div className="row gathering-pagination"><button disabled={!result.hasPrevious} onClick={() => setListState({ ...listState, page: page - 1 })}>Назад</button><span className="muted">Страница {page}</span><button disabled={!result.hasNext} onClick={() => setListState({ ...listState, page: page + 1 })}>Дальше</button></div>}</>}
+      </section>)}</div><Pagination page={page} hasPrevious={result.hasPrevious} hasNext={result.hasNext} onChange={page => setListState({ ...listState, page })} label="Страницы сборов" /></>}
   </Page></div>;
 }
 
@@ -210,27 +210,27 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
   }
   const repeating = Boolean(copySourceId || copy && !seeded && !restoredDraft);
   return <div className="gathering-form-screen"><Page title={repeating ? "Повторить сбор" : "Новый сбор"} actions={<BackButton onClick={onDone} />}>
-    {restoredDraft && <div className="gathering-draft-notice"><p role="status">Черновик восстановлен.</p>{(initialGameId || copy) && <button type="button" disabled={busy} onClick={() => void discard(true)}>Начать новый сбор вместо черновика</button>}</div>}
-    {repeating && <Notice>Выберите новую дату. Участники, гости, очередь и обещания привезти коробку не копируются.</Notice>}
-    {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Создать сбор по игре из каталога по-прежнему можно.</Notice>}
+    {restoredDraft && <div className="gathering-draft-notice"><p role="status">Черновик восстановлен.</p>{(initialGameId || copy) && <button type="button" disabled={busy} onClick={() => void discard(true)}>Начать новый сбор</button>}</div>}
+    {repeating && <Notice>Укажите дату и коробку. Игроки запишутся заново.</Notice>}
+    {!bggAvailable && <Notice kind="warning">BGG недоступен. Выберите игру из каталога.</Notice>}
     {chosen && !changingGame ? <section className="content-section gathering-selected-game">
       <Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><button ref={changeGameButton} type="button" disabled={busy} onClick={() => setChangingGame(true)}>Изменить игру</button></div>
     </section> : <section ref={picker} className="content-section gathering-create-section"><GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error}
       bggAvailable={bggAvailable} selected={chosen} onSelect={chooseGame}
-      hint="Игры из коллекции найдутся сразу, а поиск в BGG может занять несколько секунд. Можно вставить ссылку или ID." />
+      hint="Название, ссылка или ID в BGG" />
       {changingGame && <button type="button" onClick={closePicker}>Оставить выбранную игру</button>}
     </section>}
     <section className="content-section gathering-create-section form-grid"><h2>Когда и с кем играем</h2>
       <DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required disabled={busy} />
       <GatheringPlayerLimits range={chosenPlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} disabled={!chosen || busy} />
-      {(chosen?.playerRangeDefaulted || chosen && chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков. Мы поставили 1–12 — проверьте значения перед созданием сбора.</Notice>}
+      {(chosen?.playerRangeDefaulted || chosen && chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG нет полного диапазона игроков. Проверьте значения 1–12.</Notice>}
     </section>
     {chosen && <details className="content-section gathering-game-options"><summary>Дополнения и коробка{expansions.length ? ` · выбрано дополнений: ${expansions.length}` : ""}</summary>
       <GameProviderNotice disabled={busy} mode={community.mode} communityKey={community.key} bggId={chosen.bggId} startsAtLocal={starts} ownership={source === "bgg" || community.mode === "Camp" ? { gameName: chosen.name, canAdd: source === "bgg", add: addToCollection, bring: bringToCamp, camp: community.mode === "Camp", setAdd: value => { setAddToCollection(value); if (!value) setBringToCamp(false); }, setBring: setBringToCamp } : undefined} />
       {expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={expansions} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} />
       <GameMeta game={chosen} />
     </details>}
-    <section className="content-section gathering-create-section form-grid"><Field label="Описание" hint="Например: играем со всеми дополнениями, новичкам помогу разобраться."><textarea disabled={busy} value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" disabled={busy} checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
+    <section className="content-section gathering-create-section form-grid"><Field label="Описание"><textarea disabled={busy} value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" disabled={busy} checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
     {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Изменить дни участия</button>}</Notice>}
     <button className="ghost" type="button" disabled={busy} onClick={() => void discard()}>Удалить черновик</button>
     <div className="gathering-create-submit sticky-action"><p>{starts ? formatLocalDateTime(starts) : "Выберите дату и время"} · {desired} игроков, считая вас</p><button className="primary" disabled={busy || !chosen || changingGame} onClick={() => void submit()}>{busy ? "Создаём…" : "Создать сбор"}</button></div>
@@ -290,7 +290,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
     {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Изменить дни участия</button>}</Notice>}
     </div>
     {value.canCopy && onCopy && <button onClick={() => onCopy(value)}>Повторить сбор</button>}
-    {value.hasStarted && <div className="gathering-context-note"><Notice>Время сбора наступило. Запись закрыта автоматически; изменить время или открыть запись снова нельзя.</Notice></div>}
+    {value.hasStarted && <div className="gathering-context-note"><Notice>Сбор уже начался. Запись и изменение времени закрыты.</Notice></div>}
     {canManage && <Card className="gathering-management">
       <details open={["Failed", "DeliveryUnknown"].includes(value.publicationStatus) ? true : undefined}>
         <summary><span><strong>Управление сбором</strong><small>{["Failed", "DeliveryUnknown"].includes(value.publicationStatus) ? "Объявление требует внимания" : "Настройки, запись и приглашение игроков"}</small></span></summary>
@@ -301,11 +301,11 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
             {value.canReopen && <button disabled={working} onClick={() => action("reopen")}>Открыть запись</button>}
           </div>}
           {value.publicationStatus === "Failed" && <Notice kind="danger"><p>Объявление в Telegram не удалось обновить. Оно может показывать прежние данные.</p>{value.canRetryPublication && <button disabled={working} onClick={() => action("publication/retry")}>Повторить обновление</button>}</Notice>}
-          {value.publicationStatus === "DeliveryUnknown" && <Notice kind="warning">Исход отправки объявления неизвестен. Проверьте сообщения в группе. Автоматический повтор отключён, чтобы не создавать дубликат.</Notice>}
+          {value.publicationStatus === "DeliveryUnknown" && <Notice kind="warning">Проверьте объявление в группе: Telegram не подтвердил отправку. Автоматического повтора не будет.</Notice>}
           {["Pending", "Preparing", "Delivering"].includes(value.publicationStatus) && <Notice>Объявление ожидает публикации или обновляется. <button className="ghost" onClick={state.reload}>Обновить статус</button></Notice>}
           {!readOnly && (value.canRequestRecruitment || recruitmentMessage || value.recruitmentDelivery) && <section className="gathering-recruitment-action">
             <h3>Пригласить игроков</h3>
-            {value.canRequestRecruitment && <><p className="muted">В группу придёт одно напоминание обо всех ближайших сборах, которым нужны игроки.</p><button disabled={working} onClick={() => void requestRecruitment()}>Напомнить о сборе</button></>}
+            {value.canRequestRecruitment && <><p className="muted">В группу придёт список ближайших сборов, которым нужны игроки.</p><button disabled={working} onClick={() => void requestRecruitment()}>Напомнить о сборе</button></>}
             {recruitmentMessage && <Notice>{recruitmentMessage}</Notice>}
             {value.recruitmentDelivery && <div className="gathering-delivery-status"><p className="muted" role="status">{value.recruitmentDelivery}</p><button className="ghost" disabled={working} onClick={state.reload}>Обновить статус</button></div>}
           </section>}
@@ -364,5 +364,5 @@ export function EditGathering({ community, id, value, done, cancel }: { communit
   const dateBounds = gatheringDateTimeBounds(community, currentLocalMinute(community.timeZoneId));
   const invalidCampDate = !isWithinCampDateRange(starts, community);
   async function save() { if (busy) return; if (invalidCampDate) { setError("Дата сбора должна быть в пределах дат кэмпа."); return; } if (!isFutureLocalDateTime(starts, community.timeZoneId)) { setError("Выберите дату и время в будущем."); return; } setBusy(true); setError(undefined); try { await gatheringMutation(`/gatherings/${id}`, json("PUT", { communityKey: community.key, startsAtLocal: starts, minimumPlayers: minimum, desiredPlayers: desired, maximumPlayers: maximum, description, canTeachRules: teach, selectedExpansionIds: selected, addExpansionToCollectionIds: expansionOwnership.add, bringExpansionIds: expansionOwnership.bring, participantNames: Object.entries(names).map(([participantId, displayNameOverride]) => ({ participantId, displayNameOverride })) })); telegram.success("Сбор обновлён"); done(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
-  return <div className="gathering-form-screen"><Page title="Изменить сбор" actions={<button className="ghost" onClick={cancel}>Отмена</button>}><section className="content-section form-grid"><DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required disabled={busy} />{invalidCampDate && <Notice kind="warning">Сохранённая дата находится вне текущих дат кэмпа. Выберите допустимую дату перед сохранением.</Notice>}<GatheringPlayerLimits range={gamePlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} />{(value.gamePlayerRangeDefaulted || gamePlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков, поэтому мы поставили 1–12.</Notice>}<Field label="Описание"><textarea maxLength={300} value={description} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label>{expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={selected} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} /><fieldset className="participant-name-roster form-grid"><legend>Имена в этой партии</legend><small>Выберите участника, если хотите изменить его имя только в этом сборе. Имена в профилях останутся прежними.</small>{[...value.confirmedParticipants, ...value.waitlistedParticipants].filter(p => p.id).map(p => <ParticipantNameEditor key={p.id} originalName={p.originalName ?? p.name} displayNameOverride={Object.hasOwn(names, p.id!) ? names[p.id!] : p.displayNameOverride} disabled={busy || p.canRename === false} onChange={name => setNames(old => ({ ...old, [p.id!]: name }))} />)}</fieldset>{error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy || invalidCampDate} onClick={save}>{busy ? "Сохраняем…" : "Сохранить"}</button></section></Page></div>;
+  return <div className="gathering-form-screen"><Page title="Изменить сбор" actions={<button className="ghost" onClick={cancel}>Отмена</button>}><section className="content-section form-grid"><DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required disabled={busy} />{invalidCampDate && <Notice kind="warning">Дата сбора вне дат кэмпа. Выберите другую дату.</Notice>}<GatheringPlayerLimits range={gamePlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} />{(value.gamePlayerRangeDefaulted || gamePlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков, поэтому мы поставили 1–12.</Notice>}<Field label="Описание"><textarea maxLength={300} value={description} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label>{expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={selected} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} /><fieldset className="participant-name-roster form-grid"><legend>Имена в этой партии</legend><small>Имя изменится только в этом сборе.</small>{[...value.confirmedParticipants, ...value.waitlistedParticipants].filter(p => p.id).map(p => <ParticipantNameEditor key={p.id} originalName={p.originalName ?? p.name} displayNameOverride={Object.hasOwn(names, p.id!) ? names[p.id!] : p.displayNameOverride} disabled={busy || p.canRename === false} onChange={name => setNames(old => ({ ...old, [p.id!]: name }))} />)}</fieldset>{error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy || invalidCampDate} onClick={save}>{busy ? "Сохраняем…" : "Сохранить"}</button></section></Page></div>;
 }

@@ -92,7 +92,7 @@ it("does not replace a saved draft with a preselected game without confirmed dis
   expect(host.querySelector("textarea")!.value).toBe("Мой черновик");
   expect(api).not.toHaveBeenCalledWith(expect.stringContaining("/catalog/demand/99"));
   vi.mocked(telegram.confirm).mockResolvedValueOnce(false);
-  await act(async () => button("Начать новый сбор вместо черновика").click());
+  await act(async () => button("Начать новый сбор").click());
   expect(readGatheringDraft(club.key)!.description).toBe("Мой черновик");
   await act(async () => button("Удалить черновик").click());
   expect(readGatheringDraft(club.key)).toBeUndefined();

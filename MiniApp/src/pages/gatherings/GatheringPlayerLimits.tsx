@@ -17,5 +17,5 @@ export function GatheringPlayerLimits({ range, value, onChange, disabled }: {
     <Field label="Максимум"><select aria-describedby={helpId} disabled={disabled} value={value.maximum} onChange={event => onChange({ ...value, maximum: +event.target.value })}>
       {options.filter(option => option >= value.desired).map(option => <option key={option}>{option}</option>)}
     </select></Field>
-  </div><p id={helpId} className="gathering-player-help">Количество игроков — считая вас. Если к началу не наберётся минимум, сбор будет отменён.</p></div>;
+  </div><p id={helpId} className="gathering-player-help">Включая вас. Если к началу не наберётся минимум, сбор отменится.</p></div>;
 }

@@ -18,7 +18,7 @@ export { normalizeGameSearch, searchGames } from "./gameSearch";
 
 export function GamePicker({
   catalog = [], catalogLoading = false, catalogError, bggAvailable, selected, onSelect, onClear, selectionMode = "base",
-  label = "Найдите игру", hint = "Введите название, BGG ID или ссылку"
+  label = "Найдите игру", hint = "Название, ссылка или ID в BGG"
 }: {
   catalog?: ClubGame[];
   catalogLoading?: boolean;
@@ -222,7 +222,7 @@ export function GamePicker({
         <button type="button" className="primary" disabled={!input.trim() || loadingGame || searching || selectionCurrent}
           onClick={() => void searchNow()}>{selectionCurrent ? "Выбрано" : loadingGame ? "Открываем…" : searching ? "Ищем…" : "Найти"}</button>
       </div>
-      {!searchMode && <small>{hint}</small>}
+      {!searchMode && hint && <small>{hint}</small>}
     </div>
     {searchMode && <div id={resultsId} className="game-picker-results" role="listbox" aria-busy={searching}>
       {candidates.map(candidate => <button type="button" role="option" aria-selected={selected?.bggId === candidate.bggId}
@@ -234,7 +234,7 @@ export function GamePicker({
       </button>)}
       {searching && <p className="picker-status">Ищем в BGG…</p>}
       {!searching && !hasResults && normalized.length < 2 && <p className="picker-status">Введите хотя бы два символа.</p>}
-      {!searching && !hasResults && normalized.length >= 2 && !error && <p className="picker-status">Совпадений пока нет.</p>}
+      {!searching && !hasResults && normalized.length >= 2 && !error && <p className="picker-status">Ничего не найдено.</p>}
     </div>}
     {parentChoice && <div className="stack"><p>Выберите базовую игру для дополнения:</p>{parentChoice.games.map(game => <button type="button" disabled={loadingGame} key={game.bggId} onClick={() => void chooseReference(parentChoice.input, game.bggId)}>{game.name}</button>)}</div>}
     {!searchMode && catalogLoading && <p className="picker-status">Загружаем коллекцию…</p>}

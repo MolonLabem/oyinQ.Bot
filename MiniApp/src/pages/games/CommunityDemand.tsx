@@ -6,8 +6,7 @@ import { ComplexityBadge } from "../../components/ComplexityBadge";
 
 export function CommunityDemand({ communityKey, create }: { communityKey: string; create?: (id: number) => void }) {
   const state = useAsync(() => api<{ game: ClubGame; interestedParticipants: number; scheduledGatherings: number; availabilitySummary: string }[]>(`/catalog/demand?community=${encodeURIComponent(communityKey)}`), [communityKey]);
-  return <section className="content-section"><h2>Во что хотят сыграть в сообществе</h2>
-    <p className="muted">Сначала игры, по которым ещё нет сборов. Интерес не означает запись: участники присоединятся сами.</p>
+  return <section className="content-section"><h2>Хотелки участников</h2>
     <button className="wish-refresh" disabled={state.loading} onClick={state.reload}>↻ {state.loading ? "Обновляем…" : "Обновить список"}</button>
     {state.error && <ErrorState message={state.error} retry={state.reload} />}
     {state.loading && !state.data ? <Loading /> : !state.data?.length ? <Empty>Пока никто не отметил игры.</Empty> : <div className="stack">{state.data.map(item => <Card key={item.game.bggId}>

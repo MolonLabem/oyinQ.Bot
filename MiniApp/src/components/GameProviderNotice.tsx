@@ -8,7 +8,7 @@ export function GameProviderNotice({ communityKey, bggId, startsAtLocal, ownersh
   if (!bggId) return null;
   if (state.error) return <Notice kind="warning">Не удалось проверить коробку: {state.error}</Notice>;
   return state.data ? <>{mode === "Club" ? <p className={`gathering-box-status availability${state.data.isConfirmed || state.data.isOwned ? " success" : (state.data.providers?.length ?? 0) > 1 ? " warning" : ""}`}>Коробка · {state.data.summary}{state.data.isOwned && " · Есть у вас"}</p> : <Notice kind={state.data.isConfirmed ? "success" : "warning"}>Коробка: {state.data.summary}{state.data.isOwned && <p>Есть у вас</p>}</Notice>}
-    {ownership && (ownership.canAdd !== false || state.data.isOwned) && <fieldset disabled={disabled}><legend>Ваша коробка</legend>{ownership.camp && !state.data.isConfirmed && <p>Для этого сбора пока никто не подтвердил коробку. Если приносите свою копию, отметьте её ниже.</p>}
+    {ownership && (ownership.canAdd !== false || state.data.isOwned) && <fieldset disabled={disabled}><legend>Ваша коробка</legend>
       {ownership.canAdd !== false && !state.data.isOwned && <label className="check"><input type="checkbox" checked={ownership.add} onChange={e => ownership.setAdd(e.target.checked)} />{`Добавить «${ownership.gameName}» в мою коллекцию`}</label>}
       {ownership.camp && <label className="check"><input type="checkbox" disabled={!state.data.isOwned && !ownership.add} checked={ownership.bring && (state.data.isOwned || ownership.add)} onChange={e => ownership.setBring(e.target.checked)} />Я привезу базовую игру на этот кэмп</label>}
     </fieldset>}</> : null;

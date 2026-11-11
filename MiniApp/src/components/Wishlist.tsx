@@ -43,8 +43,7 @@ export function WishlistPanel({ community, bggAvailable }: { community: Communit
   const state = useAsync(() => api<CatalogResponse>(`/catalog?community=${encodeURIComponent(community.key)}&ownership=wishes`), [community.key]);
   const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key]);
   const [selected, setSelected] = useState<ClubGame>();
-  return <section className="content-section wishlist-panel"><h2>{wishlistCopy.title} · {community.name}</h2>
-    <p className="muted">Игры, в которые хочется сыграть в этом сообществе. Коробку иметь не обязательно. Запись в сбор и обещание привезти игру оформляются отдельно.</p>
+  return <section className="wishlist-panel" aria-label={wishlistCopy.title}>
     <GamePicker selectionMode="wish" catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
       selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label={wishlistCopy.add} />
     {selected && <div className="row"><strong>{selected.name}</strong><ComplexityBadge info={selected.complexityInfo} /><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}

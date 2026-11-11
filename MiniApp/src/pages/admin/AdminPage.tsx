@@ -16,7 +16,7 @@ import { RecruitmentSettings } from "./RecruitmentSettings";
 import { GatheringDashboard } from "../../components/GatheringDashboard";
 import { GatheringDetails } from "../gatherings/GatheringsPage";
 import type { AdminCamp, AdminClub, AdminOverview, Administrator, Community, EligibleAdministrator, LockedAdminCommunity, PeerTicket, PostingTopicSettings } from "../../api/types";
-import { BackButton, Badge, BggAttribution, Card, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import { BackButton, Badge, Card, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { CampDateRange } from "../../components/CampDateRange";
 import { useAsync } from "../../hooks/useAsync";
@@ -94,7 +94,6 @@ export function AdminPage({ bggAvailable, isSuperAdmin }: { bggAvailable: boolea
           : <Communities state={state} selected={selected} isSuperAdmin={isSuperAdmin}
               settings={() => setSection("settings")} manage={() => setSection("collection")} manageAdmins={() => setSection("administrators")}
               manageParticipants={() => setSection("participants")} />}
-        <BggAttribution />
       </div>
     </div>
     <Navigation tabs={tabs} active={nested ? "community" : currentSection} onChange={id => setSection(id as Section)} />
@@ -205,12 +204,12 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
               <h3>{item.name}</h3>
               {item.communityKey ? (
                 <>
-                  <Notice kind="warning">Вы являетесь администратором этого чата, но доступ к управлению OyinQ ещё не выдан.</Notice>
+                  <Notice kind="warning">Вы администратор чата, но доступ к управлению OyinQ ещё не выдан.</Notice>
                   <Badge tone="neutral">🔒 Доступ не выдан</Badge>
                 </>
               ) : (
                 <>
-                  <Notice>Бот уже видит эту Telegram-группу. Настройте её в OyinQ без необходимости вступать в группу.</Notice>
+                  <Notice>Эту группу можно настроить в OyinQ, не вступая в неё.</Notice>
                   {isSuperAdmin && <div className="row">
                     <button className="primary" onClick={() => { setCreateChat(item); setCreate("club"); }}>Создать клуб</button>
                     <button onClick={() => { setCreateChat(item); setCreate("camp"); }}>Создать кэмп</button>
@@ -736,7 +735,7 @@ function CreateCamp({ overview, knownChat, done }: { overview?: AdminOverview; k
       <FormSection title="Проверка">
         <dl className="review-list"><dt>Группа</dt><dd>{knownChat?.name ?? selection?.result?.chat?.title ?? "Выберите группу"}</dd><dt>Даты</dt><dd>{formatLocalDateTime(start)} — {formatLocalDateTime(end)}</dd><dt>Основа</dt><dd>{sourceClub?.name ?? "Пустая коллекция"}</dd><dt>Часовой пояс</dt><dd>{zone}</dd><dt>Дополнительные вопросы</dt><dd>{configuration.registrationFields.length}</dd></dl>
         {hasCampInformation(configuration) && <details><summary>Как участники увидят описание и стоимость</summary><CampInformation config={configuration} /></details>}
-        <p className="muted">Сначала создадим черновик. Активируйте его, когда будете готовы принимать регистрации.</p>
+        <p className="muted">Кэмп сохранится как черновик. После активации откроется регистрация.</p>
         {error && <Notice kind="danger">{error}</Notice>}
         <button type="submit" className="primary" disabled={busy || !zone.trim() || (!selection && !knownChat)} aria-busy={busy}>{busy ? "Создаём…" : "Создать кэмп"}</button>
       </FormSection>

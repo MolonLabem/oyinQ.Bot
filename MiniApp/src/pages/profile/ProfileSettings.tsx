@@ -54,7 +54,7 @@ export function ProfileSettings({ community, profile, reloadProfile, section, op
     : saved?.registered ? `${saved.selectedDates?.length ? attendanceLabel(saved.selectedDates) : "Регистрация сохранена"} · ${saved.needsAccommodation ? "с жильём" : "без жилья"}` : "Вы ещё не зарегистрированы";
   const privacy = campProfile?.data;
   const privacySummary = campProfile?.error ? "Не удалось загрузить · откройте настройки"
-    : privacy ? `${privacy.shareCollection ? "Коллекция видна" : "Коллекция скрыта"} · ${privacy.shareWishes ? "Авторство хотелок видно" : "Хотелки без имени"}` : "Коллекция и авторство хотелок";
+    : privacy ? `${privacy.shareCollection ? "Коллекция видна" : "Коллекция скрыта"} · ${privacy.shareWishes ? "Хотелки с именем" : "Хотелки без имени"}` : "Коллекция и хотелки";
   return <section ref={overview} className="profile-settings-overview" aria-label="Разделы настроек">
     <SettingsRow id="identity" title="Имя в OyinQ" summary={profile.preferredDisplayName || profile.telegramDisplayName} open={open} />
     {camp && <>
@@ -87,12 +87,12 @@ function IdentitySettings({ profile, reload }: { profile: Profile; reload: () =>
     finally { setBusy(false); }
   }
   return <section className="content-section form-grid profile-identity">
-    <h2>Как вас показывать</h2>
-    <Field label="Имя" hint="Так вас видят в сборах и сообществах. Пустое поле вернёт имя из Telegram.">
+    <h2>Имя в OyinQ</h2>
+    <Field label="Имя" hint="Оставьте пустым, чтобы использовать имя из Telegram.">
       <input maxLength={128} value={name} onChange={event => setName(event.target.value)} placeholder={profile.telegramDisplayName} />
     </Field>
     <p><span className="muted">В Telegram</span><br />{profile.telegramDisplayName}{profile.telegramUsername ? ` · @${profile.telegramUsername}` : ""}</p>
     {error && <Notice kind="danger">{error}</Notice>}
-    <SaveButton busy={busy} label="Сохранить профиль" onClick={save} />
+    <SaveButton busy={busy} label="Сохранить имя" onClick={save} />
   </section>;
 }

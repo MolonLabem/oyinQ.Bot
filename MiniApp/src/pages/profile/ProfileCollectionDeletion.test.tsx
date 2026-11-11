@@ -194,7 +194,7 @@ it("searches the entire collection and returns to page one when the query change
   largeCollection(); items[22].snapshot.name = "Уникальная коробка"; await mount(); await nextPage(); await nextPage();
   expect(cards()).toHaveLength(3); await search("Уникальная");
   expect(cards()).toHaveLength(1); expect(host.querySelector('[data-box-game="BaseGame:23"]')).not.toBeNull();
-  expect(host.querySelector(".collection-pagination")).toBeNull();
+  expect(host.querySelector('nav[aria-label="Страницы коллекции"]')).toBeNull();
   await search(""); expect(cards()).toHaveLength(10); expect(host.textContent).toContain("Страница 1 из 3");
 });
 

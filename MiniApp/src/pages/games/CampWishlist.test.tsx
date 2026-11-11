@@ -37,7 +37,7 @@ it("defaults to all, keeps picker closed, sends filters and pagination to the se
   await mount(); expect(visible('[aria-selected="true"]')[0].textContent).toBe("Все");
   expect(host.querySelector("dialog")).toBeNull(); expect(host.textContent).toContain("Игры: 48");
   await applyFilter("Нужна коробка"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("needsBox=true"));
-  await click("Дальше"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("page=2"));
+  await click("Следующая страница"); expect(api).toHaveBeenLastCalledWith(expect.stringContaining("page=2"));
   await click("Мои"); expect(api).toHaveBeenCalledWith(expect.stringContaining("mode=mine"));
   expect(api).toHaveBeenCalledWith(expect.stringContaining("view=outgoing"));
 });
@@ -68,8 +68,8 @@ it("game to participant to game and back retains list mode and filters", async (
   await mount(); await applyFilter("Нужна коробка"); await click(game.game.name);
   expect(visible("h2")[0].textContent).toBe(game.game.name);
   await click("Виктор"); expect(visible("h2")[0].textContent).toBe("Виктор");
-  await click(game.game.name); await click("← Назад"); expect(visible("h2")[0].textContent).toBe("Виктор");
-  await click("← Назад"); await click("← Назад");
+  await click(game.game.name); await click("Назад"); expect(visible("h2")[0].textContent).toBe("Виктор");
+  await click("Назад"); await click("Назад");
   expect(visible('[aria-label="Убрать: Нужна коробка"]')[0].textContent).toContain("Нужна коробка");
   expect(visible('[aria-selected="true"]')[0].textContent).toBe("Все");
 });
@@ -135,7 +135,7 @@ const writes = () => vi.mocked(api).mock.calls.filter(c => c[1]?.method);
 
 it.each(["Все", "Мои", "Что взять"])("saves own box in place in %s and reloads the summary without resetting page or mode", async mode => {
   ownGames(); await mount(); if (mode !== "Все") await click(mode);
-  await click("Дальше"); expect(host.textContent).toContain("Страница 2");
+  await click("Следующая страница"); expect(host.textContent).toContain("Страница 2");
   expect(box().selectedOptions[0].textContent).toBe("Предложить свою игру");
   await choose("Bringing");
   expect(writes()).toHaveLength(1);

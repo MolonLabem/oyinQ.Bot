@@ -23,7 +23,7 @@ describe("profile gathering schedule", () => {
   });
 
   it("provides a useful empty-state message", () => {
-    expect(profileScheduleEmptyText).toContain("не записаны");
+    expect(profileScheduleEmptyText).toContain("Предстоящих сборов пока нет");
   });
 
   it("opens the exact gathering in its community", () => {

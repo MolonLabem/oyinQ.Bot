@@ -2,7 +2,7 @@ import { formatUpdatedAt } from "../../app/format";
 import { useEffect, useState } from "react";
 import { api, json } from "../../api/client";
 import { useAsync } from "../../hooks/useAsync";
-import { Card, Empty, ErrorState, Field, Loading, Notice, Page, Tabs } from "../../components/Ui";
+import { Pagination, Card, Empty, ErrorState, Field, Loading, Notice, Page, Tabs } from "../../components/Ui";
 import { MessageDeliveryPage, ReleaseAnnouncementPage } from "./ReleaseAnnouncementPage";
 
 const draftKey = "oyinq-announcement-draft";
@@ -55,7 +55,7 @@ function MessageEditor({ saved }: { saved: (id: string) => void }) {
       <textarea rows={9} maxLength={maxLength} value={draft.text} disabled={busy || draft.submitted}
         onChange={e => setDraft({ ...draft, text: e.target.value })} placeholder="Напишите объявление для участников…" />
     </Field>
-    <Notice>Сохранение не отправляет сообщение. На следующем шаге можно выбрать сообщества и проверить текст. После сохранения текст не изменяется.</Notice>
+    <Notice>После сохранения выберите получателей. Изменить сохранённый текст нельзя.</Notice>
     <button className="primary" disabled={busy || !draft.text.trim() || draft.text.length > maxLength} onClick={save}>
       {busy ? "Сохраняем…" : draft.submitted ? "Повторить сохранение" : "Сохранить и выбрать получателей"}
     </button>
@@ -68,16 +68,11 @@ function AnnouncementHistory({ open }: { open: (id: string) => void }) {
   const [page, setPage] = useState(1);
   const state = useAsync(() => api<History>(`/admin/announcements?page=${page}`), [page]);
   return <>
-    <p className="muted">Сохранённые сообщения. Откройте сообщение, чтобы выбрать получателей или проверить доставку.</p>
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} />
       : !state.data?.items.length ? <Empty>Сообщений пока нет.</Empty>
       : <div className="stack">{state.data.items.map(item => <button className="card announcement-history-item" key={item.id} onClick={() => open(item.id)}>
         <small>{formatUpdatedAt(item.createdAt)}</small><p>{item.text}</p><span>Открыть сообщение →</span>
       </button>)}</div>}
-    <div className="row page-section">
-      <button disabled={state.loading || page === 1} onClick={() => setPage(page - 1)}>Назад</button>
-      <span>Страница {page}</span>
-      <button disabled={state.loading || !state.data?.hasNext} onClick={() => setPage(page + 1)}>Далее</button>
-    </div>
+    <Pagination page={page} hasPrevious={page > 1} hasNext={Boolean(state.data?.hasNext)} disabled={state.loading} onChange={setPage} label="Страницы сообщений" />
   </>;
 }

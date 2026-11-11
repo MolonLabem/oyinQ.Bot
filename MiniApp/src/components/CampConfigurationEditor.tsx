@@ -30,20 +30,20 @@ export function CampConfigurationEditor({ value, onChange, fieldsLocked = false,
   const changeField = (index: number, patch: Partial<CampRegistrationField>) => update({ registrationFields: fields.map((field, i) => i === index ? { ...field, ...patch } : field) });
   const pricing = value.pricing;
   return <fieldset ref={editor} className="camp-configuration" disabled={disabled}>
-    <FormSection title="О кэмпе" hint="Участники увидят эту информацию перед регистрацией и смогут вернуться к ней позже.">
-      <Field label="Описание" hint="Программа, правила, что взять с собой. Переносы строк сохранятся."><textarea rows={6} maxLength={6000} value={value.description ?? ""} onChange={e => update({ description: e.target.value })} placeholder="Расскажите, что ждёт участников" /></Field>
+    <FormSection title="О кэмпе">
+      <Field label="Описание" hint="Программа, правила, что взять с собой."><textarea rows={6} maxLength={6000} value={value.description ?? ""} onChange={e => update({ description: e.target.value })} placeholder="Расскажите, что ждёт участников" /></Field>
       <Field label="Место проведения"><input maxLength={200} value={value.locationName ?? ""} onChange={e => update({ locationName: e.target.value })} /></Field>
       <Field label="Ссылка на место" hint="Ссылка на карту или сайт, начиная с https://"><input type="url" maxLength={1000} value={value.locationUrl ?? ""} onChange={e => update({ locationUrl: e.target.value })} /></Field>
       <Field label="Инструкции по оплате" hint="Реквизиты и комментарий к переводу. Приложение не принимает платежи."><textarea maxLength={2000} value={value.paymentInstructions ?? ""} onChange={e => update({ paymentInstructions: e.target.value })} /></Field>
     </FormSection>
-    <FormSection title="Стоимость" hint="Настройте тарифы и проверьте, какую сумму увидит участник.">
+    <FormSection title="Стоимость">
       <Field label="Расчёт стоимости"><select value={pricing ? "choices" : "none"}
         disabled={fields.some(field => lockedIds.has(field.id) && (field.amount > 0 || field.options.some(option => option.amount > 0)))}
         onChange={e => update({ pricing: e.target.value === "choices" ? { currency: "KZT", amount: 0, perDay: false } : null,
           registrationFields: e.target.value === "choices" ? fields : fields.map(field => lockedIds.has(field.id) ? field : ({ ...field, amount: 0, perDay: false, options: field.options.map(option => ({ ...option, amount: 0 })) })) })}>
         <option value="none">Без расчёта стоимости</option><option value="choices">По выбору участника</option>
       </select></Field>
-      {!pricing && <p className="muted">Участник увидит описание и инструкции по оплате. Итоговая сумма не рассчитывается.</p>}
+      {!pricing && <p className="muted">Сумма не рассчитывается. Укажите стоимость в инструкциях по оплате.</p>}
       {pricing && <>
         <div className="date-range"><Amount label="Цена участия" value={pricing.amount} onChange={amount => update({ pricing: { ...pricing, amount } })} />
           <Field label="Валюта"><select value={pricing.currency} onChange={e => update({ pricing: { ...pricing, currency: e.target.value } })}>{["KZT", "RUB", "USD", "EUR", "KGS", "UZS"].map(currency => <option key={currency}>{currency}</option>)}</select></Field></div>
@@ -53,11 +53,11 @@ export function CampConfigurationEditor({ value, onChange, fieldsLocked = false,
         <div className="date-range"><Field label="Ранняя цена участия" hint="Необязательно. Оставьте пустым, если ранней цены нет."><input type="number" min="0" max="10000000" step="0.01" value={pricing.earlyAmount == null ? "" : Number.isFinite(pricing.earlyAmount) ? pricing.earlyAmount : ""} onChange={e => update({ pricing: { ...pricing, earlyAmount: e.target.value === "" ? null : e.target.valueAsNumber, earlyUntil: e.target.value === "" ? null : pricing.earlyUntil } })} /></Field>
           <Field label="Последний день ранней цены" hint="Включительно, по часовому поясу кэмпа. Цена фиксируется при регистрации."><DateInput disabled={pricing.earlyAmount == null} required={pricing.earlyAmount != null} value={pricing.earlyUntil ?? ""} onChange={value => update({ pricing: { ...pricing, earlyUntil: value || null } })} /></Field></div>
         <CampPricingPreview configuration={value} timeZoneId={timeZoneId} />
-        <p className="muted">Сохранённая сумма меняется при изменении дней, жилья или ответов; изменение имени или города сохраняет прежнюю сумму.</p>
+        <p className="muted">Сумма пересчитывается при изменении дней, жилья или ответов. Имя и город на неё не влияют.</p>
       </>}
     </FormSection>
     <FormSection title="Вопросы при регистрации">
-      {fieldsLocked && <Notice>Можно добавлять необязательные вопросы. Существующие вопросы, варианты и доплаты закреплены, чтобы сохранить ответы участников.</Notice>}
+      {fieldsLocked && <Notice>Регистрация уже началась. Можно добавить необязательный вопрос; прежние вопросы и доплаты менять нельзя.</Notice>}
       <fieldset className="camp-question-list">
         {fields.map((field, index) => <details className="camp-question" key={field.id} open={openQuestions[field.id] ?? false} onToggle={event => { const open = event.currentTarget.open; setOpenQuestions(current => current[field.id] === open ? current : { ...current, [field.id]: open }); }}>
           <summary>Вопрос {index + 1} · {field.label || "Новый вопрос"}</summary><fieldset data-question-id={field.id} disabled={lockedIds.has(field.id)} aria-label={`Вопрос ${index + 1}`}>

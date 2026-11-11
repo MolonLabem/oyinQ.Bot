@@ -17,14 +17,14 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 async function toggle(value: boolean) { await act(async () => { const details = host.querySelector("details")!; details.open = value; details.dispatchEvent(new Event("toggle")); }); }
-async function click(text: string) { await act(async () => { [...host.querySelectorAll("button")].find(button => button.textContent?.includes(text))!.click(); }); }
+async function click(text: string) { await act(async () => { [...host.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === text || button.textContent?.includes(text))!.click(); }); }
 
 it("loads on first disclosure, retains the current page on closing, and opens the exact gathering", async () => {
   await act(async () => root.render(<PlayedHistoryDisclosure open={open} />));
   expect(api).not.toHaveBeenCalled();
   await toggle(true); expect(api).toHaveBeenLastCalledWith("/profile/plays?page=1");
   expect(host.textContent).toContain("24.10.2026");
-  await click("Далее"); expect(api).toHaveBeenLastCalledWith("/profile/plays?page=2");
+  await click("Следующая страница"); expect(api).toHaveBeenLastCalledWith("/profile/plays?page=2");
   await toggle(false); await toggle(true); expect(api).toHaveBeenCalledTimes(2);
   await click("Каркассон"); expect(open).toHaveBeenCalledWith("club", "gathering");
 });

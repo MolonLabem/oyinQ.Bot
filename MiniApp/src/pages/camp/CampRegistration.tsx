@@ -21,7 +21,7 @@ export function CampRegistrationGate({ community, canOpenAdminPanel, children }:
   const registration = useAsync(() => api<RegistrationState>(`/camp/registration?community=${encodeURIComponent(community.key)}`), [community.key]);
   if (registration.loading) return <Page as="section" title="Кэмп"><Loading /></Page>;
   if (registration.error) return <Page as="section" title="Кэмп"><ErrorState message={registration.error} retry={registration.reload} /></Page>;
-  if (!registration.data?.startDate || !registration.data.endDate) return <Page as="section" title="Кэмп ещё настраивается" subtitle={community.name}><Notice kind="warning">Организатор ещё не указал даты кэмпа. Регистрация и создание сборов станут доступны после настройки.</Notice>{canOpenAdminPanel && <a className="button primary-link" href="?admin=1">Указать даты в админ-панели</a>}</Page>;
+  if (!registration.data?.startDate || !registration.data.endDate) return <Page as="section" title="Кэмп ещё настраивается" subtitle={community.name}><Notice kind="warning">Регистрация откроется, когда организатор укажет даты.</Notice>{canOpenAdminPanel && <a className="button primary-link" href="?admin=1">Указать даты в админ-панели</a>}</Page>;
   if (!registration.data.registration?.registered) return <CampRegistrationForm community={community} state={registration.data} done={registration.reload} />;
   return <>{hasCampInformation(registration.data.configuration) && <details className="camp-information-disclosure"><summary>О кэмпе · описание и стоимость</summary><CampInformation config={registration.data.configuration!} /></details>}{children}</>;
 }
@@ -83,7 +83,7 @@ export function CampRegistrationForm({ community, state, done, cancel }: { commu
     <Card className="camp-registration-card"><form ref={form} className="form-grid camp-registration-form" noValidate
       aria-label="Регистрация на кэмп" aria-describedby={validated && missing.length ? summaryId : undefined}
       onSubmit={event => { event.preventDefault(); void submit(); }}>
-      <Field label="Имя" hint="Так вас увидят участники этого кэмпа."><input maxLength={128} value={name} onChange={e => setName(e.target.value)} /></Field>
+      <Field label="Имя на кэмпе"><input maxLength={128} value={name} onChange={e => setName(e.target.value)} /></Field>
       <Field label="Город" hint="Его увидят только участники этого кэмпа" error={validated && !city.trim() ? "Укажите город." : undefined}>
         <input required maxLength={100} aria-invalid={validated && !city.trim()} value={city} onChange={e => setCity(e.target.value)} placeholder="Например, Астана" />
       </Field>
@@ -97,15 +97,15 @@ export function CampRegistrationForm({ community, state, done, cancel }: { commu
         {validated && !selectedDates.length && <small className="field-error" role="alert">Выберите хотя бы один день.</small>}
       </fieldset>
       <label className="check"><input type="checkbox" checked={housing} onChange={e => setHousing(e.target.checked)} />Нужно жильё</label>
-      {fields.length > 0 && <p className="muted">Ответы на дополнительные вопросы и расчёт стоимости видят только вы и администраторы кэмпа.</p>}
+      {fields.length > 0 && <p className="muted">Ответы и стоимость видны только вам и администраторам кэмпа.</p>}
       <CampRegistrationFields fields={fields} answers={answers} onChange={setAnswers} validated={validated} currency={state.configuration?.pricing?.currency} />
       {state.registration?.data?.quote && <details className="saved-registration-quote"><summary>Сохранённая стоимость</summary><CampQuote quote={state.registration.data.quote} title="Сохранённая стоимость" /></details>}
       {canQuote && <div aria-live="polite">{preview.error ? <Notice kind="warning">{preview.error}<button type="button" onClick={preview.reload}>Повторить расчёт</button></Notice>
         : !quoteCurrent ? <p className="muted">Обновляем расчёт…</p> : preview.data?.quote && <CampQuote quote={preview.data.quote} title="Стоимость выбранных вариантов" />}
-        <p className="muted">Итог рассчитывается при сохранении. Изменение дней, жилья или ответов обновит сумму по текущим тарифам. Оплата выполняется отдельно.</p>
+        <p className="muted">При изменении дней, жилья или ответов стоимость пересчитается по текущим тарифам. Оплата отдельно.</p>
       </div>}
       {error && <Notice kind="danger"><span className="pre-line">{error}</span></Notice>}
-      <p className="muted">{state.shareCollection !== false && state.shareWishes !== false ? "Вашу коллекцию и хотелки видят участники этого кэмпа. Это можно изменить в настройках." : "Ваши настройки видимости сохранены. Изменить их можно в настройках профиля."}</p>
+      <p className="muted">{state.shareCollection !== false && state.shareWishes !== false ? "Вашу коллекцию и хотелки видят участники этого кэмпа. Это можно изменить в настройках." : "Видимость коллекции и хотелок можно изменить в настройках профиля."}</p>
       {validated && missing.length > 0 && <div id={summaryId} className="notice danger" role="alert">Заполните: {missing.join(", ")}. Незаполненное поле выделено выше.</div>}
       <button type="submit" className="primary" disabled={busy || state.campStatus !== "Active"} aria-busy={busy}>
         {busy ? "Сохраняем…" : state.registration?.registered ? "Сохранить изменения" : "Зарегистрироваться"}

@@ -24,7 +24,7 @@ export function CampPricingPreview({ configuration, timeZoneId }: { configuratio
   return <div className="camp-price-preview">
     <h3>Участники увидят</h3><CampPriceInformation price={pricing} />
     <h3>Проверьте итоговую сумму</h3>
-    <p className="muted">Выберите пример регистрации: цена участия + жильё, если нужно + доплаты за ответы. Для дневных тарифов сумма умножается на число выбранных дней.</p>
+    <p className="muted">Проверьте стоимость для разных дней и вариантов участия.</p>
     <Field label="Дней участия в примере"><select value={days} onChange={event => setDays(Number(event.target.value))}>
       {Array.from({ length: 31 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
     </select></Field>

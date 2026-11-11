@@ -68,11 +68,10 @@ export function PlayPanel({ community, id, onSaved }: { community: Community; id
   if (state.error || !state.data) return <ErrorState message={state.error ?? "Запись недоступна"} retry={state.reload} />;
   const hasScores = players.length > 0;
   return <Card className="form-grid play-record-form"><h2>Игра состоялась?</h2>
-    <p>Подтвердите факт партии и фактический состав. Это не меняет отметки посещаемости сбора.</p>
     {state.data.canEdit ? <><div className="choice-row"><button aria-pressed={played === true} className={played === true ? "active" : ""} onClick={() => setPlayed(true)}>Да, сыграли</button><button aria-pressed={played === false} className={played === false ? "active" : ""} onClick={() => setPlayed(false)}>Нет, не состоялась</button></div>
-    {played && <><DateTimeField label={`Окончание партии (${community.timeZoneId})`} error={endError} value={end} onChange={value => { setEnd(value); setEndError(undefined); }} required /><p className="muted">Продолжительность рассчитывается автоматически от запланированного начала сбора до окончания партии.</p>
+    {played && <><DateTimeField label={`Окончание партии (${community.timeZoneId})`} error={endError} value={end} onChange={value => { setEnd(value); setEndError(undefined); }} required /><p className="muted">Длительность считается от начала сбора.</p>
       <Field label="Где играли"><input type="text" maxLength={160} value={location} onChange={e => setLocation(e.target.value)} placeholder={community.name} /></Field>
-      <fieldset className="play-results"><legend>Кто играл и кто победил</legend><small>Можно выбрать несколько победителей. Для совместного поражения не отмечайте никого.</small>
+      <fieldset className="play-results"><legend>Кто играл и кто победил</legend><small>Победителей может быть несколько. При общем поражении никого не отмечайте.</small>
         {state.data.players.map(p => <div className={`play-player-result${players.includes(p.id) ? " selected" : ""}`} key={p.id}>
           <label className="check play-player-name"><input type="checkbox" checked={players.includes(p.id)} onChange={() => togglePlayer(p.id)} />{playerName(p)}</label>
           {players.includes(p.id) && <div className="play-result-fields">
@@ -87,7 +86,7 @@ export function PlayPanel({ community, id, onSaved }: { community: Community; id
       {hasScores && <Field label="Как сравнивать счёт"><select value={higherScoreWins ? "higher" : "lower"} onChange={e => setHigherScoreWins(e.target.value === "higher")}><option value="higher">Больше — лучше</option><option value="lower">Меньше — лучше</option></select></Field>}
       <ExpansionPicker expansions={state.data.expansions} selected={expansions} onChange={setExpansions} label="С какими дополнениями" />
     </>}
-    </> : <Notice>{state.data.wasPlayed === true ? "Партия подтверждена." : state.data.wasPlayed === false ? "Сбор не состоялся." : "Ожидаем подтверждения организатора или администратора."}</Notice>}
+    </> : <Notice>{state.data.wasPlayed === true ? "Партия подтверждена." : state.data.wasPlayed === false ? "Сбор не состоялся." : "Партия ещё не подтверждена."}</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}
     {state.data.canEdit && <button className="primary" disabled={busy || played === undefined || (played && (players.length === 0 || !location.trim()))} aria-busy={busy} onClick={save}>{busy ? "Сохраняем…" : "Сохранить запись"}</button>}
     {state.data.wasPlayed && state.data.canShare && <section className="bgstats-export"><h3>Добавить в BG Stats</h3>
