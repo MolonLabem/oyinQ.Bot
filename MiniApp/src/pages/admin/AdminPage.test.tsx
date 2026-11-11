@@ -70,7 +70,7 @@ async function createCampFromKnownChat() {
 function title() { return host.querySelector("h1")?.textContent; }
 
 beforeEach(() => {
-  vi.stubGlobal("navigator", { languages: ["ru-RU"], language: "ru-RU" });
+  vi.stubGlobal("navigator", { languages: ["en-US"], language: "en-US" });
   vi.clearAllMocks();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal("scrollTo", vi.fn());
@@ -188,6 +188,7 @@ describe("camp creation", () => {
   it("edits the same local-time fields and validates the range before saving", async () => {
     await mount(); await switchTo("camp-3"); await click("Настройки");
     expect(readDateTime(host)).toBe("2026-10-01T05:00");
+    expect(host.querySelector<HTMLInputElement>("[data-date-input]")!.value).toBe("01.10.2026");
     expect(host.querySelector(".date-range")?.textContent).toContain("Местное время (Asia/Almaty)");
     await changeDate(0, "2026-10-01T18:30"); await changeDate(1, "2026-10-01T18:00");
     await click("Сохранить настройки");

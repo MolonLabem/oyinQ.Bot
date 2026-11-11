@@ -89,3 +89,7 @@
 2. Базовая игра с принадлежащими участнику дополнениями занимает одну карточку. «Дополнения» раскрывает отдельные кнопки удаления и Camp-доступность каждого дополнения. Удаление базы не удаляет владение дополнениями: они остаются самостоятельными строками.
 3. Поиск дополнения раскрывает его под базой. Проверить несколько официальных родителей, старый ParentBggId и дополнение без имеющейся базы. Каталог и админская коллекция показывают только реально сохранённые дополнения; BGG при раскрытии не запрашивается.
 4. В клубе наличие коробки — вторичная строка в каталоге и деталях сбора. В кэмпе сохраняются явные обещания «Я привезу».
+
+### Day-first date regression
+
+Follow the [11 November date audit](camp-customization-ui.md#day-first-dates-everywhere--2026-11-11) with US device settings. Every date field must show DD.MM.YYYY, and lists, calendars, reviews and history must keep day-first dates. Check ambiguous dates, leap days, partial edits, exact Camp time bounds, save/reopen and unchanged ISO payloads.

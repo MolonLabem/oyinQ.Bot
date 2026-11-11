@@ -235,3 +235,16 @@ describe("catalog panel", () => {
   });
 
 });
+
+
+it("saves and reopens a day-first Camp filter with the same ISO date", async () => {
+  await mount({ ...community, startDate: "2026-08-01", endDate: "2026-08-12" });
+  await click("Фильтры");
+  await changeField("День кэмпа", "07.08.2026"); await tick();
+  expect(host.querySelector<HTMLInputElement>("[data-date-input]")!.value).toBe("07.08.2026");
+  await click("Показать 3 игры", true);
+  expect(listCalls().at(-1)![0]).toContain("attendanceDate=2026-08-07");
+  expect(JSON.parse(sessionStorage.getItem(filterStorageKey("camp", "Camp"))!).attendanceDate).toBe("2026-08-07");
+  await click("Фильтры · 1");
+  expect(host.querySelector<HTMLInputElement>("[data-date-input]")!.value).toBe("07.08.2026");
+});
