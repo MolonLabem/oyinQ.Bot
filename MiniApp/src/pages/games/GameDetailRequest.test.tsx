@@ -6,6 +6,7 @@ vi.mock("../../api/client", async original => ({ ...await original<object>(), ap
 vi.mock("../../telegram/webApp", () => ({ telegram: { back: vi.fn() }, successEventName: "success" }));
 vi.mock("../../components/Wishlist", () => ({ WishButton: () => null, WishlistPanel: () => null }));
 import { api } from "../../api/client";
+import { emptyFilters, filterStorageKey } from "../../app/catalogFilters";
 import { GamesPage } from "./GamesPage";
 
 let host: HTMLDivElement; let root: Root;
@@ -47,4 +48,17 @@ it.each([0, 2])("prioritizes existing gatherings only when available (count=%s)"
     await act(async () => section.querySelector<HTMLButtonElement>("button.card")!.click());
     expect(open).toHaveBeenCalledWith("existing"); expect(create).not.toHaveBeenCalled();
   } else expect(create).toHaveBeenCalledWith(233078);
+});
+
+it("formats box availability dates for people without changing the request date", async () => {
+  sessionStorage.setItem(filterStorageKey("dated", "Camp"), JSON.stringify({ ...emptyFilters(), attendanceDate: "2026-11-14" }));
+  vi.mocked(api).mockImplementation(async path => path.startsWith("/catalog/233078") ? {
+    ...game, availability: { providers: [{ participantId: 1, displayName: "Анна", commitment: "Bringing", availableDates: ["2026-11-14", "2026-11-15"] }] },
+  } : { items: [], filters: { types: [], categories: [], providers: [] } });
+  await act(async () => root.render(<GamesPage community={{ key: "dated", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" }} initialGameId={233078} bggAvailable={false} />));
+  expect(host.querySelector(".provider-status")?.textContent).toContain("14.11.2026, 15.11.2026");
+  expect(host.textContent).not.toContain("2026-11-14");
+  expect(host.textContent).toContain("Кто привезёт игру · 14.11.2026");
+  expect(api).toHaveBeenCalledWith("/catalog/233078?community=dated&attendanceDate=2026-11-14");
+  sessionStorage.removeItem(filterStorageKey("dated", "Camp"));
 });

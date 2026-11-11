@@ -26,8 +26,8 @@ async function click(text: string) {
   expect(button, text).toBeDefined(); await act(async () => button!.click());
 }
 async function change(label: string, value: string) {
-  const field = Array.from(host.querySelectorAll("label")).find(item => item.querySelector("span")?.textContent === label)!;
-  const control = field.querySelector("input, select") as HTMLInputElement | HTMLSelectElement;
+  const field = Array.from(host.querySelectorAll("label")).find(item => (item.querySelector("span")?.textContent ?? item.textContent) === label)!;
+  const control = field.control as HTMLInputElement | HTMLSelectElement;
   await act(async () => {
     Object.getOwnPropertyDescriptor(control.tagName === "INPUT" ? HTMLInputElement.prototype : HTMLSelectElement.prototype, "value")!.set!.call(control, value);
     control.dispatchEvent(new Event(control.tagName === "INPUT" ? "input" : "change", { bubbles: true }));
@@ -82,13 +82,13 @@ describe("camp participant roster", () => {
     expect(host.textContent).toContain("Выбранные условия · 1 участник");
     await click("Скачать CSV");
     expect(download).toHaveBeenLastCalledWith("/admin/camps/1/participants/export/csv?accommodation=not-needed&scope=filtered", "Участники.csv", expect.any(AbortSignal));
-    await click("Отправить файл мне");
+    await click("Файл в Telegram");
     expect(writes()[0]).toEqual(["/admin/camps/1/participants/export/csv/send-to-me?accommodation=not-needed&scope=filtered", expect.objectContaining({ method: "POST", body: undefined })]);
   });
   it("disables synchronous duplicate submissions and never reports success before delivery completes", async () => {
     const pending = deferred<{ participantCount: number }>(); intercept = (_path, options) => options?.method === "POST" ? pending.promise : undefined;
     await mount();
-    const button = Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Отправить мне")!;
+    const button = Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Список в Telegram")!;
     await act(async () => { button.click(); button.click(); });
     expect(writes()).toHaveLength(1); expect(telegram.success).not.toHaveBeenCalled();
     expect(Array.from(host.querySelectorAll("button")).filter(item => item.textContent?.includes("Скачать"))[0].disabled).toBe(true);
@@ -97,16 +97,16 @@ describe("camp participant roster", () => {
   });
   it.each(["camp_participant_delivery_unknown", "camp_participant_delivery_partial", undefined])("requires checking Telegram after delivery failure %s and keeps download available", async code => {
     intercept = (_path, options) => options?.method === "POST" ? Promise.reject(new ApiError("Проверьте личный чат", 502, code)) : undefined;
-    await mount(); await click("Отправить мне");
+    await mount(); await click("Список в Telegram");
     expect(telegram.success).not.toHaveBeenCalled(); expect(host.textContent).toContain("Проверьте личный чат");
-    expect(Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Отправить мне")!.disabled).toBe(true);
+    expect(Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Список в Telegram")!.disabled).toBe(true);
     await click("Скачать Excel"); expect(download).toHaveBeenCalledTimes(1);
     vi.mocked(download).mockRejectedValueOnce(new ApiError("Не удалось скачать файл", 500));
     await click("Скачать Excel");
     expect(host.textContent).toContain("Не удалось скачать файл");
-    expect(Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Отправить мне")!.disabled).toBe(true);
+    expect(Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Список в Telegram")!.disabled).toBe(true);
     await click("Проверил личный чат");
-    expect(Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Отправить мне")!.disabled).toBe(false);
+    expect(Array.from(host.querySelectorAll("button")).find(item => item.textContent === "Список в Telegram")!.disabled).toBe(false);
   });
   it("ignores obsolete filter results and resets the entire screen when the camp changes", async () => {
     const pending = deferred<CampAdminParticipants>();

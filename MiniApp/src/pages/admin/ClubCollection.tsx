@@ -11,6 +11,7 @@ import { plural } from "../../app/format";
 import { bggImportProgressText, clubImportResultText, type BggImportStage } from "../../app/bggImportProgress";
 import { importStatusTone } from "../../app/semanticTones";
 import { hasAvailableExpansions, toggleExpansionList } from "./expansionAvailability";
+import { BrowseSearch } from "../../components/BrowseSearch";
 import { ClubGameSheet } from "./ClubGameSheet";
 
 export function ClubCollection({ clubId, bggAvailable, back }: { clubId: number; bggAvailable: boolean; back: () => void }) {
@@ -149,11 +150,11 @@ export function ClubCollection({ clubId, bggAvailable, back }: { clubId: number;
 
           {state.data.canEdit === false && <Notice>Общая коллекция обновляется автоматически. Для изменений откройте клуб-источник, если у вас есть права на его управление.</Notice>}
           {state.data.canEdit !== false && <>
-          {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Просмотр, поиск по коллекции, экспорт и восстановление продолжают работать.</Notice>}
-          <details className="club-collection-tools"><summary>Обновление и перенос коллекции</summary>
+          {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Сохранённая коллекция доступна.</Notice>}
+          <details className="club-collection-tools"><summary>Инструменты коллекции</summary>
           <Card className="form-grid">
             <h2>Добавить коллекцию BGG</h2>
-            <p className="muted">Одноразово добавляет все принадлежащие пользователю базовые игры и связанные дополнения. Уже сохранённые игры и дополнения не удаляются.</p>
+            <p className="muted">Добавит игры и дополнения из коллекции BGG. Уже сохранённые останутся.</p>
             <Field label="Пользователь BGG" hint="Имя пользователя или ссылка на профиль">
               <input value={bggInput} maxLength={300} onChange={(event) => setBggInput(event.target.value)} placeholder="RollMoveClub" />
             </Field>
@@ -164,7 +165,7 @@ export function ClubCollection({ clubId, bggAvailable, back }: { clubId: number;
           </Card>
           <Card className="form-grid">
             <h2>Данные игр из BGG</h2>
-            <p className="muted">Обновит названия, описания, изображения и характеристики игр из BGG. Игры и выбранные дополнения останутся в коллекции. Все данные появятся вместе после завершения.</p>
+            <p className="muted">Обновит названия, описания, обложки и характеристики. Игры и выбранные дополнения останутся в коллекции.</p>
             <button disabled={!bggAvailable || busy || Boolean(refresh && ["Queued", "Running"].includes(refresh.status))} onClick={refreshMetadata}>
               Обновить данные из BGG
             </button>
@@ -188,12 +189,10 @@ export function ClubCollection({ clubId, bggAvailable, back }: { clubId: number;
               : refresh.status === "Failed" ? "Не удалось обновить данные BGG. Коллекция не изменена; повторите позже."
               : `Обновляем данные: ${refresh.progressCurrent} из ${refresh.progressTotal}`}
           </Notice>}
-          <Field label="Поиск по коллекции">
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название игры" />
-          </Field>
+          <BrowseSearch label="Поиск по коллекции" value={query} onChange={setQuery} />
           {error && <Notice kind="danger">{error}</Notice>}
           {!games.length && <Empty>{query ? "Ничего не найдено. Попробуйте другое название." : "В коллекции пока нет игр. Нажмите «+ Добавить игру», чтобы начать."}</Empty>}
-          <div className="stack">
+          <div className="stack club-collection-list">
             {games.map((game) => (
               <Card key={game.bggId}>
                 <div className="row collection-row">
@@ -201,20 +200,14 @@ export function ClubCollection({ clubId, bggAvailable, back }: { clubId: number;
                     <Cover src={game.thumbnailImageUrl} name={game.name} />
                     <div>
                       <h3>{game.name}</h3>
-                      <GameMeta game={game} />
+                      <GameMeta game={game} compact />
                     </div>
                   </div>
-                  <div className="row">
-                    {hasAvailableExpansions(game) && (
-                      <button aria-expanded={expandedGameId === game.bggId} onClick={() => setExpandedGameId((current) => toggleExpansionList(current, game))}>
-                        Дополнения ({game.expansions.length})
-                      </button>
-                    )}
-                    <button disabled={state.data?.canEdit === false} className="danger ghost" onClick={() => remove(game.bggId, game.name)}>
-                      Удалить
-                    </button>
-                  </div>
+                  <button disabled={busy || state.data?.canEdit === false} className="danger ghost collection-delete" aria-label={`Удалить «${game.name}» из коллекции`} title="Удалить из коллекции" onClick={() => remove(game.bggId, game.name)}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+                  </button>
                 </div>
+                {hasAvailableExpansions(game) && <button className="club-expansion-toggle" aria-expanded={expandedGameId === game.bggId} onClick={() => setExpandedGameId((current) => toggleExpansionList(current, game))}>Дополнения ({game.expansions.length})</button>}
                 {expandedGameId === game.bggId && (
                   <div className="selected-game">
                     <h4>Дополнения в коллекции</h4>

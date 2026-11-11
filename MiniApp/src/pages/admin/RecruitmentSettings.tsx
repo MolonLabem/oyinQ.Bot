@@ -31,10 +31,10 @@ export function RecruitmentSettings({ communityKey, mode = "Club" }: { community
   }
   return <Card><h2>Напоминания о сборах</h2>
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : <>
-      <p>{mode === "Camp" ? "Опубликуйте в группе предстоящие сборы кэмпа со свободными местами — без ограничения в 36 часов." : "Опубликуйте в группе сборы со свободными местами в ближайшие 36 часов."}</p>
-      <button disabled={busy} onClick={() => void send()}>Отправить сборы, которым нужны игроки</button>
+      <p>{mode === "Camp" ? "Сборы со свободными местами на весь кэмп." : "Сборы со свободными местами на ближайшие 36 часов."}</p>
+      <button disabled={busy} onClick={() => void send()}>Отправить в группу</button>
       {result && <Notice>{result}</Notice>}
-      <Field label="Интервал между напоминаниями о сборах" hint="Общий для организаторов и администраторов этого сообщества. Автоматической рассылки нет — вы сами запускаете отправку кнопкой выше.">
+      <Field label="Пауза между отправками" hint="Общая для организаторов и администраторов. Отправка только вручную.">
         <select value={hours} onChange={e => setHours(+e.target.value)}>{Array.from({ length: 24 }, (_, i) => i + 1).map(value =>
           <option value={value} key={value}>{value} {value === 1 || value === 21 ? "час" : value < 5 || value > 21 ? "часа" : "часов"}</option>)}</select>
       </Field><button className="primary" disabled={busy} aria-busy={busy} onClick={() => void save()}>{busy ? "Сохраняем…" : "Сохранить интервал"}</button></>}

@@ -21,7 +21,7 @@ function readDraft(): Draft {
 export function AnnouncementsPage() {
   const [tab, setTab] = useState("custom");
   const [messageId, setMessageId] = useState<string>();
-  return <Page title="Оповещения" subtitle="Сообщения в Telegram-группы выбранных сообществ">
+  return <Page title="Оповещения" hideTitle>
     <Tabs label="Раздел оповещений" className="announcement-tabs" active={tab} onChange={setTab} items={[
       { id: "custom", label: "Текст" }, { id: "release", label: "Выпуск" }, { id: "history", label: "История" },
     ]} />
@@ -55,7 +55,7 @@ function MessageEditor({ saved }: { saved: (id: string) => void }) {
       <textarea rows={9} maxLength={maxLength} value={draft.text} disabled={busy || draft.submitted}
         onChange={e => setDraft({ ...draft, text: e.target.value })} placeholder="Напишите объявление для участников…" />
     </Field>
-    <Notice>После сохранения выберите получателей. Изменить сохранённый текст нельзя.</Notice>
+    <p className="muted">После сохранения текст нельзя изменить.</p>
     <button className="primary" disabled={busy || !draft.text.trim() || draft.text.length > maxLength} onClick={save}>
       {busy ? "Сохраняем…" : draft.submitted ? "Повторить сохранение" : "Сохранить и выбрать получателей"}
     </button>

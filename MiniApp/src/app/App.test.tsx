@@ -82,7 +82,7 @@ it("opens own box management in the unified profile and returns to the same wish
   await act(async () => root.render(<App />));
   await act(async () => host.querySelector<HTMLButtonElement>(".wish-game-heading")!.click());
   const link = host.querySelector<HTMLAnchorElement>('a[data-profile-nav]')!;
-  expect(link.textContent).toBe("Другие дни и коллекция в профиле");
+  expect(link.textContent).toBe("Дни и моя коллекция");
   await act(async () => link.click());
   expect(link.closest("[hidden]")).not.toBeNull();
   expect(host.querySelector(".camp-privacy")).toBeNull();

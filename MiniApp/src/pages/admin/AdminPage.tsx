@@ -105,7 +105,7 @@ function GatheringOperationsPage({ community }: { community?: Community }) {
   useEffect(() => telegram.back(Boolean(selected), () => setSelected(undefined)), [selected]);
   if (selected && community) return <GatheringDetails readOnly community={community} id={selected}
     onBack={() => setSelected(undefined)} onCancelled={() => setSelected(undefined)} editRegistration={() => {}} openCollection={() => {}} />;
-  return <Page title="Контроль сборов" subtitle="Набор игроков, коробки и проблемы доставки">
+  return <Page title="Контроль сборов" hideTitle>
     {community ? <GatheringDashboard communityKey={community.key} open={(_key, id) => setSelected(id)} />
       : <Empty>Выберите активное сообщество с доступом к управлению.</Empty>}
   </Page>;
@@ -186,11 +186,8 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
   return (
     <Page
       title={selected?.name ?? "Сообщества"}
-      subtitle={selected ? selected.mode === "Club" ? "Управление клубом" : "Управление кэмпом" : "Создайте клуб или кэмп, чтобы начать"}
-      actions={isSuperAdmin ? <details className="admin-create-menu"><summary>Добавить сообщество</summary><div className="row">
-        <button onClick={() => setCreate("club")}>Новый клуб</button>
-        <button onClick={() => setCreate("camp")}>Новый кэмп</button>
-      </div></details> : undefined}
+      hideTitle={Boolean(selected)}
+      subtitle={selected ? undefined : "Создайте клуб или кэмп, чтобы начать"}
     >
       {mutationError && <Notice kind="danger">{mutationError}</Notice>}
       {state.loading ? (
@@ -227,8 +224,7 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                   <Card key={club.id}>
                     <div className="row">
                       <div>
-                        <h3>{club.name}</h3>
-                        <p className="muted">{club.telegramTitle}</p>
+                        {club.telegramTitle && club.telegramTitle !== club.name && <p className="muted">Группа: {club.telegramTitle}</p>}
                         {club.isBotUnavailable && <Notice kind="warning">Бот недоступен в Telegram-группе. Настройки и удаление из OyinQ доступны.</Notice>}
                         <p>{plural(club.gameCount, "игра", "игры", "игр")}</p>
                       </div>
@@ -238,8 +234,11 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                       <button onClick={manage}>Коллекция</button>
                       <button onClick={settings}>Настройки</button>
                       <button onClick={manageAdmins}>Администраторы</button>
-                      {canDeleteCommunity(isSuperAdmin) && <button disabled={Boolean(mutationKey)} className="danger ghost" onClick={() => deleteCommunity("clubs", club.id, club.name)}>{mutationKey === `clubs-${club.id}` ? "Удаляем…" : "Удалить из OyinQ"}</button>}
                     </div>
+                    {canDeleteCommunity(isSuperAdmin) && <details className="danger-actions">
+                      <summary>Опасные действия</summary>
+                      <button disabled={Boolean(mutationKey)} className="danger ghost" onClick={() => deleteCommunity("clubs", club.id, club.name)}>{mutationKey === `clubs-${club.id}` ? "Удаляем…" : "Удалить из OyinQ"}</button>
+                    </details>}
                     <details className="technical">
                       <summary>Техническая информация</summary>
                       <p>Telegram ID: <code>{club.telegramChatId}</code></p>
@@ -259,7 +258,6 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
                 <Card key={camp.id}>
                   <div className="row">
                     <div>
-                      <h3>{camp.name}</h3>
                       {camp.isBotUnavailable && <Notice kind="warning">Бот недоступен в Telegram-группе. Настройки и удаление из OyinQ доступны.</Notice>}
                       <p>
                         {camp.startsAtUtc ? formatInstant(camp.startsAtUtc, camp.timeZoneId) : "Не указано"} — {camp.endsAtUtc ? formatInstant(camp.endsAtUtc, camp.timeZoneId) : "Не указано"}
@@ -296,6 +294,10 @@ function Communities({ manage, manageAdmins, manageParticipants, settings, state
           )}
         </>
       )}
+      {isSuperAdmin && <details className="admin-create-menu"><summary>Добавить сообщество</summary><div className="row">
+        <button onClick={() => setCreate("club")}>Новый клуб</button>
+        <button onClick={() => setCreate("camp")}>Новый кэмп</button>
+      </div></details>}
     </Page>
   );
 }

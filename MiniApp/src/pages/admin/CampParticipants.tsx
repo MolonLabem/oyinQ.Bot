@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, download, json } from "../../api/client";
 import type { CampAdminParticipants, CampParticipantDmResult } from "../../api/types";
-import { BackButton, Card, ContactLink, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import { BackButton, ContactLink, Empty, ErrorState, Field, Loading, Notice, Page } from "../../components/Ui";
+import { BrowseSearch } from "../../components/BrowseSearch";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { useScreenRequest } from "../../hooks/useScreenRequest";
 import { telegram } from "../../telegram/webApp";
@@ -10,7 +11,7 @@ import { formatDate, formatShortDate, formatMoney, plural } from "../../app/form
 type Props = { campId: number; campName: string; back: () => void };
 export function CampParticipants(props: Props) { return <CampRoster key={props.campId} {...props} />; }
 
-function CampRoster({ campId, campName, back }: Props) {
+function CampRoster({ campId, back }: Props) {
   const api = useScreenRequest();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
@@ -65,9 +66,9 @@ function CampRoster({ campId, campName, back }: Props) {
     }
   }
 
-  return <Page title="Участники кэмпа" subtitle={data?.campName ?? campName} actions={<BackButton onClick={back} />}>
-    <Card className="camp-roster-filters">
-      <Field label="Поиск участников"><input type="search" placeholder="Имя, Telegram или город" maxLength={200} value={search} onChange={event => setSearch(event.target.value)} /></Field>
+  return <Page title="Участники кэмпа" actions={<BackButton onClick={back} />}>
+    <section className="camp-roster-filters" aria-label="Фильтры участников">
+      <BrowseSearch label="Поиск участников" placeholder="Имя, Telegram или город" maxLength={200} value={search} onChange={setSearch} />
       <div className="camp-roster-filter-row">
         <Field label="Дата участия"><select value={date} onChange={event => setDate(event.target.value)}><option value="">Все даты</option>
           {(data?.availableDates ?? []).map(value => <option key={value} value={value}>{formatDate(value)}</option>)}
@@ -79,9 +80,8 @@ function CampRoster({ campId, campName, back }: Props) {
       <div className="row"><span role="status">{current && data ? `Показано ${data.participants.length} из ${data.totalCount}` : "Обновляем список…"}</span>
         {activeFilters && <button className="ghost" onClick={() => { setSearch(""); setDate(""); setAccommodation(""); }}>Сбросить фильтры</button>}
       </div>
-    </Card>
-    <Card className="camp-roster-export">
-      <details><summary>Экспорт и отправка</summary><div className="camp-roster-export-options">
+    </section>
+    <details className="camp-roster-export"><summary>Экспорт и отправка</summary><div className="camp-roster-export-options">
       <Field label="Кого включить"><select value={scope} onChange={event => setScope(event.target.value)} disabled={Boolean(busy)}>
         <option value="all">Все участники кэмпа</option><option value="filtered">Текущий результат фильтра</option>
       </select></Field>
@@ -91,19 +91,18 @@ function CampRoster({ campId, campName, back }: Props) {
       </select></Field>
       <div className="camp-roster-actions">
         <button className="primary" disabled={!current || Boolean(busy)} onClick={() => perform("download")}>{busy === "download" ? "Готовим файл…" : format === "xlsx" ? "Скачать Excel" : "Скачать CSV"}</button>
-        <button disabled={!current || Boolean(busy) || checkDelivery} onClick={() => perform("file")}>{busy === "file" ? "Отправляем…" : "Отправить файл мне"}</button>
-        <button disabled={!current || Boolean(busy) || checkDelivery} onClick={() => perform("message")}>{busy === "message" ? "Отправляем…" : "Отправить мне"}</button>
+        <button disabled={!current || Boolean(busy) || checkDelivery} onClick={() => perform("file")}>{busy === "file" ? "Отправляем…" : "Файл в Telegram"}</button>
+        <button disabled={!current || Boolean(busy) || checkDelivery} onClick={() => perform("message")}>{busy === "message" ? "Отправляем…" : "Список в Telegram"}</button>
       </div>
-      <p className="muted">«Отправить мне» — таблица сообщением. Если телефон не сохраняет файл, отправьте его себе в личный чат с ботом.</p>
+      <p className="muted">В личный чат с ботом.</p>
       {error && <Notice kind="danger">{error}</Notice>}
       {checkDelivery && <button onClick={() => setCheckDelivery(false)}>Проверил личный чат</button>}
       </div></details>
-    </Card>
     {!current && !state.error ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} />
       : !data?.participants.length ? <Empty>{data?.totalCount ? "По выбранным условиям участников нет. Измените или сбросьте фильтры." : "Пока никто не зарегистрировался."}</Empty>
       : <div className="camp-roster-scroll" role="region" aria-label="Список участников" tabIndex={0}>
         <table className="camp-roster-table">
-          <caption>Участники кэмпа · {data.campName}</caption>
+          <caption className="visually-hidden">Участники кэмпа · {data.campName}</caption>
           <thead><tr><th scope="col">Участник</th><th scope="col" className="camp-roster-wide">Город</th><th scope="col" className="camp-roster-wide">Telegram</th><th scope="col" className="camp-roster-dates">Даты</th><th scope="col" className="camp-roster-housing">Жильё</th></tr></thead>
           <tbody>{data.participants.map(person => <tr key={person.participantId}>
             <th scope="row"><ContactLink url={person.contactUrl}>{person.displayName}</ContactLink>

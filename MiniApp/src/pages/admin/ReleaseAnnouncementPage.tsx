@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, json } from "../../api/client";
 import { useAsync } from "../../hooks/useAsync";
 import { telegram } from "../../telegram/webApp";
-import { plural } from "../../app/format";
+import { formatDate, plural } from "../../app/format";
 import { Page, Card, ErrorState, Loading, Notice } from "../../components/Ui";
 
 type Target = { key: string; name: string; canPost: boolean; canQueue: boolean; canRetry: boolean; state?: string; error?: string };
@@ -32,14 +32,14 @@ export function MessageDeliveryPage({ messageId }: { messageId?: string }) {
   if (state.error || !state.data) return <ErrorState message={state.error ?? "Сообщение недоступно"} retry={state.reload} />;
   const data = state.data;
   const queueable = selected.filter(key => data.targets.some(t => t.key === key && t.canQueue));
-  return <Page as="section" title={messageId ? "Своё сообщение" : "Обновление OyinQ"} subtitle={messageId ? "Текст сохранён. Выберите получателей для отправки." : data.releaseDate ?? data.releaseId}><Card>
+  return <Page as="section" title={messageId ? "Своё сообщение" : "Обновление OyinQ"} subtitle={!messageId && data.releaseDate ? formatDate(data.releaseDate) : undefined}><Card>
     {messageId && <pre className="release-preview">{data.text}</pre>}
-    <p>Выберите управляемые сообщества. Успешные публикации повторно не отправляются.</p>
+    <fieldset className="delivery-targets"><legend>Получатели</legend>
     {data.targets.map(t => <label className="check" key={t.key}><input type="checkbox" disabled={!t.canQueue || busy} checked={queueable.includes(t.key)} onChange={e => { setReview(undefined); setSelected(old => e.target.checked ? [...old, t.key] : old.filter(x => x !== t.key)); }} /><span>{t.name} · {t.state ? labels[t.state] : t.canPost ? "Готово к отправке" : "Нет доступа для публикации"}{t.error && <small>{t.error}</small>}</span></label>)}
-    {!data.targets.length && <Notice>Нет сообществ для отправки.</Notice>}
+    {!data.targets.length && <Notice>Нет сообществ для отправки.</Notice>}</fieldset>
     <p>Отправлено: {data.targets.filter(x => x.state === "Delivered").length} · Ошибка: {data.targets.filter(x => x.state === "Failed").length}</p>
     <div className="row">
-      <button disabled={busy} onClick={() => { setReview(undefined); state.reload(); }}>Обновить результат доставки</button>
+      <button disabled={busy} onClick={() => { setReview(undefined); state.reload(); }}>Обновить статус</button>
       <button disabled={!queueable.length || busy} onClick={() => setReview({ keys: queueable, retry: false })}>Предпросмотр</button>
       {data.targets.some(x => x.canRetry) && <button disabled={busy} onClick={() => setReview({ keys: data.targets.filter(x => x.canRetry).map(x => x.key), retry: true })}>Повторить неудачные отправки</button>}
     </div>
