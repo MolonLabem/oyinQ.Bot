@@ -16,9 +16,9 @@ describe("complexity presentation", () => {
   });
   it("omits unknown complexity and formats details without changing the input", () => {
     expect(renderToStaticMarkup(<><ComplexityBadge /><ComplexityDetails info={null} /></>)).toBe("");
-    expect(renderToStaticMarkup(<ComplexityDetails info={info} />)).toContain("2,12 · Сложная");
+    expect(renderToStaticMarkup(<ComplexityDetails info={info} />).replace(/<[^>]+>/g, "")).toContain("2,12 · Сложная");
     expect(info.weight).toBe(2.1234);
-    expect(renderToStaticMarkup(<ComplexityDetails info={{ ...info, weight: null }} />)).toContain("Сложность: Сложная");
+    expect(renderToStaticMarkup(<ComplexityDetails info={{ ...info, weight: null }} />).replace(/<[^>]+>/g, "")).toContain("Сложность: Сложная");
   });
   it("shows complexity even when the selection or personal snapshot has no other metadata", () => {
     expect(renderToStaticMarkup(<GameMeta compact game={{ bggId: 42, name: "Game", expansions: [], complexityInfo: info }} />)).toContain("complexity-hard");

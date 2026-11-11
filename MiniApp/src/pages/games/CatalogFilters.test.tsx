@@ -22,8 +22,8 @@ async function click(text: string, inDialog = false) {
 }
 async function tick() { await act(async () => { await vi.advanceTimersByTimeAsync(310); }); }
 async function changeField(label: string, value: string) {
-  const field = Array.from(host.querySelectorAll("label")).find(x => x.querySelector("span")?.textContent === label)!;
-  const input = field?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select") ?? host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
+  const field = Array.from(host.querySelectorAll("label")).find(x => (x.querySelector("span")?.textContent ?? x.textContent) === label)!;
+  const input = (field?.control as HTMLInputElement | HTMLSelectElement | null) ?? host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
   await act(async () => {
     const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLSelectElement.prototype;
     Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
@@ -135,18 +135,22 @@ describe("catalog panel", () => {
     vi.mocked(api).mockResolvedValue(result(2)); await click("Повторить");
     expect(host.querySelector(".catalog-grid")).toBe(grid); expect(status()).toBe("2 игры");
   });
-  it("separates section expansion, five-option preview, draft, apply and reset", async () => {
+  it("searches long lists immediately and preserves draft, apply, cancel and reset", async () => {
     await mount(); await click("Фильтры");
     const section = Array.from(host.querySelectorAll<HTMLDetailsElement>("details.catalog-filter-section")).find(x => x.querySelector("summary strong")?.textContent === "Категории")!;
-    expect(section.open).toBe(false); expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(5);
+    expect(section.open).toBe(false); expect(section.querySelector('input[type="search"]')).not.toBeNull();
     await act(async () => { section.open = true; });
-    await click("Показать ещё · 15", true);
-    expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(20);
-    await act(async () => section.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[8].click());
-    await click("Свернуть", true);
-    expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(5);
+    await changeField("Поиск: категории", "Категория 9");
+    expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+    await act(async () => section.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    await changeField("Поиск: категории", "нет такого варианта");
+    expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    expect(section.textContent).toContain("Ничего не найдено");
     expect(section.textContent).toContain("Выбрано: 1");
     expect(section.querySelector('button[aria-label="Убрать: Категория 9"]')).not.toBeNull();
+    await changeField("Поиск: категории", "");
+    expect(section.querySelectorAll('input[type="checkbox"]')).toHaveLength(20);
+    expect(section.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[8].checked).toBe(true);
     expect(listCalls()).toHaveLength(1); await tick(); await click("Показать 3 игры", true);
     expect(host.querySelector("dialog")).toBeNull(); expect(listCalls().at(-1)![0]).toContain("categories=9");
     expect(host.textContent).toContain("Фильтры · 1");
@@ -158,19 +162,18 @@ describe("catalog panel", () => {
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Убрать фильтр: Категория 9"]')!.click());
     expect(listCalls().at(-1)![0]).not.toContain("categories");
   });
-  it("puts practical filters first and keeps advanced choices available without applying them early", async () => {
+  it("keeps all filter sections at the same level and applies only on confirmation", async () => {
     await mount(); await click("Фильтры");
     const titles = [...host.querySelectorAll(".catalog-dialog-scroll > .catalog-filter-section > summary strong")].map(x => x.textContent);
-    expect(titles.slice(0, 4)).toEqual(["День кэмпа", "Игроки", "Длительность", "Коробка на кэмпе"]);
-    const advanced = host.querySelector<HTMLDetailsElement>(".catalog-advanced")!;
-    expect(advanced.open).toBe(false);
-    await act(async () => { advanced.open = true; });
+    expect(titles.slice(0, 4)).toEqual(["День кэмпа", "Игроки", "Длительность", "Сложность"]);
+    expect(titles).toEqual(expect.arrayContaining(["Механики", "Категории", "Год выпуска", "Чья игра", "Сборы"]));
+    expect(host.querySelector("details details")).toBeNull();
     await changeField("От", "2018");
     expect(listCalls()).toHaveLength(1);
     await tick(); await click("Показать 3 игры", true);
     expect(listCalls().at(-1)![0]).toContain("fromYear=2018");
     await click("Фильтры · 1");
-    expect(host.querySelector<HTMLDetailsElement>(".catalog-advanced")!.open).toBe(true);
+    expect(host.querySelector("dialog")!.textContent).toContain("От 2018");
   });
   it("ignores stale preview responses immediately and supports Telegram Back", async () => {
     let finish!: (value: { total: number }) => void;
