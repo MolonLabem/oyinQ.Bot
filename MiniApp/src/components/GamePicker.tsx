@@ -40,6 +40,8 @@ export function GamePicker({
   const [error, setError] = useState<string>();
   const [visibleViewport, setVisibleViewport] = useState<{ height: number; top: number }>();
   const requestVersion = useRef(0);
+  const selectionVersion = useRef(0);
+  useEffect(() => () => { requestVersion.current++; selectionVersion.current++; }, []);
   const container = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
@@ -115,6 +117,7 @@ export function GamePicker({
   }
 
   async function chooseCandidate(candidate: GameSearchCandidate) {
+    const version = ++selectionVersion.current;
     setLoadingGame(true);
     setError(undefined);
     closeSearch();
@@ -122,6 +125,7 @@ export function GamePicker({
       const resolved = await resolveGameSelection(candidate, bggAvailable, bggId =>
         api<BggDetails>(`/bgg/game?input=${encodeURIComponent(String(bggId))}&mode=${selectionMode}`)
       );
+      if (version !== selectionVersion.current) return;
       if (resolved.baseGames?.length) { setParentChoice({ input: String(candidate.bggId), games: resolved.baseGames }); return; }
       setParentChoice(undefined);
       setInput(resolved.game.name);
@@ -129,10 +133,11 @@ export function GamePicker({
       setError(resolved.fallbackWarning);
       onSelect(resolved.game, resolved.source, resolved.selectedExpansionIds ?? [], resolved.expansionLookup);
     } catch (reason) {
+      if (version !== selectionVersion.current) return;
       setOpen(true);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setLoadingGame(false);
+      if (version === selectionVersion.current) setLoadingGame(false);
     }
   }
 
@@ -141,11 +146,13 @@ export function GamePicker({
       setError("BGG сейчас недоступен. Выберите игру из сохранённой коллекции.");
       return;
     }
+    const version = ++selectionVersion.current;
     setLoadingGame(true);
     setError(undefined);
     closeSearch();
     try {
       const details = await api<BggDetails>(`/bgg/game?input=${encodeURIComponent(value)}&mode=${selectionMode}${baseGameId ? `&baseGameId=${baseGameId}` : ""}`);
+      if (version !== selectionVersion.current) return;
       if (details.baseGames?.length) { setParentChoice({ input: value, games: details.baseGames }); return; }
       setParentChoice(undefined);
       const game = { ...details.game, expansions: mergeExpansions([], details.expansions) };
@@ -153,10 +160,11 @@ export function GamePicker({
       setResults([]);
       onSelect(game, "bgg", details.selectedExpansionIds ?? [], { status: details.expansionLookupIncomplete ? "incomplete" : "complete" });
     } catch (reason) {
+      if (version !== selectionVersion.current) return;
       setOpen(true);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setLoadingGame(false);
+      if (version === selectionVersion.current) setLoadingGame(false);
     }
   }
 

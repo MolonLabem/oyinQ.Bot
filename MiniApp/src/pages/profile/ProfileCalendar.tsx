@@ -50,6 +50,7 @@ function CalendarMonth({ items, communities, timeZoneId, contextKey, open }: {
   const storageKey = `oyinq-profile-calendar:${contextKey}`;
   const [selected, setSelected] = useState(() => initialDate(dates, today, storageKey));
   const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(false);
   const [error, setError] = useState<string>();
   const grid = useRef<HTMLTableElement>(null);
   const focusPending = useRef(false);
@@ -86,8 +87,8 @@ function CalendarMonth({ items, communities, timeZoneId, contextKey, open }: {
   }
   async function exportCalendar() {
     if (exporting) return;
-    setExporting(true); setError(undefined);
-    try { await download("/profile/gatherings.ics", "oyinq-agenda.ics"); }
+    setExporting(true); setExported(false); setError(undefined);
+    try { await download("/profile/gatherings.ics", "oyinq-agenda.ics"); setExported(true); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setExporting(false); }
   }
@@ -98,6 +99,7 @@ function CalendarMonth({ items, communities, timeZoneId, contextKey, open }: {
       <button type="button" aria-label="Следующий месяц" onClick={() => month(1)}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg></button>
       <button type="button" disabled={exporting} aria-busy={exporting} aria-label="Скачать календарь" title="Скачать календарь (.ics). После изменений скачайте заново; окончание игр оценочное." onClick={() => void exportCalendar()}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m-4-4 4 4 4-4M4 13v4h12v-4" /></svg></button>
     </div>
+    {exported && <Notice>Календарь скачан. Он не обновляется автоматически: после изменений скачайте его заново. Окончание игр указано примерно.</Notice>}
     {error && <Notice kind="danger">{error}</Notice>}
     <table ref={grid} className="calendar-grid" role="grid" aria-labelledby={monthId}>
       <thead><tr>{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <th scope="col" key={day}>{day}</th>)}</tr></thead>

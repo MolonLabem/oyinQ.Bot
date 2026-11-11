@@ -94,3 +94,27 @@ it.each([false, true])("hands the first response to the expansion form without a
     expect(api).toHaveBeenCalledTimes(2);
   }
 });
+
+it.each(["candidate", "reference"])("ignores a pending %s selection after the picker is dismissed", async path => {
+  const selected = vi.fn();
+  let finish!: (value: BggDetails) => void;
+  vi.mocked(api).mockImplementation(async <T,>(url: string): Promise<T> => url.startsWith("/bgg/search")
+    ? [{ bggId: 42, name: "Dune" }] as T
+    : new Promise<BggDetails>(resolve => { finish = resolve; }) as Promise<T>);
+  await act(async () => root.render(<GamePicker bggAvailable onSelect={selected} />));
+  await act(async () => {
+    const input = host.querySelector("input")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, path === "candidate" ? "Dune" : "42");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  if (path === "candidate") {
+    await act(async () => vi.advanceTimersByTimeAsync(400));
+    await act(async () => host.querySelector<HTMLButtonElement>('[role="option"]')!.click());
+  } else {
+    await act(async () => [...host.querySelectorAll("button")].find(item => item.textContent === "Найти")!.click());
+  }
+  expect(finish).toBeTypeOf("function");
+  await act(async () => root.render(null));
+  await act(async () => finish({ game: { bggId: 42, name: "Dune", expansions: [] }, expansions: [] }));
+  expect(selected).not.toHaveBeenCalled();
+});

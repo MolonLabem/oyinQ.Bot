@@ -10,7 +10,9 @@ import { GuestRow } from "./GuestRow";
 import { ParticipantNameEditor } from "./ParticipantNameEditor";
 import { PlayPanel } from "./PlayPanel";
 import { GameProviderNotice } from "../../components/GameProviderNotice";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { profileGeneration } from "../../app/profileLifecycle";
+import { readGatheringDraft, saveGatheringDraft, clearGatheringDraft, type GatheringDraft } from "./gatheringDraft";
 import { ApiError, api, gatheringMutation, json } from "../../api/client";
 import type { ClubGame, Community, GatheringDetail, GatheringListPage } from "../../api/types";
 import { BackButton, Badge, Card, ContactLink, Cover, Empty, ErrorState, Field, Loading, Notice, Page, SegmentedControl, Tabs } from "../../components/Ui";
@@ -31,19 +33,19 @@ import { gatheringDays } from "./gatheringListPresentation";
 
 export function GatheringsPage({ community, bggAvailable, initialGatheringId, initialGameId, onGameConsumed, onInitialConsumed, editRegistration, openCollection, backFromInitial }: { community: Community; bggAvailable: boolean; initialGatheringId?: string; initialGameId?: number; onGameConsumed?: () => void; onInitialConsumed: () => void; editRegistration: () => void; openCollection: (bggId: number, gatheringId: string) => void; backFromInitial?: () => void }) {
   const [screen, setScreen] = useState<"list" | "create" | "detail">(initialGatheringId ? "detail" : initialGameId ? "create" : "list");
-  const [seedGameId] = useState(initialGameId);
+  const [seedGameId, setSeedGameId] = useState(initialGameId);
   const [copy, setCopy] = useState<GatheringDetail>();
   const [selected, setSelected] = useState<string | undefined>(initialGatheringId);
   const [initialBack] = useState<(() => void) | undefined>(() => initialGatheringId ? backFromInitial : undefined);
   const [listState, setListState] = useState<GatheringListState>(initialGatheringListState);
-  useBackButton(screen !== "list", () => { if (screen === "detail" && initialBack) initialBack(); else { setScreen("list"); setSelected(undefined); } });
+  useBackButton(screen !== "list", () => { if (screen === "detail" && initialBack) initialBack(); else { setScreen("list"); setSelected(undefined); setSeedGameId(undefined); setCopy(undefined); } });
   useEffect(() => { if (initialGatheringId) onInitialConsumed(); if (initialGameId) onGameConsumed?.(); }, []);
-  if (screen === "create") return <CreateGathering copy={copy} initialGameId={seedGameId} community={community} bggAvailable={bggAvailable} onDone={() => setScreen("list")} editRegistration={editRegistration} />;
+  if (screen === "create") return <CreateGathering copy={copy} initialGameId={seedGameId} community={community} bggAvailable={bggAvailable} onDone={() => { setScreen("list"); setSeedGameId(undefined); setCopy(undefined); }} editRegistration={editRegistration} />;
   if (screen === "detail" && selected) return <GatheringDetails onCopy={value => { setCopy(value); setScreen("create"); }} key={`${community.key}-${selected}`} community={community} id={selected} onBack={() => { if (initialBack) initialBack(); else setScreen("list"); }} onCancelled={() => { setListState({ ...listState, scope: "cancelled", page: 1 }); setSelected(undefined); setScreen("list"); }} editRegistration={editRegistration} openCollection={bggId => openCollection(bggId, selected)} />;
-  return <GatheringList community={community} listState={listState} setListState={setListState} open={id => { setSelected(id); setScreen("detail"); }} create={() => { setCopy(undefined); setScreen("create"); }} />;
+  return <GatheringList hasDraft={Boolean(readGatheringDraft(community.key))} community={community} listState={listState} setListState={setListState} open={id => { setSelected(id); setScreen("detail"); }} create={() => { setCopy(undefined); setScreen("create"); }} />;
 }
 
-function GatheringList({ community, listState, setListState, open, create }: { community: Community; listState: GatheringListState; setListState: (state: GatheringListState) => void; open: (id: string) => void; create: () => void }) {
+function GatheringList({ community, listState, setListState, open, create, hasDraft }: { hasDraft: boolean; community: Community; listState: GatheringListState; setListState: (state: GatheringListState) => void; open: (id: string) => void; create: () => void }) {
   const { scope, page, seats = "all" } = listState;
   const view = gatheringListView(scope);
   const historyFilter = gatheringHistoryFilter(scope);
@@ -56,12 +58,12 @@ function GatheringList({ community, listState, setListState, open, create }: { c
   return <div className="gathering-list-screen"><Page title="Сборы" hideTitle>
     <div className="gathering-list-toolbar">
     <Tabs label="Раздел сборов" active={view} onChange={id => selectView(id as GatheringListView)} items={[{ id: "upcoming", label: "Предстоящие" }, { id: "history", label: "История" }]} />
-    <button className="primary" onClick={create}>Создать сбор</button>
+    <button className="primary" onClick={create}>{hasDraft ? "Продолжить сбор" : "Создать сбор"}</button>
     </div>
     {view === "upcoming" && <SegmentedControl label="Наличие мест" active={seats} onChange={id => setListState(changeGatheringSeats(listState, id as GatheringSeatFilter))} items={[{ id: "all", label: "Все" }, { id: "available", label: "Есть места" }, { id: "full", label: "Мест нет" }]} />}
     {view === "history" && <SegmentedControl className="history-filters" label="Фильтр истории" active={historyFilter} onChange={id => selectHistoryFilter(id as GatheringHistoryFilter)} items={[{ id: "all", label: "Все" }, { id: "completed", label: "Завершены" }, { id: "cancelled", label: "Отменены" }]} />}
     {result && state.error && <ErrorState message={state.error} retry={state.reload} />}
-    {!result && state.loading ? <Loading /> : !result && state.error ? <ErrorState message={state.error} retry={state.reload} /> : !result?.items.length ? view === "upcoming" ? seats !== "all" ? <><Empty>{seats === "available" ? "Сборов со свободными местами пока нет" : "Полных сборов пока нет"}</Empty><button onClick={() => setListState(changeGatheringSeats(listState, "all"))}>Показать все</button></> : <><Empty>Пока никто не собирается играть. Создайте первый сбор.</Empty><button className="primary" onClick={create}>Создать сбор</button></> : <Empty>{historyFilter === "completed" ? "Завершённых сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
+    {!result && state.loading ? <Loading /> : !result && state.error ? <ErrorState message={state.error} retry={state.reload} /> : !result?.items.length ? view === "upcoming" ? seats !== "all" ? <><Empty>{seats === "available" ? "Сборов со свободными местами пока нет" : "Полных сборов пока нет"}</Empty><button onClick={() => setListState(changeGatheringSeats(listState, "all"))}>Показать все</button></> : <><Empty>Пока никто не собирается играть. Создайте первый сбор.</Empty><button className="primary" onClick={create}>{hasDraft ? "Продолжить сбор" : "Создать сбор"}</button></> : <Empty>{historyFilter === "completed" ? "Завершённых сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
       <><div className="gathering-days">{gatheringDays(result.items, community.timeZoneId).map((day, index) => <section className="gathering-day" key={`${day.date ?? "undated"}:${index}`}>
         {day.label && <h2 className="gathering-day-heading"><time dateTime={day.date}>{day.label}</time></h2>}
         <div className="stack">{day.items.map(({ item, time }) => <article className="gathering-card-shell" key={item.card.publicId}>
@@ -85,17 +87,51 @@ function GatheringList({ community, listState, setListState, open, create }: { c
 
 export function CreateGathering({ community, bggAvailable, onDone, editRegistration, initialGameId, copy }: { copy?: GatheringDetail; initialGameId?: number; community: Community; bggAvailable: boolean; onDone: () => void; editRegistration: () => void }) {
   const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key, community.mode]);
-  const [expansionOwnership, setExpansionOwnership] = useState(emptyExpansionOwnership);
-  const [addToCollection, setAddToCollection] = useState(false); const [bringToCamp, setBringToCamp] = useState(false);
-  const [source, setSource] = useState<"catalog" | "bgg" | "demand">("catalog"); const [chosen, setChosen] = useState<ClubGame>();
-  const [initialExpansionLookup, setInitialExpansionLookup] = useState<ExpansionLookup>();
-  const [expansions, setExpansions] = useState<number[]>([]); const [starts, setStarts] = useState("");
-  const [minimum, setMinimum] = useState(2); const [desired, setDesired] = useState(4); const [maximum, setMaximum] = useState(4);
-  const [description, setDescription] = useState(""); const [teach, setTeach] = useState(true); const [busy, setBusy] = useState(false); const [error, setError] = useState<string>(); const [attendanceRequired, setAttendanceRequired] = useState(false);
+  const [restoredDraft, setRestoredDraft] = useState(() => readGatheringDraft(community.key));
+  useEffect(() => {
+    // An explicitly new form is a new intent, even if a background submission
+    // previously finished with identical values. A resumed draft keeps its ID.
+    if (!restoredDraft) completeCreation(community.key);
+  }, []);
+  const [draftGeneration] = useState(profileGeneration);
+  const draftFinished = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const dateBounds = gatheringDateTimeBounds(community, currentLocalMinute(community.timeZoneId));
+  const [initialStarts] = useState(() => revalidateGatheringStart("", community, dateBounds));
+  const [expansionOwnership, setExpansionOwnership] = useState(restoredDraft?.expansionOwnership ?? emptyExpansionOwnership);
+  const [addToCollection, setAddToCollection] = useState(restoredDraft?.addToCollection ?? false);
+  const [bringToCamp, setBringToCamp] = useState(restoredDraft?.bringToCamp ?? false);
+  const [source, setSource] = useState<GatheringDraft["source"]>(restoredDraft?.source ?? "catalog");
+  const [chosen, setChosen] = useState<ClubGame | undefined>(restoredDraft?.chosen);
+  const [initialExpansionLookup, setInitialExpansionLookup] = useState<ExpansionLookup | undefined>(restoredDraft?.initialExpansionLookup);
+  const [expansions, setExpansions] = useState(restoredDraft?.expansions ?? []);
+  const [starts, setStarts] = useState(restoredDraft?.starts ?? initialStarts);
+  const [minimum, setMinimum] = useState(restoredDraft?.minimum ?? 2);
+  const [desired, setDesired] = useState(restoredDraft?.desired ?? 4);
+  const [maximum, setMaximum] = useState(restoredDraft?.maximum ?? 4);
+  const [description, setDescription] = useState(restoredDraft?.description ?? "");
+  const [teach, setTeach] = useState(restoredDraft?.teach ?? true);
+  const [copySourceId, setCopySourceId] = useState(restoredDraft?.copySourceId);
+  const [seeded, setSeeded] = useState(Boolean(restoredDraft));
+  const [changingGame, setChangingGame] = useState(false);
+  const changeGameButton = useRef<HTMLButtonElement>(null);
+  const picker = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [attendanceRequired, setAttendanceRequired] = useState(false);
+  const draft = useMemo<GatheringDraft>(() => ({ source, chosen, initialExpansionLookup, expansions, expansionOwnership,
+    addToCollection, bringToCamp, starts, minimum, desired, maximum, description, teach, copySourceId }),
+  [source, chosen, initialExpansionLookup, expansions, expansionOwnership, addToCollection, bringToCamp, starts, minimum, desired, maximum, description, teach, copySourceId]);
+  useEffect(() => {
+    if (draftFinished.current || draftGeneration !== profileGeneration()) return;
+    if (chosen || description || !teach || starts !== initialStarts) saveGatheringDraft(community.key, draft);
+    else clearGatheringDraft(community.key);
+  }, [community.key, draft, draftGeneration, chosen, description, teach, starts, initialStarts]);
   useEffect(() => {
     setStarts(current => revalidateGatheringStart(current, community, dateBounds));
   }, [community.key, community.startDate, community.endDate, dateBounds.min, dateBounds.max]);
+  useEffect(() => { if (changingGame) picker.current?.querySelector("input")?.focus(); }, [changingGame]);
   const expansionLookup = useGatheringExpansions(chosen?.bggId, chosen?.expansions ?? [], initialExpansionLookup);
   const chosenPlayers = resolvePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers, expansionLookup.expansions, expansions);
   function changeLimits(value: PlayerLimits) { setMinimum(value.minimum); setDesired(value.desired); setMaximum(value.maximum); }
@@ -104,19 +140,21 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
       resolvePlayerCountRange(chosen?.minPlayers, chosen?.maxPlayers, expansionLookup.expansions, ids)));
     setExpansions(ids);
   }
-  function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg", initialExpansions: number[] = [], expansionLookup?: ExpansionLookup) {
-    setInitialExpansionLookup(expansionLookup);
-    setCopySourceId(undefined); setExpansionOwnership(emptyExpansionOwnership()); setAddToCollection(false); setBringToCamp(false); setSource(nextSource); setChosen(game); setExpansions(initialExpansions); setError(undefined);
+  function closePicker() {
+    setChangingGame(false);
+    requestAnimationFrame(() => changeGameButton.current?.focus({ preventScroll: true }));
+  }
+  function chooseGame(game: ClubGame, nextSource: "catalog" | "bgg", initialExpansions: number[] = [], lookup?: ExpansionLookup) {
+    setInitialExpansionLookup(lookup);
+    setCopySourceId(undefined); setExpansionOwnership(emptyExpansionOwnership()); setAddToCollection(false); setBringToCamp(false);
+    setSource(nextSource); setChosen({ ...game, expansions: game.expansions ?? [] }); setExpansions(initialExpansions); setError(undefined);
+    if (changingGame) closePicker();
     const players = resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, []);
-    const nextMinimum = players.minimum;
-    const nextMaximum = players.maximum;
     const suggested = Number.parseInt(game.bestPlayers?.match(/\d+/)?.[0] ?? "", 10);
-    const nextDesired = Number.isFinite(suggested) ? Math.min(nextMaximum, Math.max(nextMinimum, suggested)) : nextMaximum;
-    changeLimits(fitPlayerLimits({ minimum: nextMinimum, desired: nextDesired, maximum: nextMaximum }, players,
+    const nextDesired = Number.isFinite(suggested) ? Math.min(players.maximum, Math.max(players.minimum, suggested)) : players.maximum;
+    changeLimits(fitPlayerLimits({ minimum: players.minimum, desired: nextDesired, maximum: players.maximum }, players,
       resolvePlayerCountRange(game.minPlayers, game.maxPlayers, game.expansions, initialExpansions)));
   }
-  const [copySourceId, setCopySourceId] = useState<string>();
-  const [seeded, setSeeded] = useState(false);
   useEffect(() => {
     if (seeded) return;
     if (copy?.gathering.bggId) {
@@ -141,6 +179,15 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
     }
     setSeeded(true);
   }, [games.data, initialGameId, seeded, copy, community.key]);
+  async function discard(restart = false) {
+    if (busy || !await telegram.confirm(restart ? "Удалить сохранённый черновик и начать новый сбор?" : "Удалить черновик сбора? Введённые данные будут потеряны.")) return;
+    clearGatheringDraft(community.key); completeCreation(community.key);
+    if (!restart) { draftFinished.current = true; onDone(); return; }
+    setRestoredDraft(undefined); setChosen(undefined); setInitialExpansionLookup(undefined); setExpansions([]);
+    setExpansionOwnership(emptyExpansionOwnership()); setAddToCollection(false); setBringToCamp(false); setSource("catalog");
+    setStarts(initialStarts); setMinimum(2); setDesired(4); setMaximum(4); setDescription(""); setTeach(true);
+    setCopySourceId(undefined); setError(undefined); setAttendanceRequired(false); setChangingGame(false); setSeeded(false);
+  }
   async function submit() {
     if (busy) return;
     if (!chosen || !starts) { setError("Выберите игру, дату и время."); return; }
@@ -148,19 +195,45 @@ export function CreateGathering({ community, bggAvailable, onDone, editRegistrat
     if (!isFutureLocalDateTime(starts, community.timeZoneId)) { setError("Выберите дату и время в будущем."); return; }
     if (minimum < 1 || minimum > desired || desired > maximum) { setError("Проверьте лимиты игроков: минимум ≤ желаемое число ≤ максимум."); return; }
     setBusy(true); setError(undefined); setAttendanceRequired(false);
-    try { const body = { copyFromPublicId: copySourceId, communityKey: community.key, gameSource: source, bggId: chosen.bggId, selectedExpansionIds: expansions, startsAtLocal: starts, minimumPlayers: minimum, desiredPlayers: desired, maximumPlayers: maximum, description, canTeachRules: teach, addToCollection, bringToCamp, addExpansionToCollectionIds: expansionOwnership.add, bringExpansionIds: expansionOwnership.bring }; await gatheringMutation("/gatherings", json("POST", { ...body, operationId: creationOperation(community.key, body) })); completeCreation(community.key); telegram.success("Сбор создан"); onDone(); }
-    catch (e) { setAttendanceRequired(e instanceof ApiError && e.code === "camp_attendance_date_required"); setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    try {
+      const body = { copyFromPublicId: copySourceId, communityKey: community.key, gameSource: source, bggId: chosen.bggId, selectedExpansionIds: expansions, startsAtLocal: starts, minimumPlayers: minimum, desiredPlayers: desired, maximumPlayers: maximum, description, canTeachRules: teach, addToCollection, bringToCamp, addExpansionToCollectionIds: expansionOwnership.add, bringExpansionIds: expansionOwnership.bring };
+      const operationId = creationOperation(community.key, body);
+      await gatheringMutation("/gatherings", json("POST", { ...body, operationId }));
+      if (draftGeneration !== profileGeneration()) return;
+      draftFinished.current = true; clearGatheringDraft(community.key, draft);
+      // A resumed form may still hold the submitted values. Retain the retry
+      // identity when this instance has gone away so resubmission stays safe.
+      if (mounted.current) completeCreation(community.key, operationId);
+      telegram.success("Сбор создан"); if (mounted.current) onDone();
+    } catch (e) { setAttendanceRequired(e instanceof ApiError && e.code === "camp_attendance_date_required"); setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
   }
-  return <div className="gathering-form-screen"><Page title={copy ? "Повторить сбор" : "Новый сбор"} actions={<BackButton onClick={onDone} />}>
-    {copy && <Notice>Выберите новую дату. Участники, гости, очередь и обещания привезти коробку не копируются.</Notice>}
+  const repeating = Boolean(copySourceId || copy && !seeded && !restoredDraft);
+  return <div className="gathering-form-screen"><Page title={repeating ? "Повторить сбор" : "Новый сбор"} actions={<BackButton onClick={onDone} />}>
+    {restoredDraft && <div className="gathering-draft-notice"><p role="status">Черновик восстановлен.</p>{(initialGameId || copy) && <button type="button" disabled={busy} onClick={() => void discard(true)}>Начать новый сбор вместо черновика</button>}</div>}
+    {repeating && <Notice>Выберите новую дату. Участники, гости, очередь и обещания привезти коробку не копируются.</Notice>}
     {!bggAvailable && <Notice kind="warning">BGG временно недоступен. Создать сбор по игре из каталога по-прежнему можно.</Notice>}
-    <section className="content-section gathering-create-section"><GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error}
+    {chosen && !changingGame ? <section className="content-section gathering-selected-game">
+      <Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><button ref={changeGameButton} type="button" disabled={busy} onClick={() => setChangingGame(true)}>Изменить игру</button></div>
+    </section> : <section ref={picker} className="content-section gathering-create-section"><GamePicker catalog={games.data} catalogLoading={games.loading} catalogError={games.error}
       bggAvailable={bggAvailable} selected={chosen} onSelect={chooseGame}
-      onClear={() => { setCopySourceId(undefined); setChosen(undefined); setInitialExpansionLookup(undefined); setExpansions([]); }}
-      hint="Игры из коллекции найдутся сразу, а поиск в BGG может занять несколько секунд. Можно вставить ссылку или ID." /></section>
-    {chosen && <section className="content-section gathering-create-section"><div className="media"><Cover src={chosen.thumbnailImageUrl} name={chosen.name} /><div><h2>{chosen.name}</h2><GameProviderNotice mode={community.mode} communityKey={community.key} bggId={chosen.bggId} startsAtLocal={starts} ownership={source === "bgg" || community.mode === "Camp" ? { gameName: chosen.name, canAdd: source === "bgg", add: addToCollection, bring: bringToCamp, camp: community.mode === "Camp", setAdd: value => { setAddToCollection(value); if (!value) setBringToCamp(false); }, setBring: setBringToCamp } : undefined} /><WishButton key={chosen.bggId} communityKey={community.key} bggId={chosen.bggId} /><GameMeta game={chosen} /></div></div>{expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={expansions} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} />{(chosen.playerRangeDefaulted || chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков. Мы поставили 1–12 — проверьте значения перед созданием сбора.</Notice>}</section>}
-    <section className="content-section gathering-create-section form-grid"><h2>Когда и с кем играем</h2><DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required /><GatheringPlayerLimits range={chosenPlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} disabled={!chosen} /><Field label="Описание" hint="Например: играем со всеми дополнениями, новичкам помогу разобраться."><textarea value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
-    {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Изменить дни участия</button>}</Notice>}<button className="primary sticky-action" disabled={busy || !chosen} onClick={submit}>{busy ? "Создаём…" : "Создать сбор"}</button>
+      hint="Игры из коллекции найдутся сразу, а поиск в BGG может занять несколько секунд. Можно вставить ссылку или ID." />
+      {changingGame && <button type="button" onClick={closePicker}>Оставить выбранную игру</button>}
+    </section>}
+    <section className="content-section gathering-create-section form-grid"><h2>Когда и с кем играем</h2>
+      <DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required disabled={busy} />
+      <GatheringPlayerLimits range={chosenPlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} disabled={!chosen || busy} />
+      {(chosen?.playerRangeDefaulted || chosen && chosenPlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков. Мы поставили 1–12 — проверьте значения перед созданием сбора.</Notice>}
+    </section>
+    {chosen && <details className="content-section gathering-game-options"><summary>Дополнения и коробка{expansions.length ? ` · выбрано дополнений: ${expansions.length}` : ""}</summary>
+      <GameProviderNotice disabled={busy} mode={community.mode} communityKey={community.key} bggId={chosen.bggId} startsAtLocal={starts} ownership={source === "bgg" || community.mode === "Camp" ? { gameName: chosen.name, canAdd: source === "bgg", add: addToCollection, bring: bringToCamp, camp: community.mode === "Camp", setAdd: value => { setAddToCollection(value); if (!value) setBringToCamp(false); }, setBring: setBringToCamp } : undefined} />
+      {expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={expansions} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} />
+      <GameMeta game={chosen} />
+    </details>}
+    <section className="content-section gathering-create-section form-grid"><Field label="Описание" hint="Например: играем со всеми дополнениями, новичкам помогу разобраться."><textarea disabled={busy} value={description} maxLength={300} placeholder="Необязательно" onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" disabled={busy} checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label></section>
+    {error && <Notice kind="danger"><p>{error}</p>{attendanceRequired && <button onClick={editRegistration}>Изменить дни участия</button>}</Notice>}
+    <button className="ghost" type="button" disabled={busy} onClick={() => void discard()}>Удалить черновик</button>
+    <div className="gathering-create-submit sticky-action"><p>{starts ? formatLocalDateTime(starts) : "Выберите дату и время"} · {desired} игроков, считая вас</p><button className="primary" disabled={busy || !chosen || changingGame} onClick={() => void submit()}>{busy ? "Создаём…" : "Создать сбор"}</button></div>
   </Page></div>;
 }
 
@@ -291,5 +364,5 @@ export function EditGathering({ community, id, value, done, cancel }: { communit
   const dateBounds = gatheringDateTimeBounds(community, currentLocalMinute(community.timeZoneId));
   const invalidCampDate = !isWithinCampDateRange(starts, community);
   async function save() { if (busy) return; if (invalidCampDate) { setError("Дата сбора должна быть в пределах дат кэмпа."); return; } if (!isFutureLocalDateTime(starts, community.timeZoneId)) { setError("Выберите дату и время в будущем."); return; } setBusy(true); setError(undefined); try { await gatheringMutation(`/gatherings/${id}`, json("PUT", { communityKey: community.key, startsAtLocal: starts, minimumPlayers: minimum, desiredPlayers: desired, maximumPlayers: maximum, description, canTeachRules: teach, selectedExpansionIds: selected, addExpansionToCollectionIds: expansionOwnership.add, bringExpansionIds: expansionOwnership.bring, participantNames: Object.entries(names).map(([participantId, displayNameOverride]) => ({ participantId, displayNameOverride })) })); telegram.success("Сбор обновлён"); done(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
-  return <div className="gathering-form-screen"><Page title="Изменить сбор" actions={<button className="ghost" onClick={cancel}>Отмена</button>}><section className="content-section form-grid"><DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required />{invalidCampDate && <Notice kind="warning">Сохранённая дата находится вне текущих дат кэмпа. Выберите допустимую дату перед сохранением.</Notice>}<GatheringPlayerLimits range={gamePlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} />{(value.gamePlayerRangeDefaulted || gamePlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков, поэтому мы поставили 1–12.</Notice>}<Field label="Описание"><textarea maxLength={300} value={description} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label>{expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={selected} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} /><fieldset className="participant-name-roster form-grid"><legend>Имена в этой партии</legend><small>Выберите участника, если хотите изменить его имя только в этом сборе. Имена в профилях останутся прежними.</small>{[...value.confirmedParticipants, ...value.waitlistedParticipants].filter(p => p.id).map(p => <ParticipantNameEditor key={p.id} originalName={p.originalName ?? p.name} displayNameOverride={Object.hasOwn(names, p.id!) ? names[p.id!] : p.displayNameOverride} disabled={busy || p.canRename === false} onChange={name => setNames(old => ({ ...old, [p.id!]: name }))} />)}</fieldset>{error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy || invalidCampDate} onClick={save}>{busy ? "Сохраняем…" : "Сохранить"}</button></section></Page></div>;
+  return <div className="gathering-form-screen"><Page title="Изменить сбор" actions={<button className="ghost" onClick={cancel}>Отмена</button>}><section className="content-section form-grid"><DateTimeField label="Дата и время" hint={`${community.timeZoneId} · ${community.mode === "Camp" ? "Можно выбрать только дату кэмпа" : "Прошедшее время выбрать нельзя"}`} min={dateBounds.min} max={dateBounds.max} value={starts} onChange={setStarts} required disabled={busy} />{invalidCampDate && <Notice kind="warning">Сохранённая дата находится вне текущих дат кэмпа. Выберите допустимую дату перед сохранением.</Notice>}<GatheringPlayerLimits range={gamePlayers} value={{ minimum, desired, maximum }} onChange={changeLimits} />{(value.gamePlayerRangeDefaulted || gamePlayers.wasDefaulted) && <Notice kind="warning">В BGG не указан полный диапазон игроков, поэтому мы поставили 1–12.</Notice>}<Field label="Описание"><textarea maxLength={300} value={description} onChange={e => setDescription(e.target.value)} /></Field><label className="check"><input type="checkbox" checked={teach} onChange={e => setTeach(e.target.checked)} />Могу объяснить правила</label>{expansionLookup.notice}<GatheringExpansionPicker expansions={expansionLookup.expansions} selected={selected} onChange={changeExpansions} ownership={expansionOwnership} onOwnership={setExpansionOwnership} camp={community.mode === "Camp"} disabled={busy} /><fieldset className="participant-name-roster form-grid"><legend>Имена в этой партии</legend><small>Выберите участника, если хотите изменить его имя только в этом сборе. Имена в профилях останутся прежними.</small>{[...value.confirmedParticipants, ...value.waitlistedParticipants].filter(p => p.id).map(p => <ParticipantNameEditor key={p.id} originalName={p.originalName ?? p.name} displayNameOverride={Object.hasOwn(names, p.id!) ? names[p.id!] : p.displayNameOverride} disabled={busy || p.canRename === false} onChange={name => setNames(old => ({ ...old, [p.id!]: name }))} />)}</fieldset>{error && <Notice kind="danger">{error}</Notice>}<button className="primary" disabled={busy || invalidCampDate} onClick={save}>{busy ? "Сохраняем…" : "Сохранить"}</button></section></Page></div>;
 }
