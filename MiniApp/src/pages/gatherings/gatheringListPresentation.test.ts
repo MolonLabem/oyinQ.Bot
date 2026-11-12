@@ -5,14 +5,14 @@ import { gatheringDays } from "./gatheringListPresentation";
 const item = (id: string, startsAtUtc?: string): GatheringListItem => ({
   startsAtUtc, isOrganizer: false,
   card: { publicId: id, gameName: "Игра", organizerName: "Организатор", canTeachRules: true,
-    rulesText: "Могу объяснить правила", localDateTime: "1 октября, 01:00", occupiedSeats: 2, maximumPlayers: 4, statusText: "Есть места" }
+    rulesText: "Правила объясню", localDateTime: "1 октября, 01:00", occupiedSeats: 2, maximumPlayers: 4, statusText: "Есть места" }
 });
 
 it("groups by community date when the device and UTC dates differ", () => {
   const days = gatheringDays([item("a", "2026-09-30T20:00:00Z"), item("b", "2026-10-01T19:00:00Z")],
     "Asia/Qyzylorda", new Date("2026-09-30T19:30:00Z"));
   expect(days.map(day => [day.date, day.label, day.items[0].time])).toEqual([
-    ["2026-10-01", "Сегодня", "01:00"], ["2026-10-02", "Завтра", "00:00"]
+    ["2026-10-01", "Сегодня", "01:00, чт"], ["2026-10-02", "Завтра", "00:00, пт"]
   ]);
 });
 
@@ -20,7 +20,7 @@ it("uses the next calendar date across a DST transition", () => {
   const days = gatheringDays([item("a", "2026-03-29T22:30:00Z")], "Europe/Berlin", new Date("2026-03-29T00:30:00Z"));
   expect(days[0].label).toBe("Завтра");
   expect(days[0].date).toBe("2026-03-30");
-  expect(days[0].items[0].time).toBe("00:30");
+  expect(days[0].items[0].time).toBe("00:30, пн");
 });
 
 it("preserves descending history order, page contents, and the year of older events", () => {

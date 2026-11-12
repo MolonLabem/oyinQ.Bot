@@ -1,6 +1,6 @@
 import { dateTimeFormatter } from "../../app/dateTimeLocale";
 import type { GatheringListItem } from "../../api/types";
-import { currentLocalMinute, formatLocalTime } from "../../app/format";
+import { currentLocalMinute, formatCalendarDate, formatLocalTime } from "../../app/format";
 
 export type GatheringDay = { date?: string; label?: string; items: { item: GatheringListItem; time?: string }[] };
 
@@ -25,7 +25,7 @@ export function gatheringDays(items: GatheringListItem[], timeZoneId: string, no
       group = { date, label, items: [] };
       groups.push(group);
     }
-    group.items.push({ item, time: local ? formatLocalTime(local.slice(11)) : undefined });
+    group.items.push({ item, time: local && date ? `${formatLocalTime(local.slice(11))}, ${formatCalendarDate(date, { weekday: "short" })}` : undefined });
   }
   return groups;
 }

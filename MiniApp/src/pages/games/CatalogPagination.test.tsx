@@ -11,7 +11,7 @@ import { GamesPage } from "./GamesPage";
 const game = (id: number): GameListItem => ({ bggId: id, name: `Игра ${id}`, type: "Other", typeName: "Другое", typeNames: [], availabilitySummary: "Есть в клубе", isDefinitelyAvailable: true, needsProviderCoordination: false });
 const community = { key: "club", mode: "Club" as const, name: "Клуб", timeZoneId: "UTC" };
 let host: HTMLDivElement; let root: Root; let items: GameListItem[];
-const cards = () => [...host.querySelectorAll(".catalog-card .catalog-title")].map(x => x.textContent);
+const cards = () => [...host.querySelectorAll(".catalog-card .game-card-title")].map(x => x.textContent);
 const pageNumber = () => host.querySelector<HTMLSelectElement>('[aria-label="Страница каталога"]')?.value;
 const pager = () => host.querySelector('nav[aria-label="Страницы каталога"]');
 async function click(label: string) { await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click()); }

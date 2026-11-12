@@ -78,7 +78,7 @@ public sealed class GatheringPresentationServiceTests
 
         Assert.Equal("https://images.example/thumb.jpg", card.ImageUrl);
         Assert.Equal("https://images.example/large.jpg", detail.ImageUrl);
-        Assert.Equal("Могу объяснить правила", card.RulesText);
+        Assert.Equal("Правила объясню", card.RulesText);
         Assert.Equal("✅ Набрано · есть места", card.StatusText);
         Assert.Equal("Sardar", card.OrganizerName);
         Assert.True(card.CanTeachRules);
@@ -185,7 +185,7 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal("<b>Terraforming Mars</b> | 🟡 Средняя", lines[0]);
         Assert.Equal("📅 сб, 5 сентября, 19:00 | ⏱ 90–120 мин", lines[1]);
         Assert.Equal("👥 2 из 5 игроков", lines[2]);
-        var sections = new[] { "Дополнения:", "📖 Могу объяснить правила", gathering.Description, "Собирает", "Участники:", "Алия", "⏳ В очереди: 1", "✅ Набрано · есть места" };
+        var sections = new[] { "Дополнения:", "📖 Правила объясню", gathering.Description, "Собирает", "Участники:", "Алия", "⏳ В очереди: 1", "✅ Набрано · есть места" };
         var previous = -1;
         foreach (var section in sections)
         {

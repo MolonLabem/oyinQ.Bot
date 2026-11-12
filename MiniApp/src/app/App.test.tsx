@@ -80,7 +80,7 @@ it("opens own box management in the unified profile and returns to the same wish
     return previous(path, options);
   });
   await act(async () => root.render(<App />));
-  await act(async () => host.querySelector<HTMLButtonElement>(".wish-game-heading")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(".wish-card .game-card")!.click());
   const link = host.querySelector<HTMLAnchorElement>('a[data-profile-nav]')!;
   expect(link.textContent).toBe("Дни и моя коллекция");
   await act(async () => link.click());
@@ -92,7 +92,7 @@ it("opens own box management in the unified profile and returns to the same wish
   const filter = [...host.querySelectorAll<HTMLButtonElement>("button")].find(x => x.textContent === "Фильтры" && !x.closest("[hidden]"))!;
   await act(async () => filter.click());
   await telegramBack(); expect(host.querySelector("dialog")).toBeNull(); expect(link.closest("[hidden]")).not.toBeNull();
-  const heading = [...host.querySelectorAll<HTMLButtonElement>(".wish-game-heading")].find(x => !x.closest("[hidden]"))!;
+  const heading = [...host.querySelectorAll<HTMLButtonElement>(".wish-card .game-card")].find(x => !x.closest("[hidden]"))!;
   await act(async () => heading.click());
   await telegramBack(); // Child detail, not the parent profile visit.
   expect(link.closest("[hidden]")).not.toBeNull(); expect(heading.closest("[hidden]")).toBeNull();

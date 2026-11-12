@@ -1,3 +1,5 @@
+import { GameCard } from "../../components/GameCard";
+import { GameDescription, GameOverview } from "../../components/GameOverview";
 import { formatCalendarDate, formatTime } from "../../app/format";
 import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
@@ -5,10 +7,9 @@ import { useCampWishlistAction } from "../../hooks/useCampWishlistAction";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { ClubGame, Community, Contribution } from "../../api/types";
-import { Pagination, BackButton, Card, Cover, Empty, ErrorState, Field, Loading, Notice, Tabs } from "../../components/Ui";
+import { Pagination, BackButton, Card, Empty, ErrorState, Field, Loading, Notice, Tabs } from "../../components/Ui";
 import { WishButton } from "../../components/Wishlist";
 import { GamePicker } from "../../components/GamePicker";
-import { ComplexityBadge } from "../../components/ComplexityBadge";
 import { useAsync, useDebouncedValue } from "../../hooks/useAsync";
 import { useMobileDialog } from "../../hooks/useMobileDialog";
 import { successEventName } from "../../telegram/webApp";
@@ -79,7 +80,7 @@ function CampWishBrowser(props: Props) {
 }
 
 function WishCard({ item, open, ...box }: { item: WishGame; open: (section?: string) => void; communityKey: string; canAct: boolean; changed: () => Promise<boolean>; beforeChange?: () => (() => void) | undefined }) {
-  return <div data-box-game={item.game.bggId}><Card className="wish-card"><button className="wish-game-heading" onClick={() => open()}><Cover name={item.game.name} src={item.game.thumbnailImageUrl} /><span><strong>{item.game.name}</strong><ComplexityBadge info={item.game.complexityInfo} />{item.isOwned && <small>Есть у вас</small>}</span></button>
+  return <div data-box-game={item.game.bggId}><Card className="wish-card"><GameCard embedded game={item.game} context="wishlist" open={() => open()}>{item.isOwned && <span className="game-card-secondary">Есть у вас</span>}</GameCard>
     <div className="wish-card-activity"><button className="person-link" onClick={() => open("interested")}>Хотят сыграть: {item.interestedParticipants}{item.isWished ? " · Вы тоже" : ""}</button><span>Сборов: {item.scheduledGatherings}</span></div><p>{item.boxSummary}</p>
     {item.isOwned ? <WishBoxControl item={item} {...box} /> : <button onClick={() => open(item.scheduledGatherings ? "gatherings" : item.confirmed ? "create" : "owners")}>{item.scheduledGatherings ? "Посмотреть сборы" : item.confirmed ? "Организовать сбор" : "Попросить привезти"}</button>}
   </Card></div>;
@@ -107,7 +108,7 @@ function WishDetail({ community, id, create, openGathering, openProfile, section
   }, [state.data, section]);
   if (!state.data) return state.error ? <ErrorState message={state.error} retry={state.reload} /> : <Loading />;
   const data = state.data; const item = data.item;
-  return <div className="stack wish-detail" ref={container}><div className="wish-detail-heading"><Cover name={item.game.name} src={item.game.imageUrl ?? item.game.thumbnailImageUrl} /><div><h2>{item.game.name}</h2><p>{item.boxSummary}</p></div></div>
+  return <div className="stack wish-detail" ref={container}><GameOverview game={item.game}><p>{item.boxSummary}</p></GameOverview>
     {state.error && <ErrorState message={state.error} retry={state.reload} />}
     {(item.isOwned || !!data.askedMe?.length) && <section data-wish-section="box">{item.isOwned && <WishBoxControl item={item} canAct={data.canAct} communityKey={community.key} changed={state.reload} />}<a data-profile-nav href={`?community=${encodeURIComponent(community.key)}&tab=profile&profileTab=collection&box=${id}`}>Дни и моя коллекция</a></section>}
     <section className="wish-next-action" aria-label="Действия с игрой">
@@ -123,7 +124,7 @@ function WishDetail({ community, id, create, openGathering, openProfile, section
     <div data-wish-section="gatherings">{openGathering && <GameGatherings preserveScroll communityKey={community.key} bggId={id} open={openGathering} />}</div>
     <section data-wish-section="owners"><h3>Кто может привезти</h3>{!data.owners.length && <p>Коробку пока не нашли.</p>}{data.owners.slice(0, ownerLimit).map(owner => <OwnerRow key={owner.person.id} community={community} id={id} gameName={item.game.name} owner={owner} canAct={data.canAct} myDates={data.myDates} openProfile={openProfile} changed={state.reload} />)}{data.owners.length > ownerLimit && <button onClick={() => setOwnerLimit(ownerLimit + 12)}>Показать ещё</button>}</section>
     <section data-wish-section="interested"><h3>Кто хочет сыграть · {item.interestedParticipants}</h3>{data.interested.slice(0, limit).map(p => <button className="person-link" key={p.id} onClick={() => openProfile(p.id)}>{p.name}</button>)}{data.anonymousCount > 0 && <p className="muted">Ещё {data.anonymousCount} анонимно.</p>}{data.interested.length > limit && <button onClick={() => setLimit(limit + 12)}>Показать ещё</button>}</section>
-    {item.game.description && <details><summary>Об игре</summary><p>{item.game.description}</p></details>}
+    <GameDescription game={item.game} />
   </div>;
 }
 

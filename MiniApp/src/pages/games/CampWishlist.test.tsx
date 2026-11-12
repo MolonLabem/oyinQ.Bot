@@ -66,9 +66,9 @@ it("keeps loaded cards through refresh and error, and never posts during reads",
 
 it("game to participant to game and back retains list mode and filters", async () => {
   await mount(); await applyFilter("Нужна коробка"); await click(game.game.name);
-  expect(visible("h2")[0].textContent).toBe(game.game.name);
-  await click("Виктор"); expect(visible("h2")[0].textContent).toBe("Виктор");
-  await click(game.game.name); await click("Назад"); expect(visible("h2")[0].textContent).toBe("Виктор");
+  expect(visible("h1, h2")[0].textContent).toBe(game.game.name);
+  await click("Виктор"); expect(visible("h1, h2")[0].textContent).toBe("Виктор");
+  await click(game.game.name); await click("Назад"); expect(visible("h1, h2")[0].textContent).toBe("Виктор");
   await click("Назад"); await click("Назад");
   expect(visible('[aria-label="Убрать: Нужна коробка"]')[0].textContent).toContain("Нужна коробка");
   expect(visible('[aria-selected="true"]')[0].textContent).toBe("Все");
@@ -143,7 +143,7 @@ it.each(["Все", "Мои", "Что взять"])("saves own box in place in %s
   expect(JSON.parse(String(writes()[0][1]?.body))).toEqual({ communityKey: "camp", commitment: "Bringing", allAttendanceDays: true });
   expect(box().value).toBe("Bringing"); expect(visible(".wish-card")[0].textContent).toContain("Вы точно привезёте");
   expect(visible(".wish-card")[0].textContent).not.toContain("Коробку пока не нашли");
-  expect(visible("h2")).toHaveLength(0); expect(host.textContent).toContain("Страница 2");
+  expect(visible("h1, h2")).toHaveLength(0); expect(host.textContent).toContain("Страница 2");
   expect(visible('[aria-selected="true"]')[0].textContent).toBe(mode === "Что взять" ? "Что взять · 3" : mode);
   await choose("Bringing"); expect(writes()).toHaveLength(1);
 });
@@ -187,7 +187,7 @@ it("uses the shared selector in details, preserving date intent and distinguishi
   await choose("declined"); expect(box().value).toBe("declined");
   await choose(""); expect(box().value).toBe("");
   expect(writes().map(c => JSON.parse(String(c[1]?.body)))).toEqual([{ action: "decline", bggId: 42 }, { action: "withdraw", bggId: 42 }]);
-  expect(visible("h2")[0].textContent).toBe(game.game.name);
+  expect(visible("h1, h2")[0].textContent).toBe(game.game.name);
 });
 
 it("removes a newly confirmed game from the box filter and anchors its next neighbour", async () => {

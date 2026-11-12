@@ -34,7 +34,7 @@ describe("catalog collection grouping", () => {
     const markup = renderToStaticMarkup(<CatalogGameList open={() => {}} items={[
       game(1, "Базовая игра", [{ bggId: 2, name: "Дополнение" }]), game(2, "Дополнение"), game(3, "Отдельное дополнение")
     ]} />);
-    expect(markup.match(/class="card catalog-card"/g)).toHaveLength(2);
+    expect(markup.match(/aria-label="Открыть игру:/g)).toHaveLength(2);
     expect(markup).toContain('catalog-game-group has-expansions');
     expect(markup).toContain('В коллекции');
     expect(markup).toContain('<button class="catalog-expansion-option"');

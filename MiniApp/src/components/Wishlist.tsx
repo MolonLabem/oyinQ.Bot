@@ -1,55 +1,28 @@
-import { ComplexityBadge } from "./ComplexityBadge";
-import { useEffect, useRef, useState } from "react";
-import { api, json } from "../api/client";
+import { useState } from "react";
+import { api } from "../api/client";
 import type { CatalogResponse, ClubGame, Community } from "../api/types";
 import { useAsync } from "../hooks/useAsync";
 import { GamePicker } from "./GamePicker";
-import { Empty, ErrorState, Loading, Notice } from "./Ui";
+import { Card, Empty, ErrorState, Loading } from "./Ui";
+import { ComplexityBadge } from "./ComplexityBadge";
+import { GameCard } from "./GameCard";
+import { GameDetail } from "../pages/games/GameDetail";
+import { WishButton } from "./WishButton";
 import { wishlistCopy } from "../app/productCopy";
-import { successEventName } from "../telegram/webApp";
-
-export function WishButton({ communityKey, bggId, initial, changed }: {
-  communityKey: string; bggId: number; initial?: boolean; changed?: () => void;
-}) {
-  const state = useAsync(() => initial === undefined
-    ? api<{ wished: boolean }>(`/wishlist/${bggId}?community=${encodeURIComponent(communityKey)}`)
-    : Promise.resolve({ wished: initial }), [communityKey, bggId, initial]);
-  const [value, setValue] = useState<boolean>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const scope = useRef(0);
-  useEffect(() => { setValue(undefined); }, [initial]);
-  useEffect(() => {
-    scope.current++; setValue(undefined); setError(undefined); setBusy(false);
-    return () => { scope.current++; };
-  }, [communityKey, bggId]);
-  const wished = value ?? state.data?.wished ?? initial ?? false;
-  async function toggle() {
-    const version = scope.current;
-    setBusy(true); setError(undefined);
-    try {
-      const result = await api<{ wished: boolean }>(`/wishlist/${bggId}`, json("PUT", { communityKey, wished: !wished }));
-      if (version !== scope.current) return;
-      setValue(result.wished); changed?.(); window.dispatchEvent(new Event(successEventName));
-    } catch (e) { if (version === scope.current) setError(e instanceof Error ? e.message : String(e)); }
-    finally { if (version === scope.current) setBusy(false); }
-  }
-  return <div><button type="button" className="wishlist-button" aria-pressed={wished} disabled={busy || state.loading || !!state.error} onClick={() => void toggle()}>
-    {busy ? "Сохраняем…" : wished ? wishlistCopy.selected : wishlistCopy.want}</button>
-    {(error || state.error) && <Notice kind="danger">{error || state.error}</Notice>}</div>;
-}
+export { WishButton } from "./WishButton";
 
 export function WishlistPanel({ community, bggAvailable }: { community: Community; bggAvailable: boolean }) {
   const state = useAsync(() => api<CatalogResponse>(`/catalog?community=${encodeURIComponent(community.key)}&ownership=wishes`), [community.key]);
   const games = useAsync(() => api<ClubGame[]>(`/games?community=${encodeURIComponent(community.key)}`), [community.key]);
   const [selected, setSelected] = useState<ClubGame>();
-  return <section className="wishlist-panel" aria-label={wishlistCopy.title}>
+  const [detail, setDetail] = useState<number>();
+  return <><div hidden={detail !== undefined}><section className="wishlist-panel" aria-label={wishlistCopy.title}>
     <GamePicker selectionMode="wish" catalog={games.data} catalogLoading={games.loading} catalogError={games.error} bggAvailable={bggAvailable}
       selected={selected} onSelect={game => setSelected(game)} onClear={() => setSelected(undefined)} label={wishlistCopy.add} />
     {selected && <div className="row"><strong>{selected.name}</strong><ComplexityBadge info={selected.complexityInfo} /><WishButton key={`${community.key}-${selected.bggId}`} communityKey={community.key} bggId={selected.bggId} changed={state.reload} /></div>}
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : !state.data?.items.length
       ? <Empty>{wishlistCopy.empty}</Empty>
-      : <ul className="provider-list">{state.data.items.map(game => <li key={game.bggId}><span>{game.name} <ComplexityBadge info={game.complexityInfo} /></span>
-        <WishButton communityKey={community.key} bggId={game.bggId} initial={game.isWished} changed={state.reload} /></li>)}</ul>}
-  </section>;
+      : <div className="stack">{state.data.items.map(game => <Card className="wish-card" key={game.bggId}><GameCard embedded game={game} context="wishlist" open={() => setDetail(game.bggId)} />
+        <WishButton communityKey={community.key} bggId={game.bggId} initial={game.isWished} changed={state.reload} /></Card>)}</div>}
+  </section></div>{detail !== undefined && <GameDetail community={community} bggId={detail} back={() => setDetail(undefined)} />}</>;
 }

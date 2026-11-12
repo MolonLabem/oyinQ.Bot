@@ -48,6 +48,8 @@ it("keeps the collection free of visibility controls and addition closed without
   expect(host.textContent).toContain("Выбрана игра «Новая игра»");
   await click("Продолжить добавление");
   expect(host.querySelector("#collection-add")?.hasAttribute("hidden")).toBe(false);
+  expect(visible(".collection-item")).toHaveLength(0);
+  expect(host.querySelector('.mode-button.active')?.textContent).toBe("Закрыть");
   expect(host.querySelector(".selected-game")?.textContent).toContain("Новая игра");
   expect(vi.mocked(api).mock.calls.filter(c => c[1]?.method)).toHaveLength(0);
 });

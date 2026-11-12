@@ -1,8 +1,8 @@
 import type { ComplexityInfo } from "../api/types";
 import { Badge } from "./Ui";
 
-export function ComplexityBadge({ info }: { info?: ComplexityInfo | null }) {
-  if (!info) return null;
+export function ComplexityBadge({ info, showUnknown = false }: { info?: ComplexityInfo | null; showUnknown?: boolean }) {
+  if (!info) return showUnknown ? <span className="complexity-unknown" title="В сохранённых данных сложность не указана">Сложность —</span> : null;
   return <Badge className={`complexity-badge ${info.cssClass}`}>{info.displayName}</Badge>;
 }
 

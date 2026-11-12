@@ -257,7 +257,7 @@ public sealed class GatheringPresentationService
         => GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
 
     private static string RulesText(bool canTeachRules) =>
-        canTeachRules ? "Могу объяснить правила" : string.Empty;
+        canTeachRules ? "Правила объясню" : string.Empty;
 
     public static GatheringParticipationPresentation BuildParticipation(GameGathering gathering, long participantId)
     {

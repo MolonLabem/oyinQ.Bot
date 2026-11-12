@@ -74,9 +74,9 @@ it("selects games and expansions independently and deduplicates an expansion sha
   expect(host.querySelector(".box-control")).toBeNull();
   await act(async () => checks()[0].click());
   expect(checks().filter(x => x.checked)).toHaveLength(1);
-  await click("Выбрать все"); expect(host.textContent).toContain("Выбрано: 3");
+  await click("Выбрать всё"); expect(host.textContent).toContain("Выбрано: 3");
   await click("Снять выбор"); expect(checks().every(x => !x.checked)).toBe(true);
-  await click("Выбрать все"); await click("Удалить (3)");
+  await click("Выбрать всё"); await click("Удалить (3)");
   expect(telegram.confirm).toHaveBeenCalledTimes(1);
   expect(telegram.confirm).toHaveBeenCalledWith("Удалить выбранные игры (3) из коллекции во всех сообществах?");
   expect(deletes().map(call => call[0]).sort()).toEqual([
@@ -86,10 +86,10 @@ it("selects games and expansions independently and deduplicates an expansion sha
 });
 
 it("clears selections hidden by search and selects only the current results", async () => {
-  items = [base, other]; await mount(); await click("Выбрать"); await click("Выбрать все");
+  items = [base, other]; await mount(); await click("Выбрать"); await click("Выбрать всё");
   await search("Азул"); expect(host.textContent).toContain("Выбрано: 1"); expect(checks()).toHaveLength(1);
   await search(""); expect(checks().filter(x => x.checked)).toHaveLength(1);
-  await search("Азул"); await click("Снять выбор"); await click("Выбрать все"); await click("Удалить (1)");
+  await search("Азул"); await click("Снять выбор"); await click("Выбрать всё"); await click("Удалить (1)");
   expect(deletes().map(call => call[0])).toEqual(["/profile/collection/BaseGame/43"]);
   expect(items).toEqual([base]);
 });
@@ -101,7 +101,7 @@ it("uses the Camp filter for selection and retains the server restriction on act
     return previous(path, init);
   });
   await mount({ key: "camp", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" });
-  await click("Выбрать"); await click("Выбрать все"); await click("Точно привезу");
+  await click("Выбрать"); await click("Выбрать всё"); await click("Точно привезу");
   expect(host.textContent).toContain("Выбрано: 2");
   // The matching base still shows its independently selectable expansion.
   await click("Снять выбор"); await act(async () => checks()[0].click()); await click("Удалить (1)");
@@ -111,7 +111,7 @@ it("uses the Camp filter for selection and retains the server restriction on act
 });
 
 it("cancels selection through Cancel or Telegram Back without deleting anything", async () => {
-  await mount(); await click("Выбрать"); await click("Выбрать все"); await click("Отмена");
+  await mount(); await click("Выбрать"); await click("Выбрать всё"); await click("Отмена");
   expect(checks()).toHaveLength(0); await click("Выбрать");
   expect(host.textContent).toContain("Выбрано: 0");
   const back = vi.mocked(telegram.back).mock.calls.at(-1)![1];
@@ -120,7 +120,7 @@ it("cancels selection through Cancel or Telegram Back without deleting anything"
 });
 
 it("keeps the selection when confirmation is cancelled", async () => {
-  await mount(); await click("Выбрать"); await click("Выбрать все");
+  await mount(); await click("Выбрать"); await click("Выбрать всё");
   vi.mocked(telegram.confirm).mockResolvedValueOnce(false); await click("Удалить (3)");
   expect(host.textContent).toContain("Выбрано: 3"); expect(button("Удалить (3)").disabled).toBe(false);
   expect(deletes()).toHaveLength(0);
@@ -154,7 +154,7 @@ it("retains blocked items after partial deletion and retries only those items wh
     }
     return previous(path, init);
   });
-  await mount(); await click("Выбрать"); await click("Выбрать все"); await click("Удалить (2)");
+  await mount(); await click("Выбрать"); await click("Выбрать всё"); await click("Удалить (2)");
   expect(host.textContent).toContain("«Немезида»: Сначала снимите предложение на кэмпе.");
   expect(host.textContent).toContain("Не удалось обновить список");
   expect(host.textContent).toContain("Выбрано: 1"); expect(checks()[0].checked).toBe(true);
@@ -178,12 +178,12 @@ it("defaults to ten games, retains selection across pages, and remembers a chang
   await click("Выбрать"); await act(async () => checks()[0].click()); await nextPage();
   expect(host.textContent).toContain("Страница 2 из 3"); expect(checks().some(x => x.checked)).toBe(false);
   await act(async () => checks()[0].click()); expect(host.textContent).toContain("Выбрано: 2");
-  await click("Выбрать страницу"); expect(host.textContent).toContain("Выбрано: 11");
+  await click("Выбрать всё"); expect(host.textContent).toContain("Выбрано: 23");
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Предыдущая страница"]')!.click());
   expect(checks()[0].checked).toBe(true);
   await nextPage();
   await act(async () => host.querySelector<HTMLInputElement>('.collection-page-size input[value="20"]')!.click());
-  expect(cards()).toHaveLength(20); expect(host.textContent).toContain("Выбрано: 11");
+  expect(cards()).toHaveLength(20); expect(host.textContent).toContain("Выбрано: 23");
   expect(host.textContent).toContain("Страница 1 из 2");
   await act(async () => root.render(null)); await mount();
   expect(cards()).toHaveLength(20); expect(deletes()).toHaveLength(0);
@@ -203,7 +203,9 @@ it("opens a linked game on its page, keeps expansions with their base, and clamp
   history.replaceState({}, "", "/?box=23"); await mount();
   expect(host.textContent).toContain("Страница 3 из 3"); expect(cards()).toHaveLength(3);
   expect(host.querySelector('[data-box-game="Expansion:900"]')).not.toBeNull();
-  await click("Выбрать"); await click("Выбрать страницу"); await click("Удалить (4)");
+  await click("Выбрать");
+  for (const checkbox of checks()) await act(async () => checkbox.click());
+  await click("Удалить (4)");
   expect(host.textContent).toContain("Страница 2 из 2"); expect(cards()).toHaveLength(10);
   expect(items).toHaveLength(20);
 });
@@ -217,4 +219,33 @@ it("restores the saved Camp filter page after its availability data arrives", as
   await mount({ key: "camp", name: "Кэмп", mode: "Camp", timeZoneId: "UTC" });
   await act(async () => finish(items.map(item => ({ ...item, commitment: "Bringing", allAttendanceDays: true }))));
   expect(host.textContent).toContain("Страница 2 из 3"); expect(cards()).toHaveLength(10);
+});
+
+it("opens saved personal details without a community or BGG and returns to the same collection page", async () => {
+  largeCollection(); items[12].snapshot = { name: "Моя игра", description: "Описание из коллекции", minPlayers: 2, maxPlayers: 4,
+    minPlayTimeMinutes: 45, maxPlayTimeMinutes: 60, complexityInfo: { level: "Medium", displayName: "Средняя", cssClass: "complexity-medium" } };
+  await mount(); await nextPage();
+  const before = vi.mocked(api).mock.calls.length;
+  const card = host.querySelector<HTMLButtonElement>('[aria-label="Открыть игру: Моя игра"]')!;
+  card.focus(); await act(async () => card.click());
+  expect(host.querySelector('.game-detail-screen')?.textContent).toContain("Описание из коллекции");
+  expect(host.querySelector('.game-detail-screen')?.textContent).toContain("45–60 мин");
+  expect(host.querySelector('.game-detail-screen .complexity-medium')).not.toBeNull();
+  expect(vi.mocked(api).mock.calls).toHaveLength(before);
+  expect(deletes()).toHaveLength(0);
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Назад"]')!.click());
+  expect(host.querySelector('.game-detail-screen')).toBeNull();
+  expect(host.textContent).toContain("Страница 2 из 3"); expect(document.activeElement).toBe(card);
+});
+
+it("selects all matching pages, excludes other search results, and never deletes on mode exit", async () => {
+  largeCollection(); items[22].snapshot.name = "Другая игра";
+  await mount(); await search("Игра"); await click("Выбрать"); await click("Выбрать всё");
+  expect(host.textContent).toContain("Выбрано: 23");
+  await search("Игра 1");
+  const matching = checks().filter(input => input.checked).length;
+  expect(matching).toBeGreaterThan(0);
+  await click("Снять выбор"); await click("Выбрать всё");
+  await click("Отмена"); expect(deletes()).toHaveLength(0);
+  expect(host.querySelector('.game-card-selectable')).toBeNull();
 });
