@@ -18,7 +18,7 @@ import { GameTaxonomy } from "../../components/GameTaxonomy";
 import { formatDate, formatDuration, plural } from "../../app/format";
 import { catalogGroups } from "../../app/catalogPagination";
 import { CloseIcon } from "../../components/CloseIcon";
-import { GameFact } from "../../components/GameFact";
+import { GameFact, GameFacts } from "../../components/GameFact";
 import { BrowseSearch } from "../../components/BrowseSearch";
 
 type GamesPageProps = { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggAvailable: boolean; initialGameId?: number; onInitialConsumed?: () => void; backToGathering?: () => void };
@@ -135,25 +135,27 @@ function GameCard({ game, open }: { game: GameListItem; open: () => void }) {
   const factsId = useId();
   const time = formatDuration(game.minPlayTimeMinutes, game.maxPlayTimeMinutes);
   return <button className="card catalog-card" aria-label={`Открыть игру: ${game.name}`} aria-describedby={factsId} onClick={open}>
-    <Cover src={game.thumbnailImageUrl} name={game.name} />
-    <span className="catalog-card-body">
-      <span className="catalog-card-heading"><strong className="catalog-title">{game.name}</strong><ComplexityBadge info={game.complexityInfo} /></span>
-      <span className="catalog-card-info" id={factsId}>
-        {game.complexityInfo && <span className="visually-hidden">Сложность: {game.complexityInfo.displayName}. </span>}
-        <span className="catalog-card-facts">
-          {game.minPlayers && game.maxPlayers && <GameFact kind="players" label="Игроки">{game.expansionPlayerRange ? "Базовая игра: " : ""}{game.minPlayers === game.maxPlayers ? game.minPlayers : `${game.minPlayers}–${game.maxPlayers}`}</GameFact>}
-          {time && <GameFact kind="duration" label="Длительность">{time}</GameFact>}
-        </span>
-        {(game.bestPlayers || game.bggRating != null) && <span className="catalog-card-facts secondary">
-          {game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}
+    <span className="compact-game-header">
+      <Cover src={game.thumbnailImageUrl} name={game.name} />
+      <span className="catalog-card-body">
+        {(game.complexityInfo || game.bggRating != null) && <span className="compact-game-top">
           {game.bggRating != null && <GameFact kind="rating" label="Рейтинг BGG">{game.bggRating.toLocaleString("ru-RU", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} BGG</GameFact>}
+          <ComplexityBadge info={game.complexityInfo} />
         </span>}
-        {game.expansionPlayerRange && <span className="catalog-expansion-range">С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}
-        {(game.availabilitySummary || Boolean(game.scheduledGatherings)) && <span className="catalog-card-availability">
-          {game.availabilitySummary && <span className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</span>}
-          {Boolean(game.scheduledGatherings) && <span className="catalog-activity">{plural(game.scheduledGatherings!, "сбор", "сбора", "сборов")} впереди</span>}
-        </span>}
+        <strong className="catalog-title">{game.name}</strong>
+        {game.bestPlayers && <span className="catalog-card-secondary">Лучше: {game.bestPlayers}</span>}
       </span>
+    </span>
+    <span className="compact-game-content catalog-card-info" id={factsId}>
+      {game.complexityInfo && <span className="visually-hidden">Сложность: {game.complexityInfo.displayName}. </span>}
+      {game.bggRating != null && <span className="visually-hidden">Рейтинг BGG: {game.bggRating.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}. </span>}
+      {game.bestPlayers && <span className="visually-hidden">Лучше: {game.bestPlayers}. </span>}
+      <GameFacts players={game.minPlayers && game.maxPlayers ? <>{game.expansionPlayerRange ? "Базовая игра: " : ""}{game.minPlayers === game.maxPlayers ? game.minPlayers : `${game.minPlayers}–${game.maxPlayers}`}</> : undefined} duration={time} />
+      {game.expansionPlayerRange && <span className="catalog-expansion-range">С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}
+      {(game.availabilitySummary || Boolean(game.scheduledGatherings)) && <span className="catalog-card-availability">
+        {game.availabilitySummary && <span className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</span>}
+        {Boolean(game.scheduledGatherings) && <span className="catalog-activity">{plural(game.scheduledGatherings!, "сбор", "сбора", "сборов")} впереди</span>}
+      </span>}
     </span>
   </button>;
 }
@@ -175,7 +177,11 @@ function GameDetail({ community, bggId, attendanceDate, back, createGathering, o
         <h1>{game.name}</h1>
         <div className="game-overview-meta"><ComplexityBadge info={game.complexityInfo} />{game.bggRating != null && <GameFact kind="rating" label="Рейтинг BGG">{game.bggRating.toLocaleString("ru-RU", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} BGG</GameFact>}<a href={game.bggUrl} target="_blank" rel="noreferrer">Открыть на BGG</a></div>
       </header></div>
-      <div className="game-overview-facts">{game.minPlayers && game.maxPlayers && <span>{game.expansionPlayerRange ? "Базовая игра" : "Игроки"}: {game.minPlayers}–{game.maxPlayers}</span>}{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{time && <span>{time}</span>}{game.minAge != null && <span>{game.minAge}+</span>}{game.expansionPlayerRange && <span>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}</div>
+      <div className="game-overview-facts">
+        <GameFacts players={game.minPlayers && game.maxPlayers ? <>{game.expansionPlayerRange ? "Базовая игра: " : ""}{game.minPlayers}–{game.maxPlayers}</> : undefined} duration={time} />
+        <div className="game-overview-secondary">{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{game.minAge != null && <span>{game.minAge}+</span>}</div>
+        {game.expansionPlayerRange && <span>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}
+      </div>
       <div className="game-overview-actions">
         {hasGatherings && <button className="primary" onClick={() => { gatherings.current?.scrollIntoView({ block: "start" }); gatherings.current?.focus({ preventScroll: true }); }}>Посмотреть сборы · {game.scheduledGatherings}</button>}
         {game.canWish !== false && createGathering && <button className={hasGatherings ? "ghost" : "primary"} onClick={() => createGathering(bggId)}>Создать сбор по этой игре</button>}

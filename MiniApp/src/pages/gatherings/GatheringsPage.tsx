@@ -1,5 +1,5 @@
 import { plural, formatDuration } from "../../app/format";
-import { GameFact } from "../../components/GameFact";
+import { GameFact, GameFacts } from "../../components/GameFact";
 import { DateTimeField } from "../../components/DateTimeField";
 import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
@@ -27,10 +27,11 @@ import { resolvePlayerCountRange, fitPlayerLimits, type PlayerLimits } from "./p
 import { GatheringPlayerLimits } from "./GatheringPlayerLimits";
 import { GatheringExpansionPicker, emptyExpansionOwnership } from "./GatheringExpansionPicker";
 import { gatheringDateTimeBounds, isWithinCampDateRange, revalidateGatheringStart } from "./gatheringDateRange";
-import { GatheringCollectionAction, GatheringTypeTag } from "./GatheringGameMetadata";
+import { GatheringCollectionAction } from "./GatheringGameMetadata";
 import { BotStartNotice } from "../../components/BotStartNotice";
 import { GameTaxonomy } from "../../components/GameTaxonomy";
 import { gatheringStatusTone, participationStatusTone } from "../../app/semanticTones";
+import { GatheringCard } from "../../components/GatheringCard";
 import { gatheringDays } from "./gatheringListPresentation";
 
 export function GatheringsPage({ community, bggAvailable, initialGatheringId, initialGameId, onGameConsumed, onInitialConsumed, editRegistration, openCollection, backFromInitial }: { community: Community; bggAvailable: boolean; initialGatheringId?: string; initialGameId?: number; onGameConsumed?: () => void; onInitialConsumed: () => void; editRegistration: () => void; openCollection: (bggId: number, gatheringId: string) => void; backFromInitial?: () => void }) {
@@ -68,28 +69,7 @@ function GatheringList({ community, listState, setListState, open, create, hasDr
     {!result && state.loading ? <Loading /> : !result && state.error ? <ErrorState message={state.error} retry={state.reload} /> : !result?.items.length ? view === "upcoming" ? seats !== "all" ? <><Empty>{seats === "available" ? "Сборов со свободными местами пока нет" : "Полных сборов пока нет"}</Empty><button onClick={() => setListState(changeGatheringSeats(listState, "all"))}>Показать все</button></> : <><Empty>Пока никто не собирается играть. Создайте первый сбор.</Empty><button className="primary" onClick={create}>{hasDraft ? "Продолжить сбор" : "Создать сбор"}</button></> : <Empty>{historyFilter === "completed" ? "Завершённых сборов пока нет." : historyFilter === "cancelled" ? "Отменённых сборов нет." : "История сборов пока пуста."}</Empty> :
       <><div className="gathering-days">{gatheringDays(result.items, community.timeZoneId).map((day, index) => <section className="gathering-day" key={`${day.date ?? "undated"}:${index}`}>
         {day.label && <h2 className="gathering-day-heading"><time dateTime={day.date}>{day.label}</time></h2>}
-        <div className="stack">{day.items.map(({ item, time }) => <article className="gathering-card-shell" key={item.card.publicId}>
-          <button className="card gathering-card" onClick={() => open(item.card.publicId)}>
-            <Cover src={item.card.imageUrl} name={item.card.gameName} />
-            <div className="gathering-card-body">
-              <div className="gathering-card-top"><span className="gathering-card-time"><time dateTime={item.startsAtUtc}>{time ?? item.card.localDateTime}</time></span><ComplexityBadge info={item.card.complexityInfo} /></div>
-              <h3>{item.card.gameName}</h3>
-              <p className="gathering-card-organizer">{item.isOrganizer ? <span className="gathering-own">Ваш сбор</span> : <>Собирает {item.card.organizerName}</>}
-                {!item.isOrganizer && item.currentUserStatus === "Confirmed" && <span className="gathering-own">Вы записаны</span>}
-                {!item.isOrganizer && item.currentUserStatus === "Waitlisted" && <span className="gathering-own">В очереди{item.waitlistPosition != null ? ` · №${item.waitlistPosition}` : ""}</span>}
-              </p>
-              <div className="gathering-card-seats"><GameFact kind="players" label="Занято мест"><strong>{item.card.occupiedSeats} из {item.card.maximumPlayers}</strong></GameFact>
-                {formatDuration(item.card.minPlayTimeMinutes, item.card.maxPlayTimeMinutes) && <GameFact kind="duration" label="Длительность">{formatDuration(item.card.minPlayTimeMinutes, item.card.maxPlayTimeMinutes)}</GameFact>}
-              </div>
-              {item.status !== "Recruiting" && item.status !== "Ready" && <p className={`gathering-card-status ${gatheringStatusTone(item.status)}`}>{item.card.statusText}</p>}
-              {item.card.recruitment?.belowDesired && item.status !== "Closed" && <p className="gathering-card-activity">{item.card.recruitment.text}</p>}
-              {item.card.rulesText && <div className="gathering-card-meta">{item.card.rulesText}</div>}
-              {item.card.cancellationReason && <p className="gathering-card-cancellation">Причина: {item.card.cancellationReason}</p>}
-              {item.card.boxWarning && <p className="gathering-box-warning">{item.card.boxWarning}</p>}
-              <span className="gathering-card-open">Открыть сбор <span aria-hidden>→</span></span>
-            </div>
-          </button>
-        </article>)}</div>
+        <div className="stack">{day.items.map(({ item, time }) => <GatheringCard key={item.card.publicId} item={item} time={time} open={open} />)}</div>
       </section>)}</div><Pagination page={page} hasPrevious={result.hasPrevious} hasNext={result.hasNext} onChange={page => setListState({ ...listState, page })} label="Страницы сборов" /></>}
   </Page></div>;
 }
@@ -269,30 +249,32 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
   return <div className="gathering-detail-screen"><Page>
     {!telegram.hasBackButton && <div className="gathering-detail-nav"><BackButton onClick={onBack} /></div>}
     <Card className="gathering-overview">
+      <div className="gathering-overview-top">
+        <p className="gathering-date"><GameFact kind="date" label="Начало">{value.startsAtLocal ? formatLocalDateTime(value.startsAtLocal) : value.gathering.localDateTime}</GameFact></p>
+        <ComplexityBadge info={value.gathering.complexityInfo} />
+      </div>
       <div className="gathering-detail-hero">
         <Cover src={value.gathering.imageUrl} name={value.gathering.gameName} />
         <header className="gathering-overview-header">
-          <p className="gathering-date">{value.startsAtLocal ? formatLocalDateTime(value.startsAtLocal) : value.gathering.localDateTime}</p>
           <h1>{value.gathering.bggUrl ? <a className="page-title-link" href={value.gathering.bggUrl} target="_blank" rel="noreferrer">{value.gathering.gameName}</a> : value.gathering.gameName}</h1>
           <p className="gathering-organizer"><span className="muted">Собирает</span> <ContactLink url={organizer?.contactUrl}>{organizer?.name ?? value.gathering.organizerName}</ContactLink></p>
-          <div className="gathering-status-row"><GatheringTypeTag typeName={value.gathering.typeName} /><ComplexityBadge info={value.gathering.complexityInfo} /></div>
         </header>
       </div>
       <div className="gathering-summary">
-        <div className="gathering-seat-summary"><strong>{value.gathering.occupiedSeats} из {value.maximumPlayers} игроков</strong><span className={statusTone === "danger" ? "danger-text" : "muted"}>{value.gathering.statusText}</span></div>
+        <GameFacts players={<strong>{value.gathering.occupiedSeats} из {value.maximumPlayers}</strong>} playersLabel="Занято мест" duration={formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes)} />
         <div className={`seat-meter ${statusTone}`} role="progressbar" aria-label="Занятые места" aria-valuemin={0} aria-valuemax={value.maximumPlayers} aria-valuenow={value.gathering.occupiedSeats}><span style={{ width: `${occupiedPercent}%` }} /></div>
+        <p className={`gathering-seat-status ${statusTone === "danger" ? "danger-text" : "muted"}`}>{value.gathering.statusText}</p>
         {value.gathering.recruitment?.belowDesired && value.status === "Ready" && <p className="gathering-recruitment-summary">{value.gathering.recruitment.text}</p>}
         <p className="capacity-caption">Для начала: {plural(value.minimumPlayers, "игрок", "игрока", "игроков")}{value.desiredPlayers !== value.minimumPlayers && <> · собираем {value.desiredPlayers}</>}</p>
       </div>
-      {formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes) && <p className="gathering-duration"><GameFact kind="duration" label="Длительность">{formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes)}</GameFact></p>}
-      {value.gathering.rulesText && <p className="gathering-rules">{value.gathering.rulesText}</p>}
-      {community.mode === "Camp" && !value.hasStarted && value.status !== "Cancelled" && value.provider?.warning && <p className="gathering-box-warning">{value.provider.warning}</p>}
+      {value.gathering.rulesText && <p className="gathering-rules"><GameFact kind="rules" label="Правила">{value.gathering.rulesText}</GameFact></p>}
+      {community.mode === "Camp" && !value.hasStarted && value.status !== "Cancelled" && value.provider?.warning && <p className="gathering-box-warning"><GameFact kind="box" label="Коробка">{value.provider.warning}</GameFact></p>}
       {!readOnly && (value.canJoin || value.canLeave) && <div className="gathering-participation" aria-label="Участие в сборе">
         {value.canJoin && <button className="primary" disabled={working} onClick={() => action("join")}>{busy ? "Сохраняем…" : freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}
         {value.canLeave && <><Badge tone={participationStatusTone(value.currentUserStatus)}>{value.currentUserStatus === "Waitlisted" ? `Ваше место в очереди: ${value.waitlistPosition ?? "—"}` : "Вы записаны на сбор"}</Badge><button className="danger" disabled={working} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button></>}
       </div>}
       {value.gathering.cancellationReason && <Notice kind="danger">Причина отмены: {value.gathering.cancellationReason}</Notice>}
-      {community.mode === "Club" && value.provider && <p className="gathering-box-status">Коробка · {value.provider.summary}</p>}
+      {community.mode === "Club" && value.provider && <p className="gathering-box-status"><GameFact kind="box" label="Коробка">{value.provider.summary}</GameFact></p>}
       {value.gathering.expansions.length > 0 && <div className="gathering-expansions"><strong>Дополнения</strong><div className="tag-list">{value.gathering.expansions.map(name => <span className="tag" key={name}>{name}</span>)}</div></div>}
       {value.gathering.description && <section className="gathering-description"><h2>От организатора</h2><div className="gathering-description-scroll">{value.gathering.description}</div></section>}
     </Card>
