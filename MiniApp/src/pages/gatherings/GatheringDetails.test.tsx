@@ -28,6 +28,27 @@ beforeEach(() => {
 });
 
 describe("gathering detail action hierarchy", () => {
+  it("shows an unconfirmed box before signup without repeating an empty provider section", () => {
+    state.data.provider = { state: "NoKnownProvider", summary: "Коробка пока не подтверждена", warning: "Коробка пока не подтверждена", isConfirmed: false, canBring: false, providers: [] };
+    const markup = render("Camp");
+    expect(markup.indexOf("Коробка пока не подтверждена")).toBeLessThan(markup.indexOf("Занять место"));
+    expect(markup.match(/Коробка пока не подтверждена/g)).toHaveLength(1);
+    expect(markup).not.toContain('class="content-section gathering-provider"');
+    expect(render("Club")).not.toContain('class="gathering-box-warning"');
+    state.data.hasStarted = true;
+    expect(render("Camp")).not.toContain('class="gathering-box-warning"');
+  });
+
+  it("does not repeat identical minimum and desired limits or recruit for a closed gathering", () => {
+    state.data.minimumPlayers = state.data.desiredPlayers = 4;
+    state.data.status = "Closed";
+    state.data.gathering.recruitment = { priority: 1, text: "ждём ещё 1 игрока", freeSeats: 2, belowDesired: true };
+    const markup = render();
+    expect(markup).toContain("Для начала: 4 игрока");
+    expect(markup).not.toContain("собираем 4");
+    expect(markup).not.toContain("ждём ещё");
+  });
+
   it("exposes direct guest controls only with the backend capability", () => {
     state.data.guestParticipants = [{ id: 1, displayName: "Друг Антона" }];
     expect(render()).not.toContain('aria-label="Изменить имя гостя');

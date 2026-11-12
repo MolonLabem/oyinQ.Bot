@@ -5,7 +5,7 @@ import { GameGatherings } from "./GameGatherings";
 import { ComplexityBadge, ComplexityDetails } from "../../components/ComplexityBadge";
 import { wishlistCopy } from "../../app/productCopy";
 import { WishButton, WishlistPanel } from "../../components/Wishlist";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ApiError, api } from "../../api/client";
 import type { CatalogResponse, Community, GameDetails, GameListItem } from "../../api/types";
 import { BackButton, Badge, Card, Pagination, ContactLink, Cover, Empty, ErrorState, Loading, Notice, Page, Tabs } from "../../components/Ui";
@@ -15,9 +15,10 @@ import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKe
 import { CatalogFilters } from "./CatalogFilters";
 import { collectionMissingMessage } from "../../app/collectionNavigation";
 import { GameTaxonomy } from "../../components/GameTaxonomy";
-import { formatDate } from "../../app/format";
+import { formatDate, formatDuration, plural } from "../../app/format";
 import { catalogGroups } from "../../app/catalogPagination";
 import { CloseIcon } from "../../components/CloseIcon";
+import { GameFact } from "../../components/GameFact";
 import { BrowseSearch } from "../../components/BrowseSearch";
 
 type GamesPageProps = { createGathering?: (id: number) => void; openGathering?: (id: string) => void; community: Community; bggAvailable: boolean; initialGameId?: number; onInitialConsumed?: () => void; backToGathering?: () => void };
@@ -33,7 +34,7 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState(() => restoreFilters(community.key, community.mode));
   const [options, setOptions] = useState<FilterOptions>();
-  const [sort, setSort] = useState("name");
+  const [sort, setSort] = useState("rating");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => {
     try { const saved = Number(sessionStorage.getItem("oyinq-catalog-page-size")); return [10, 20, 50].includes(saved) ? saved : 10; }
@@ -50,6 +51,11 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
   const params = catalogParams(community.key, community.mode, applied, debouncedQuery, sort);
   const state = useAsync(async () => ({ params, result: await api<CatalogResponse>(`/catalog?${params}`) }), [params, section, selected]);
   const result = state.data?.params === params ? state.data.result : undefined;
+  useEffect(() => {
+    if (!result?.ratingsPending || selected || section !== "catalog") return;
+    const timer = window.setTimeout(() => { if (document.visibilityState !== "hidden") void state.reload(); }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [result, selected, section, state.reload]);
   const groups = useMemo(() => catalogGroups(result?.items ?? []), [result?.items]);
   const pageCount = Math.max(1, Math.ceil(groups.length / pageSize));
   const currentPage = Math.min(page, pageCount);
@@ -95,10 +101,12 @@ function CommunityGames({ community, bggAvailable, initialGameId, onInitialConsu
     {section === "wishlist" ? community.mode === "Camp" ? <CampWishlist community={community} bggAvailable={bggAvailable} create={createGathering} openGathering={openGathering} /> : <><WishlistPanel community={community} bggAvailable={bggAvailable} /><CommunityDemand communityKey={community.key} create={createGathering} /></> : <>
       <div className="catalog-browse-toolbar">
         <BrowseSearch label="Поиск игры" value={query} onChange={setQuery} placeholder="Игра или дополнение" />
-        <div className="catalog-browse-actions"><label className="catalog-sort"><span className="visually-hidden">Сортировка</span><select value={sort} onChange={e => setSort(e.target.value)}><option value="name">По названию</option><option value="players">По числу игроков</option><option value="popular">По сыгранным партиям</option></select></label>
+        <div className="catalog-browse-actions"><label className="catalog-sort"><span className="visually-hidden">Сортировка</span><select value={sort} onChange={e => setSort(e.target.value)}><option value="rating">Рейтинг BGG</option><option value="popular">Популярность</option><option value="name">По алфавиту</option></select></label>
         <button type="button" disabled={!options} aria-expanded={filtersOpen} aria-controls="catalog-filters" className={count ? "filter-button active" : "filter-button"} onClick={() => setFiltersOpen(true)}>Фильтры{count ? ` · ${count}` : ""}</button></div>
       </div>
       {chips.length > 0 && <div className="catalog-applied"><div className="catalog-chip-strip" aria-label="Активные фильтры">{chips.map(chip => <button type="button" className="filter-chip" key={chip.key} aria-label={`Убрать фильтр: ${chip.label}`} onClick={() => setApplied(chip.remove)}><span>{chip.label}</span><CloseIcon /></button>)}</div><button className="ghost" type="button" onClick={() => setApplied(emptyFilters())}>Сбросить</button></div>}
+      {sort === "rating" && result?.ratingsPending && <p className="catalog-rating-status" role="status">Загружаем рейтинг BGG…</p>}
+      {sort === "rating" && result?.ratingsUnavailable && !result.ratingsPending && <p className="catalog-rating-status" role="status">{result.items.some(game => game.bggRating != null) ? "Часть оценок BGG пока недоступна" : "Рейтинг BGG пока недоступен"}</p>}
       <section className="catalog-results" ref={results} tabIndex={-1} aria-label="Каталог игр">
       <div className="catalog-paging-options"><p className="catalog-result-status" role="status" aria-live="polite">{loading || state.loading ? "Обновляем список игр…" : state.error ? "Не удалось обновить игры" : gameCount(result?.total ?? result?.items.length ?? 0)}</p>{Boolean(groups.length) && <label>На странице<select aria-label="Игр на странице" value={pageSize} onChange={e => { scrollToPage.current = true; setPageSize(Number(e.target.value)); setPage(1); }}>{[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label>}</div>
       {loading ? <Loading /> : result?.items.length ? <CatalogGameList items={result.items} offset={(currentPage - 1) * pageSize} limit={pageSize} searching={Boolean(debouncedQuery.trim())} open={setSelected} /> : !state.error && <Empty>{query.trim() || count ? <>Ничего не найдено. Попробуйте изменить запрос или фильтры.<button type="button" onClick={reset}>Сбросить поиск и фильтры</button></> : community.mode === "Club" ? "В коллекции пока нет игр. Попросите администратора добавить их." : <>На кэмпе пока нет игр. Добавьте свои в профиле и отметьте, что привезёте.<br /><a data-profile-nav href={`?community=${encodeURIComponent(community.key)}&tab=profile&profileTab=collection`}>Открыть «Игры» в профиле</a></>}</Empty>}
@@ -124,20 +132,28 @@ export function CatalogGameList({ items, searching = false, open, offset = 0, li
 }
 
 function GameCard({ game, open }: { game: GameListItem; open: () => void }) {
-  return <button className="card catalog-card" aria-label={`Открыть игру: ${game.name}`} onClick={open}>
+  const factsId = useId();
+  const time = formatDuration(game.minPlayTimeMinutes, game.maxPlayTimeMinutes);
+  return <button className="card catalog-card" aria-label={`Открыть игру: ${game.name}`} aria-describedby={factsId} onClick={open}>
     <Cover src={game.thumbnailImageUrl} name={game.name} />
     <span className="catalog-card-body">
       <span className="catalog-card-heading"><strong className="catalog-title">{game.name}</strong><ComplexityBadge info={game.complexityInfo} /></span>
-      <span className="catalog-card-facts">
-        {game.minPlayers && game.maxPlayers && <small>{game.expansionPlayerRange ? "Базовая игра" : "Игроки"}: {game.minPlayers}–{game.maxPlayers}</small>}
-        {game.bestPlayers && <small>Лучше: {game.bestPlayers}</small>}
-        {game.expansionPlayerRange && <small>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</small>}
+      <span className="catalog-card-info" id={factsId}>
+        {game.complexityInfo && <span className="visually-hidden">Сложность: {game.complexityInfo.displayName}. </span>}
+        <span className="catalog-card-facts">
+          {game.minPlayers && game.maxPlayers && <GameFact kind="players" label="Игроки">{game.expansionPlayerRange ? "Базовая игра: " : ""}{game.minPlayers === game.maxPlayers ? game.minPlayers : `${game.minPlayers}–${game.maxPlayers}`}</GameFact>}
+          {time && <GameFact kind="duration" label="Длительность">{time}</GameFact>}
+        </span>
+        {(game.bestPlayers || game.bggRating != null) && <span className="catalog-card-facts secondary">
+          {game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}
+          {game.bggRating != null && <GameFact kind="rating" label="Рейтинг BGG">{game.bggRating.toLocaleString("ru-RU", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} BGG</GameFact>}
+        </span>}
+        {game.expansionPlayerRange && <span className="catalog-expansion-range">С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}
+        {(game.availabilitySummary || Boolean(game.scheduledGatherings)) && <span className="catalog-card-availability">
+          {game.availabilitySummary && <span className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</span>}
+          {Boolean(game.scheduledGatherings) && <span className="catalog-activity">{plural(game.scheduledGatherings!, "сбор", "сбора", "сборов")} впереди</span>}
+        </span>}
       </span>
-      {game.typeName && <span className="catalog-card-meta"><small>{game.typeName}</small></span>}
-      {(game.availabilitySummary || Boolean(game.scheduledGatherings)) && <span className="catalog-card-availability">
-        {game.availabilitySummary && <small className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</small>}
-        {Boolean(game.scheduledGatherings) && <small className="catalog-activity">Сборов: {game.scheduledGatherings}</small>}
-      </span>}
     </span>
   </button>;
 }
@@ -149,7 +165,7 @@ function GameDetail({ community, bggId, attendanceDate, back, createGathering, o
   if (state.loading) return <Page title="Игра"><Loading /></Page>;
   if (state.failure instanceof ApiError && state.failure.code === "game_not_in_collection") return <Page title="Игра" subtitle={community.name} actions={<BackButton onClick={back} />}><Notice kind="warning">{collectionMissingMessage(community)}</Notice></Page>;
   if (state.error || !state.data) return <Page title="Игра" actions={<BackButton onClick={back} />}><ErrorState message={state.error ?? "Игра не найдена"} retry={state.reload} /></Page>;
-  const game = state.data; const time = game.minPlayTimeMinutes ? game.minPlayTimeMinutes === game.maxPlayTimeMinutes ? `${game.minPlayTimeMinutes} мин` : `${game.minPlayTimeMinutes}–${game.maxPlayTimeMinutes ?? "?"} мин` : undefined;
+  const game = state.data; const time = formatDuration(game.minPlayTimeMinutes, game.maxPlayTimeMinutes);
   const hasGatherings = Boolean(openGathering && game.scheduledGatherings && game.scheduledGatherings > 0);
   const gatheringList = openGathering && <div ref={gatherings} tabIndex={-1} role="region" aria-label="Сборы по этой игре"><GameGatherings communityKey={community.key} bggId={bggId} open={openGathering} preserveScroll /></div>;
   return <div className="game-detail-screen"><Page actions={<BackButton onClick={back} />}>
@@ -157,7 +173,7 @@ function GameDetail({ community, bggId, attendanceDate, back, createGathering, o
       <div className="game-overview-heading"><Cover src={game.imageUrl} name={game.name} /><header>
         {game.yearPublished ? <p className="game-year">{game.yearPublished} год</p> : null}
         <h1>{game.name}</h1>
-        <div className="game-overview-meta"><ComplexityBadge info={game.complexityInfo} /><a href={game.bggUrl} target="_blank" rel="noreferrer">Открыть на BGG</a></div>
+        <div className="game-overview-meta"><ComplexityBadge info={game.complexityInfo} />{game.bggRating != null && <GameFact kind="rating" label="Рейтинг BGG">{game.bggRating.toLocaleString("ru-RU", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} BGG</GameFact>}<a href={game.bggUrl} target="_blank" rel="noreferrer">Открыть на BGG</a></div>
       </header></div>
       <div className="game-overview-facts">{game.minPlayers && game.maxPlayers && <span>{game.expansionPlayerRange ? "Базовая игра" : "Игроки"}: {game.minPlayers}–{game.maxPlayers}</span>}{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{time && <span>{time}</span>}{game.minAge != null && <span>{game.minAge}+</span>}{game.expansionPlayerRange && <span>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}</div>
       <div className="game-overview-actions">

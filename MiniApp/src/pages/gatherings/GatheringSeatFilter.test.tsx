@@ -16,6 +16,23 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+it("shows the viewer's signup, queue position and one organizer label, then refreshes after changes", async () => {
+  const card = { publicId: "g", gameName: "Игра", organizerName: "Анна", occupiedSeats: 3, maximumPlayers: 4,
+    rulesText: "Правила объясню", localDateTime: "14 ноября, 18:00", boxWarning: "Коробка пока не подтверждена", minPlayTimeMinutes: 90, maxPlayTimeMinutes: 120 };
+  const items = [
+    { card, startsAtUtc: "2026-11-14T18:00:00Z", isOrganizer: false, status: "Ready", currentUserStatus: "Confirmed" },
+    { card: { ...card, publicId: "g2", boxWarning: undefined }, startsAtUtc: "2026-11-14T19:00:00Z", isOrganizer: false, status: "Full", currentUserStatus: "Waitlisted", waitlistPosition: 2 },
+    { card: { ...card, publicId: "g3", boxWarning: undefined }, startsAtUtc: "2026-11-14T20:00:00Z", isOrganizer: true, status: "Ready", currentUserStatus: "Organizer" }
+  ];
+  vi.mocked(api).mockResolvedValue({ items, hasPrevious: false, hasNext: false });
+  await act(async () => root.render(<GatheringsPage community={community} bggAvailable={false} onInitialConsumed={() => {}} editRegistration={() => {}} openCollection={() => {}} />));
+  expect(host.textContent).toContain("Вы записаны"); expect(host.textContent).toContain("В очереди · №2");
+  expect(host.textContent?.match(/Ваш сбор/g)).toHaveLength(1); expect(host.textContent).not.toContain("Вы собираете");
+  expect(host.textContent).toContain("90–120 мин"); expect(host.textContent).toContain("Коробка пока не подтверждена");
+  vi.mocked(api).mockResolvedValue({ items: [{ ...items[0], currentUserStatus: "Withdrawn", card: { ...card, boxWarning: undefined } }], hasPrevious: false, hasNext: false });
+  await act(async () => window.dispatchEvent(new Event("success")));
+  expect(host.textContent).not.toContain("Вы записаны"); expect(host.textContent).not.toContain("Коробка пока не подтверждена");
+});
 it("requests seats, shows a filtered empty state and omits seats from history", async () => {
   await act(async () => root.render(<GatheringsPage community={community} bggAvailable={false} onInitialConsumed={() => {}} editRegistration={() => {}} openCollection={() => {}} />));
   await click("Есть места");

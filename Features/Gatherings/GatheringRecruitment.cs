@@ -15,11 +15,15 @@ public static class GatheringRecruitment
         var free = Math.Max(0, g.MaximumPlayers - occupied);
         var minimum = g.MinimumPlayers - occupied;
         var desired = g.DesiredPlayers - occupied;
-        return minimum > 0 ? new(0, $"🔴 {(minimum == 1 ? "Нужен" : "Нужны")} +{minimum}, чтобы игра состоялась", free, true)
-            : desired > 0 ? new(1, $"🟡 Состав есть · +{desired} до оптимального", free, true)
-            : free > 0 ? new(2, $"🟢 Можно ещё +{free}", free, false)
+        return minimum > 0 ? new(0, $"{(IsOne(minimum) ? "Нужен" : "Нужны")} ещё {minimum} {Plural(minimum, "игрок", "игрока", "игроков")} для начала", free, true)
+            : desired > 0 ? new(1, $"Можно играть · ждём ещё {desired} {(IsOne(desired) ? "игрока" : "игроков")}", free, true)
+            : free > 0 ? new(2, $"Есть {free} {Plural(free, "место", "места", "мест")}", free, false)
             : new(3, "Состав набран", 0, false);
     }
+
+    private static bool IsOne(int count) => count % 10 == 1 && count % 100 != 11;
+    private static string Plural(int count, string one, string few, string many) =>
+        count % 100 is >= 11 and <= 14 ? many : IsOne(count) ? one : count % 10 is >= 2 and <= 4 ? few : many;
 
     // One expression supplies both SQL candidate selection and in-memory eligibility.
     public static Expression<Func<GameGathering, bool>> CandidatePredicate(DateTimeOffset now, bool includeAllUpcoming = false) =>

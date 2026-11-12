@@ -74,3 +74,13 @@ export function plural(value: number, one: string, few: string, many: string) {
 export function campStatusLabel(status: string) {
   return ({ Draft: "Черновик", Active: "Активен", Closed: "Закрыт", Cancelled: "Отменён" } as Record<string, string>)[status] ?? "Неизвестный статус";
 }
+
+// Unknown bounds stay unknown; do not display the scheduling fallback as game metadata.
+export function formatDuration(minimum?: number | null, maximum?: number | null) {
+  const min = minimum != null && minimum > 0 ? minimum : undefined;
+  const max = maximum != null && maximum > 0 ? maximum : undefined;
+  if (min !== undefined && max !== undefined && min > max) return undefined;
+  if (min === max) return min === undefined ? undefined : `${min} мин`;
+  if (min === undefined) return `до ${max} мин`;
+  return max === undefined ? `от ${min} мин` : `${min}–${max} мин`;
+}

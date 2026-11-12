@@ -2,11 +2,66 @@ using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Features.Collections;
+using oyinQ.Bot.Features.Catalog;
 
 namespace oyinQ.Bot.Tests;
 
 public sealed class GatheringPresentationServiceTests
 {
+    [Fact]
+    public void PersonalParticipationUsesTheSameQueueAcrossListDetailsAndProfile()
+    {
+        var g = CreateGathering(true); g.OrganizerParticipantId = 1;
+        g.Participants = [new() { Id = 4, ParticipantId = 3, Status = GatheringParticipationStatus.Waitlisted, JoinedAt = DateTimeOffset.UnixEpoch },
+            new() { Id = 2, ParticipantId = 2, Status = GatheringParticipationStatus.Waitlisted, JoinedAt = DateTimeOffset.UnixEpoch },
+            new() { Id = 3, ParticipantId = 4, Status = GatheringParticipationStatus.Confirmed }];
+        Assert.Equal(new GatheringParticipationPresentation("Organizer", null), GatheringPresentationService.BuildParticipation(g, 1));
+        Assert.Equal(new GatheringParticipationPresentation("Waitlisted", 2), GatheringPresentationService.BuildParticipation(g, 3));
+        Assert.Equal(2, new GatheringPresentationService().BuildProfileSchedule(g, Community, 3).WaitlistPosition);
+        Assert.Equal(new GatheringParticipationPresentation("Confirmed", null), GatheringPresentationService.BuildParticipation(g, 4));
+        Assert.Equal("None", GatheringPresentationService.BuildParticipation(g, 99).Status);
+        g.Participants.First(x => x.ParticipantId == 2).Status = GatheringParticipationStatus.Withdrawn;
+        Assert.Equal(1, GatheringPresentationService.BuildParticipation(g, 3).WaitlistPosition);
+    }
+
+    [Fact]
+    public void DurationAndBoxUncertaintyReachCardsDetailsAndAnnouncementWithoutOwnerDisclosure()
+    {
+        var g = CreateGathering(true);
+        var game = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson);
+        g.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(game with { MinPlayTimeMinutes = 90, MaxPlayTimeMinutes = 120 });
+        var community = Community with { Mode = BotMode.Camp };
+        var service = new GatheringPresentationService();
+        var missing = GameProviderService.Describe(false, []);
+        Assert.Equal("Коробка пока не подтверждена", service.BuildCard(g, community, missing).BoxWarning);
+        Assert.Null(service.BuildCard(g, Community, missing).BoxWarning);
+        Assert.Null(service.BuildCard(g, community, GameProviderService.Describe(true, [])).BoxWarning);
+        Assert.Equal(90, service.BuildCard(g, community, missing).MinPlayTimeMinutes);
+        Assert.Equal(120, service.BuildDetails(g, community).MaxPlayTimeMinutes);
+        var html = service.BuildTelegramAnnouncement(g, community, missing).HtmlText;
+        Assert.Contains("90–120 мин", html);
+        Assert.True(html.IndexOf(missing.Warning!, StringComparison.Ordinal) < html.IndexOf("Собирает", StringComparison.Ordinal));
+        g.Status = GatheringStatus.Cancelled;
+        Assert.Null(service.BuildCard(g, community, missing).BoxWarning);
+        Assert.DoesNotContain(missing.Warning!, service.BuildTelegramAnnouncement(g, community, missing).HtmlText);
+    }
+
+    [Theory]
+    [InlineData(GatheringStatus.Cancelled, "Сбор отменён")]
+    [InlineData(GatheringStatus.Closed, "Запись закрыта")]
+    [InlineData(GatheringStatus.Completed, "Запись завершена")]
+    public void ClosedOrPastAnnouncementsLeadWithStateAndNeverInviteMorePlayers(GatheringStatus status, string label)
+    {
+        var g = CreateGathering(true); g.Status = status; g.CancellationReason = "Причина <&>";
+        var service = new GatheringPresentationService();
+        var html = service.BuildTelegramAnnouncement(g, Community).HtmlText;
+        Assert.True(html.IndexOf(label, StringComparison.Ordinal) < html.IndexOf("📅", StringComparison.Ordinal));
+        Assert.Null(service.BuildCard(g, Community).Recruitment); Assert.Null(service.BuildDetails(g, Community).Recruitment);
+        Assert.DoesNotContain("ждём", html); Assert.DoesNotContain("для начала", html);
+        Assert.Contains("Занято мест: 2 из 5", html);
+        if (status == GatheringStatus.Cancelled) Assert.Contains("Причина &lt;&amp;&gt;", html);
+    }
+
     private static readonly BotCommunity Community =
         new("club", "Клуб", -1001, BotMode.Club, "UTC");
 
@@ -21,7 +76,7 @@ public sealed class GatheringPresentationServiceTests
 
         Assert.Equal("https://images.example/thumb.jpg", card.ImageUrl);
         Assert.Equal("https://images.example/large.jpg", detail.ImageUrl);
-        Assert.Equal("Могу объяснить правила", card.RulesText);
+        Assert.Equal("Правила объясню", card.RulesText);
         Assert.Equal("✅ Есть места", card.StatusText);
         Assert.Equal("Sardar", card.OrganizerName);
         Assert.True(card.CanTeachRules);

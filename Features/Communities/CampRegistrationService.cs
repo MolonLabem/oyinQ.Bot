@@ -92,6 +92,8 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
             withdrawals.Add(GatheringWithdrawalOutcome.Capture(value.Gathering, withdrawal));
         }
         await dbContext.SaveChangesAsync(cancellationToken);
+        await GatheringPublication.RequestForCampBoxesAsync(dbContext, campId,
+            await BringingBaseIds(campId, participantId).ToArrayAsync(cancellationToken), now, cancellationToken);
         foreach (var withdrawal in withdrawals) await notifications.NotifyWithdrawalAsync(withdrawal, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new(withdrawals);
@@ -152,9 +154,11 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
                 && GatheringRules.WithdrawParticipant(gathering, membership, now) is { } withdrawal)
                 withdrawals.Add(GatheringWithdrawalOutcome.Capture(gathering, withdrawal));
         }
+        var bringingIds = await BringingBaseIds(campId, participantId).ToArrayAsync(cancellationToken);
         await RemoveContributionsAndCancelImportsAsync(campId, participantId, now, cancellationToken);
         dbContext.CampRegistrations.Remove(registration);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await GatheringPublication.RequestForCampBoxesAsync(dbContext, campId, bringingIds, now, cancellationToken);
         foreach (var withdrawal in withdrawals) await notifications.NotifyWithdrawalAsync(withdrawal, cancellationToken);
         foreach (var publicId in cancelled) await notifications.NotifyCancellationAsync(publicId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -191,6 +195,11 @@ public sealed class CampRegistrationService(AppDbContext dbContext, TimeProvider
 
     private bool IsNpgsql => string.Equals(dbContext.Database.ProviderName,
         "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal);
+
+    private IQueryable<long> BringingBaseIds(long campId, long participantId) => dbContext.CampGameContributions
+        .Where(x => x.CampId == campId && x.ParticipantId == participantId
+            && x.ItemType == CollectionItemType.BaseGame && x.Commitment == CampBringCommitment.Bringing)
+        .Select(x => x.BggId);
 
     private async Task RemoveContributionsAndCancelImportsAsync(long campId, long participantId,
         DateTimeOffset now, CancellationToken cancellationToken)

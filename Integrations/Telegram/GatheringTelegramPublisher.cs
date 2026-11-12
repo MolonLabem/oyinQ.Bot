@@ -1,6 +1,7 @@
 using oyinQ.Bot.Common.Options;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Gatherings;
+using oyinQ.Bot.Features.Catalog;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -13,14 +14,15 @@ public sealed class GatheringTelegramPublisher(
     ITelegramGroupMessageSender groupMessageSender,
     ITelegramBotClient botClient,
     GatheringPresentationService presentationService,
-    ILogger<GatheringTelegramPublisher> logger)
+    ILogger<GatheringTelegramPublisher> logger,
+    GameProviderService? providers = null)
 {
     public async Task<Message> PublishAsync(GameGathering gathering, BotCommunity community, CancellationToken ct) =>
         await (await PrepareNewAsync(gathering, community, ct))(ct);
 
     public async Task<Func<CancellationToken, Task<Message>>> PrepareNewAsync(GameGathering gathering, BotCommunity community, CancellationToken ct)
     {
-        var announcement = presentationService.BuildTelegramAnnouncement(gathering, community);
+        var announcement = await PrepareAnnouncementAsync(gathering, community, ct);
         var keyboard = await BuildKeyboardAsync(gathering, community, ct);
         var text = await groupMessageSender.PrepareMessageAsync(community.Key, announcement.HtmlText, ParseMode.Html, keyboard, ct);
         if (announcement.ImageUrl is null) return text;
@@ -58,9 +60,16 @@ public sealed class GatheringTelegramPublisher(
 
     public async Task<Func<CancellationToken, Task>> PrepareUpdateAsync(GameGathering gathering, BotCommunity community, CancellationToken ct)
     {
-        var announcement = presentationService.BuildTelegramAnnouncement(gathering, community);
+        var announcement = await PrepareAnnouncementAsync(gathering, community, ct);
         var keyboard = await BuildKeyboardAsync(gathering, community, ct);
         return token => UpdatePreparedAsync(gathering, announcement.HtmlText, keyboard, token);
+    }
+
+    private async Task<GatheringAnnouncement> PrepareAnnouncementAsync(GameGathering gathering, BotCommunity community, CancellationToken ct)
+    {
+        var provider = providers is not null && community.Mode == BotMode.Camp && !GatheringLifecycle.IsTerminal(gathering.Status)
+            ? await providers.ForGatheringAsync(gathering, gathering.OrganizerParticipantId, ct) : null;
+        return presentationService.BuildTelegramAnnouncement(gathering, community, provider);
     }
 
     private async Task UpdatePreparedAsync(GameGathering gathering, string htmlText, InlineKeyboardMarkup keyboard, CancellationToken cancellationToken)

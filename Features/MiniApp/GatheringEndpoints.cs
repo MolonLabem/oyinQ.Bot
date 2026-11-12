@@ -27,7 +27,8 @@ internal sealed record GatheringListItemResponse(
     GatheringCardPresentation Card,
     string Status,
     bool IsOrganizer,
-    DateTimeOffset StartsAtUtc);
+    DateTimeOffset StartsAtUtc,
+    string CurrentUserStatus = "None", int? WaitlistPosition = null);
 internal sealed record GatheringListPageResponse(
     IReadOnlyCollection<GatheringListItemResponse> Items,
     int Page,
@@ -65,7 +66,7 @@ internal static class GatheringEndpoints
         [FromQuery(Name = "seats")] string? seats,
         AppDbContext dbContext, TelegramMiniAppAuthenticator authenticator,
         CommunityContextResolver resolver, GatheringPresentationService presentation,
-        TimeProvider timeProvider,
+        TimeProvider timeProvider, GameProviderService providers,
         CancellationToken cancellationToken)
     {
         var access = await MiniAppEndpointSupport.AuthorizeCommunityAsync(request, community, authenticator, resolver, cancellationToken);
@@ -82,16 +83,25 @@ internal static class GatheringEndpoints
         request.HttpContext.Response.Headers.CacheControl = "no-store";
         var query = GatheringListQuery.ForGame(dbContext, community, bggId).AsNoTracking()
             .Include(x => x.Participants).Include(x => x.Guests).Include(x => x.OrganizerParticipant);
-        var values = await GatheringListQuery.Apply(query, parsedScope, timeProvider.GetUtcNow(), seats)
+        var now = timeProvider.GetUtcNow();
+        var values = await GatheringListQuery.Apply(query, parsedScope, now, seats)
             .Skip((pageNumber - 1) * GatheringPageSize)
             .Take(GatheringPageSize + 1)
             .ToArrayAsync(cancellationToken);
         var hasNext = values.Length > GatheringPageSize;
-        var items = values.Take(GatheringPageSize).Select(x => new GatheringListItemResponse(
-            presentation.BuildCard(x, access.Community),
-            x.Status.ToString(),
-            x.OrganizerParticipant.TelegramUserId == access.Identity.TelegramUserId,
-            x.StartsAtUtc)).ToArray();
+        var visible = values.Take(GatheringPageSize).ToArray();
+        var participantId = await dbContext.Participants.Where(x => x.TelegramUserId == access.Identity.TelegramUserId)
+            .Select(x => x.Id).SingleOrDefaultAsync(cancellationToken);
+        // Batch by community/day; the list only exposes the warning, never provider identities.
+        var boxStates = await providers.ForGatheringsAsync(access.Community.Mode == Common.Options.BotMode.Camp
+            ? visible.Where(x => GatheringLifecycle.IsUpcoming(x, now)) : [], participantId, cancellationToken);
+        var items = visible.Select(x =>
+        {
+            var participation = GatheringPresentationService.BuildParticipation(x, participantId);
+            return new GatheringListItemResponse(presentation.BuildCard(x, access.Community, boxStates.GetValueOrDefault(x.PublicId)),
+                x.Status.ToString(), participation.Status == "Organizer", x.StartsAtUtc,
+                participation.Status, participation.WaitlistPosition);
+        }).ToArray();
         return Results.Ok(new GatheringListPageResponse(items, pageNumber, pageNumber > 1, hasNext));
     }
 
@@ -128,8 +138,7 @@ internal static class GatheringEndpoints
         var now = timeProvider.GetUtcNow();
         var waitlisted = gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
             .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).ToArray();
-        var waitPosition = me?.Status == GatheringParticipationStatus.Waitlisted
-            ? Array.IndexOf(waitlisted, me) + 1 : (int?)null;
+        var participation = GatheringPresentationService.BuildParticipation(gathering, participant.Id);
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
         var localStart = TimeZoneInfo.ConvertTime(gathering.StartsAtUtc,
             TimeZoneInfo.FindSystemTimeZoneById(resolvedCommunity.TimeZoneId));
@@ -144,7 +153,7 @@ internal static class GatheringEndpoints
             BotStartRequired = hasMemberAccess
                 && (participant.PrivateChatStartedAt is null || participant.TelegramDeliveryBlockedAt is not null),
             StartUrl = startUrl,
-            CurrentUserStatus = manages ? "Organizer" : me?.Status.ToString() ?? "None",
+            CurrentUserStatus = participation.Status,
             CanEdit = canManage,
             CanCopy = organizerControls && snapshot.BggId > 0,
             CanRequestRecruitment = hasMemberAccess && GatheringRecruitment.CanRequest(gathering, participant.Id, now),
@@ -156,7 +165,7 @@ internal static class GatheringEndpoints
             HasStarted = gathering.StartsAtUtc <= now,
             CanJoin = hasMemberAccess && GatheringAccessPolicy.CanJoin(gathering, manages, active, now),
             CanLeave = hasMemberAccess && GatheringAccessPolicy.CanLeave(gathering, manages, active, now),
-            WaitlistPosition = waitPosition,
+            WaitlistPosition = participation.WaitlistPosition,
             ConfirmedParticipants = new[] { new { Id = gathering.OrganizerParticipant.PublicId,
                     OriginalName = ParticipantPresentation.GetDisplayName(gathering.OrganizerParticipant),
                     DisplayNameOverride = gathering.OrganizerDisplayNameOverride,

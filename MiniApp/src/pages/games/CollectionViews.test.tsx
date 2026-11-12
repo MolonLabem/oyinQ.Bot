@@ -11,6 +11,17 @@ const game = (bggId: number, name: string, expansions: GameListItem["expansions"
 });
 
 describe("catalog collection grouping", () => {
+  it("keeps duration, rating and player facts accessible without the old type and details rows", () => {
+    const markup = renderToStaticMarkup(<CatalogGameList open={() => {}} items={[{
+      ...game(1, "Игра"), minPlayers: 2, maxPlayers: 4, minPlayTimeMinutes: 90, maxPlayTimeMinutes: 120, bggRating: 8.12
+    }]} />);
+    expect(markup).toContain("Длительность: "); expect(markup).toContain("90–120 мин");
+    expect(markup).toContain("Игроки: "); expect(markup).toContain("2–4");
+    expect(markup).toContain("8,1"); expect(markup).toContain("Рейтинг BGG: ");
+    expect(markup).toContain("aria-describedby=");
+    expect(markup).not.toContain("Другое"); expect(markup).not.toContain("Подробнее");
+  });
+
   it("shows base capacity separately from the available expansion capacity", () => {
     const markup = renderToStaticMarkup(<CatalogGameList open={() => {}} items={[{
       ...game(1, "База", [{ bggId: 2, name: "Дополнение", minPlayers: 1, maxPlayers: 6 }]),

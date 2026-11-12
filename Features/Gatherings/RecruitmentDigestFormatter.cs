@@ -18,16 +18,24 @@ public static class RecruitmentDigestFormatter
         var text = new StringBuilder("🎲 <b>Ищут игроков · ближайшие игры</b>\n");
         var today = CommunityTime.LocalDate(now, timeZoneId);
         var buttons = new List<InlineKeyboardButton[]>();
-        foreach (var g in ranked.Take(7))
+        var entries = ranked.Take(7).Select(g =>
         {
             var game = GatheringGameSnapshotSerializer.Deserialize(g.GameSnapshotJson);
-            var name = game.Name.Length > 100 ? game.Name[..100] + "…" : game.Name;
-            var link = TelegramBotDeepLinks.BuildMainMiniApp(username, MiniAppStartParameter.ForGathering(communityKey, g.PublicId));
+            var name = Shorten(game.Name, 100);
             var local = TimeZoneInfo.ConvertTime(g.StartsAtUtc, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
             var date = DateOnly.FromDateTime(local.DateTime);
             var label = date == today ? "Сегодня" : date == today.AddDays(1) ? "Завтра" : date.ToString("dd.MM");
-            text.Append($"\n<b>{WebUtility.HtmlEncode(name)}</b>\n{GatheringRecruitment.Describe(g).Text}\n{label} · {local:HH:mm}\n");
-            buttons.Add([InlineKeyboardButton.WithUrl(name.Length > 45 ? name[..45] + "…" : name, link)]);
+            return new { Gathering = g, Name = name, Date = $"{label} · {local:HH:mm}", Button = $"{label} {local:HH:mm} · {Shorten(name, 32)}" };
+        }).ToArray();
+        var duplicates = entries.GroupBy(x => x.Button).Where(x => x.Count() > 1).Select(x => x.Key).ToHashSet();
+        for (var index = 0; index < entries.Length; index++)
+        {
+            var entry = entries[index];
+            // Simultaneous tables (or truncated titles) get the same identifier in body and button.
+            var suffix = duplicates.Contains(entry.Button) ? $" · №{index + 1}" : "";
+            var link = TelegramBotDeepLinks.BuildMainMiniApp(username, MiniAppStartParameter.ForGathering(communityKey, entry.Gathering.PublicId));
+            text.Append($"\n<b>{WebUtility.HtmlEncode(entry.Name + suffix)}</b>\n{GatheringRecruitment.Describe(entry.Gathering).Text}\n{entry.Date}\n");
+            buttons.Add([InlineKeyboardButton.WithUrl(entry.Button + suffix, link)]);
         }
         var shown = buttons.Count;
         if (ranked.Count > shown)
@@ -40,4 +48,7 @@ public static class RecruitmentDigestFormatter
             TelegramBotDeepLinks.BuildMainMiniApp(username, MiniAppStartParameter.ForCommunity(communityKey)))]);
         return new(text.ToString(), new InlineKeyboardMarkup(buttons), shown, ranked.Count);
     }
+
+    private static string Shorten(string value, int length) => value.Length <= length ? value
+        : value[..(char.IsHighSurrogate(value[length - 1]) ? length - 1 : length)] + "…";
 }

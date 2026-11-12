@@ -1,4 +1,5 @@
 using System.Globalization;
+using oyinQ.Bot.Features.Catalog;
 using oyinQ.Bot.Features.Collections;
 using System.Net;
 using System.Text;
@@ -23,7 +24,8 @@ public sealed record GatheringCardPresentation(
     string StatusText,
     string? TypeName,
     long? BggId,
-    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null, ComplexityInfo? ComplexityInfo = null);
+    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null, ComplexityInfo? ComplexityInfo = null,
+    int? MinPlayTimeMinutes = null, int? MaxPlayTimeMinutes = null, string? BoxWarning = null);
 
 public sealed record GatheringDetailPresentation(
     Guid PublicId,
@@ -42,7 +44,10 @@ public sealed record GatheringDetailPresentation(
     IReadOnlyList<string> CategoryNames,
     IReadOnlyList<string> MechanicNames,
     long? BggId,
-    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null, ComplexityInfo? ComplexityInfo = null);
+    string? BggUrl, RecruitmentState? Recruitment = null, string? CancellationReason = null, ComplexityInfo? ComplexityInfo = null,
+    int? MinPlayTimeMinutes = null, int? MaxPlayTimeMinutes = null);
+
+public sealed record GatheringParticipationPresentation(string Status, int? WaitlistPosition);
 
 public sealed record GatheringAnnouncement(string HtmlText, string? ImageUrl, string? BggUrl);
 public sealed record ProfileGatheringPresentation(Guid PublicId, string CommunityKey, string CommunityName,
@@ -56,7 +61,7 @@ public sealed class GatheringPresentationService
     private const int AnnouncementDescriptionLength = 220;
     private static readonly CultureInfo RussianCulture = CultureInfo.GetCultureInfo("ru-RU");
 
-    public GatheringCardPresentation BuildCard(GameGathering gathering, BotCommunity community)
+    public GatheringCardPresentation BuildCard(GameGathering gathering, BotCommunity community, GameProviderResponse? provider = null)
     {
         var game = ResolveSnapshot(gathering);
         var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
@@ -71,11 +76,13 @@ public sealed class GatheringPresentationService
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             GatheringCapacity.OccupiedSeats(gathering),
             gathering.MaximumPlayers,
-            StatusText(gathering.Status),
+            StatusText(gathering),
             metadata.TypeNames.FirstOrDefault(),
             game.BggId,
-            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering),
-            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null, GameComplexityPresentation.Present(game));
+            BggGameUrl.FromId(game.BggId), Recruitment(gathering),
+            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null, GameComplexityPresentation.Present(game),
+            game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes,
+            community.Mode == BotMode.Camp && !GatheringLifecycle.IsTerminal(gathering.Status) ? provider?.Warning : null);
     }
 
     public GatheringDetailPresentation BuildDetails(GameGathering gathering, BotCommunity community)
@@ -93,41 +100,53 @@ public sealed class GatheringPresentationService
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             GatheringCapacity.OccupiedSeats(gathering),
             gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray(),
-            StatusText(gathering.Status),
+            StatusText(gathering),
             metadata.TypeNames.FirstOrDefault(),
             metadata.TypeNames,
             metadata.CategoryNames,
             metadata.MechanicNames,
             game.BggId,
-            BggGameUrl.FromId(game.BggId), GatheringLifecycle.IsTerminal(gathering.Status) ? null : GatheringRecruitment.Describe(gathering),
-            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null, GameComplexityPresentation.Present(game));
+            BggGameUrl.FromId(game.BggId), Recruitment(gathering),
+            gathering.Status == GatheringStatus.Cancelled ? gathering.CancellationReason : null, GameComplexityPresentation.Present(game),
+            game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes);
     }
 
     public GatheringAnnouncement BuildTelegramAnnouncement(
         GameGathering gathering,
-        BotCommunity community)
+        BotCommunity community, GameProviderResponse? provider = null)
     {
-        var full = BuildTelegramAnnouncement(gathering, community, compact: false);
+        var full = BuildTelegramAnnouncement(gathering, community, provider, compact: false);
         // Telegram counts caption characters after parsing entities, not HTML markup or link URLs.
         var visible = WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(full.HtmlText, "<[^>]+>", ""));
-        return visible.Length <= 1024 ? full : BuildTelegramAnnouncement(gathering, community, compact: true);
+        return visible.Length <= 1024 ? full : BuildTelegramAnnouncement(gathering, community, provider, compact: true);
     }
 
     private GatheringAnnouncement BuildTelegramAnnouncement(
-        GameGathering gathering, BotCommunity community, bool compact)
+        GameGathering gathering, BotCommunity community, GameProviderResponse? provider, bool compact)
     {
         var game = ResolveSnapshot(gathering);
         var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
         var text = new StringBuilder();
         text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(compact ? Truncate(game.Name, 160) : game.Name)}</b>");
-        if (metadata.TypeNames.FirstOrDefault() is { } typeName)
-            text.AppendLine($"🏷 {WebUtility.HtmlEncode(compact ? Truncate(typeName, 80) : typeName)}");
+        if (gathering.Status is GatheringStatus.Cancelled or GatheringStatus.Closed or GatheringStatus.Completed)
+        {
+            text.AppendLine($"<b>{StatusText(gathering)}</b>");
+            if (gathering.Status == GatheringStatus.Cancelled && !string.IsNullOrWhiteSpace(gathering.CancellationReason))
+                text.AppendLine($"Причина: {WebUtility.HtmlEncode(Truncate(gathering.CancellationReason, compact ? 120 : 500))}");
+        }
+        text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
+        if (GameDurationPresentation.Format(game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes) is { } duration)
+            text.AppendLine($"⏱ {duration}");
+        text.AppendLine($"👥 Занято мест: {GatheringCapacity.OccupiedSeats(gathering)} из {gathering.MaximumPlayers}");
+        if (Recruitment(gathering) is { } recruitment) text.AppendLine(recruitment.Text);
+        if (community.Mode == BotMode.Camp && !GatheringLifecycle.IsTerminal(gathering.Status) && provider?.Warning is { } warning)
+            text.AppendLine($"📦 {warning}");
+        text.AppendLine($"Собирает {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
+        text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
         if (GameComplexityPresentation.Present(game) is { } complexity)
             text.AppendLine($"⚖️ {complexity.DisplayName}");
-        text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
-        text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} / {gathering.DesiredPlayers}–{gathering.MaximumPlayers}");
-        text.AppendLine($"Организатор: {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
-        text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
+        if (!compact && metadata.TypeNames.FirstOrDefault() is { } typeName)
+            text.AppendLine($"🏷 {WebUtility.HtmlEncode(typeName)}");
 
         if (gathering.Expansions.Count > 0)
         {
@@ -165,18 +184,14 @@ public sealed class GatheringPresentationService
             text.AppendLine($"⏳ Лист ожидания: {waitlistedCount}");
         }
 
-        var description = Truncate(gathering.Description, AnnouncementDescriptionLength);
+        var description = Truncate(gathering.Description, compact ? 120 : AnnouncementDescriptionLength);
         if (description is not null)
         {
             text.AppendLine();
             text.AppendLine(WebUtility.HtmlEncode(description));
         }
 
-        text.AppendLine();
-        text.Append(StatusText(gathering.Status));
-        if (gathering.Status == GatheringStatus.Cancelled && !string.IsNullOrWhiteSpace(gathering.CancellationReason))
-            text.Append($"\nПричина: {WebUtility.HtmlEncode(Truncate(gathering.CancellationReason, compact ? 120 : 500))}");
-        if (compact) text.Append("\nПолный состав и дополнения — по кнопке «Открыть сбор».");
+        if (compact) text.Append("\nСостав и дополнения — в сборе.");
         return new GatheringAnnouncement(
             text.ToString(),
             game.ImageUrl ?? game.ThumbnailImageUrl,
@@ -194,8 +209,7 @@ public sealed class GatheringPresentationService
             local.ToString("HH:mm", CultureInfo.InvariantCulture),
             FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId),
             gathering.OrganizerParticipantId == participantId, GatheringPlayTiming.EstimatedEnd(gathering),
-            gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted).OrderBy(x => x.JoinedAt).ThenBy(x => x.Id)
-                .Select((x, index) => new { x.ParticipantId, Position = index + 1 }).FirstOrDefault(x => x.ParticipantId == participantId)?.Position,
+            BuildParticipation(gathering, participantId).WaitlistPosition,
             now is null || gathering.StartsAtUtc > now ? "upcoming"
                 : GatheringPlayTiming.EstimatedEnd(gathering) > now ? "started" : "awaitingOutcome");
     }
@@ -204,7 +218,22 @@ public sealed class GatheringPresentationService
         => GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
 
     private static string RulesText(bool canTeachRules) =>
-        canTeachRules ? "Могу объяснить правила" : "Опыт с игрой желателен";
+        canTeachRules ? "Правила объясню" : "Опыт с игрой желателен";
+
+    public static GatheringParticipationPresentation BuildParticipation(GameGathering gathering, long participantId)
+    {
+        if (gathering.OrganizerParticipantId == participantId) return new("Organizer", null);
+        var member = gathering.Participants.SingleOrDefault(x => x.ParticipantId == participantId);
+        var position = member?.Status == GatheringParticipationStatus.Waitlisted
+            ? gathering.Participants.Where(x => x.Status == GatheringParticipationStatus.Waitlisted)
+                .OrderBy(x => x.JoinedAt).ThenBy(x => x.Id).Select((x, index) => new { x.ParticipantId, Position = index + 1 })
+                .Single(x => x.ParticipantId == participantId).Position : (int?)null;
+        return new(member?.Status.ToString() ?? "None", position);
+    }
+
+    private static RecruitmentState? Recruitment(GameGathering gathering) =>
+        gathering.Status is GatheringStatus.Recruiting or GatheringStatus.Ready or GatheringStatus.Full
+            ? GatheringRecruitment.Describe(gathering) : null;
 
     public static string FormatLocalDateTime(DateTimeOffset startsAtUtc, string timeZoneId)
     {
@@ -212,13 +241,13 @@ public sealed class GatheringPresentationService
         return local.ToString("ddd, d MMMM, HH:mm", RussianCulture);
     }
 
-    private static string StatusText(GatheringStatus status) => status switch
+    private static string StatusText(GameGathering gathering) => gathering.Status switch
     {
         GatheringStatus.Recruiting => "🟡 Идёт набор",
         GatheringStatus.Ready => "✅ Есть места",
         GatheringStatus.Full => "🔒 Свободных мест нет",
         GatheringStatus.Closed => "🔒 Запись закрыта",
-        GatheringStatus.Completed => "✅ Сбор завершён",
+        GatheringStatus.Completed => "Запись завершена",
         GatheringStatus.Cancelled => "❌ Сбор отменён",
         _ => "Статус неизвестен"
     };

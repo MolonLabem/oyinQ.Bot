@@ -1,3 +1,5 @@
+import { plural, formatDuration } from "../../app/format";
+import { GameFact } from "../../components/GameFact";
 import { DateTimeField } from "../../components/DateTimeField";
 import { useBackButton } from "../../hooks/useBackButton";
 import { useRefresh } from "../../hooks/useRefreshOnActivity";
@@ -70,13 +72,20 @@ function GatheringList({ community, listState, setListState, open, create, hasDr
           <button className="card gathering-card" onClick={() => open(item.card.publicId)}>
             <Cover src={item.card.imageUrl} name={item.card.gameName} />
             <div className="gathering-card-body">
-              <div className="gathering-card-top"><span className="gathering-card-time"><time dateTime={item.startsAtUtc}>{time ?? item.card.localDateTime}</time>{item.isOrganizer && <span className="gathering-own">Ваш сбор</span>}</span><ComplexityBadge info={item.card.complexityInfo} /></div>
+              <div className="gathering-card-top"><span className="gathering-card-time"><time dateTime={item.startsAtUtc}>{time ?? item.card.localDateTime}</time></span><ComplexityBadge info={item.card.complexityInfo} /></div>
               <h3>{item.card.gameName}</h3>
-              <p className="gathering-card-organizer">{item.isOrganizer ? "Вы собираете" : `Собирает ${item.card.organizerName}`}</p>
-              <p className="gathering-card-seats"><strong>{item.card.occupiedSeats} / {item.card.maximumPlayers}</strong> игроков<span className={`gathering-card-status ${gatheringStatusTone(item.status)}`}>{item.card.statusText}</span></p>
+              <p className="gathering-card-organizer">{item.isOrganizer ? <span className="gathering-own">Ваш сбор</span> : <>Собирает {item.card.organizerName}</>}
+                {!item.isOrganizer && item.currentUserStatus === "Confirmed" && <span className="gathering-own">Вы записаны</span>}
+                {!item.isOrganizer && item.currentUserStatus === "Waitlisted" && <span className="gathering-own">В очереди{item.waitlistPosition != null ? ` · №${item.waitlistPosition}` : ""}</span>}
+              </p>
+              <div className="gathering-card-seats"><GameFact kind="players" label="Занято мест"><strong>{item.card.occupiedSeats} из {item.card.maximumPlayers}</strong></GameFact>
+                {formatDuration(item.card.minPlayTimeMinutes, item.card.maxPlayTimeMinutes) && <GameFact kind="duration" label="Длительность">{formatDuration(item.card.minPlayTimeMinutes, item.card.maxPlayTimeMinutes)}</GameFact>}
+              </div>
+              {item.status !== "Recruiting" && item.status !== "Ready" && <p className={`gathering-card-status ${gatheringStatusTone(item.status)}`}>{item.card.statusText}</p>}
               {item.card.recruitment?.belowDesired && item.status !== "Closed" && <p className="gathering-card-activity">{item.card.recruitment.text}</p>}
               {item.card.rulesText && <div className="gathering-card-meta">{item.card.rulesText}</div>}
               {item.card.cancellationReason && <p className="gathering-card-cancellation">Причина: {item.card.cancellationReason}</p>}
+              {item.card.boxWarning && <p className="gathering-box-warning">{item.card.boxWarning}</p>}
               <span className="gathering-card-open">Открыть сбор <span aria-hidden>→</span></span>
             </div>
           </button>
@@ -245,7 +254,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
   const [guestName, setGuestName] = useState("");
   async function action(path: string, reason?: string) { if (busy) return; setBusy(true); setError(undefined); setAttendanceRequired(false); try { await gatheringMutation(`/gatherings/${id}/${path}`, json("POST", { communityKey: community.key, reason })); telegram.success(({ join: "Вы записались на сбор", leave: "Вы вышли из сбора", close: "Запись закрыта", reopen: "Запись открыта", cancel: "Сбор отменён", "publication/retry": "Объявление опубликовано" } as Record<string, string>)[path] ?? "Изменения сохранены"); setCancelling(false); if (path === "cancel") onCancelled(); else state.reload(); } catch (e) { setAttendanceRequired(e instanceof ApiError && e.code === "camp_attendance_date_required"); setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }
   async function guestAction(method: "POST" | "PUT" | "DELETE", guestId?: number, displayName?: string) { if (busy) return false; setBusy(true); setError(undefined); try { await api(`/gatherings/${id}/guests${guestId ? `/${guestId}` : ""}`, json(method, { communityKey: community.key, displayName })); telegram.success(method === "DELETE" ? "Гость удалён" : guestId ? "Имя гостя изменено" : "Гость добавлен"); if (method === "POST") setGuestName(""); state.reload(); return true; } catch (e) { setError(e instanceof Error ? e.message : String(e)); return false; } finally { setBusy(false); } }
-  if (state.loading && !state.data) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<BackButton onClick={onBack} />}><ErrorState message={state.error ?? "Сбор не найден"} /></Page>;
+  if (state.loading && !state.data) return <Page title="Сбор"><Loading /></Page>; if (state.error || !state.data) return <Page title="Сбор" actions={<BackButton onClick={onBack} />}><ErrorState message={state.error ?? "Сбор не найден"} retry={state.reload} /></Page>;
   const value = state.data;
   const working = busy || state.loading;
   if (editing && value.canEdit) return <EditGatheringLoader community={community} id={id} done={() => { setEditing(false); state.reload(); }} cancel={() => setEditing(false)} />;
@@ -272,10 +281,12 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
       <div className="gathering-summary">
         <div className="gathering-seat-summary"><strong>{value.gathering.occupiedSeats} из {value.maximumPlayers} игроков</strong><span className={statusTone === "danger" ? "danger-text" : "muted"}>{value.gathering.statusText}</span></div>
         <div className={`seat-meter ${statusTone}`} role="progressbar" aria-label="Занятые места" aria-valuemin={0} aria-valuemax={value.maximumPlayers} aria-valuenow={value.gathering.occupiedSeats}><span style={{ width: `${occupiedPercent}%` }} /></div>
-        {value.gathering.recruitment && <p className="gathering-recruitment-summary">{value.gathering.recruitment.text}</p>}
-        <p className="capacity-caption">Минимум {value.minimumPlayers} · оптимально {value.desiredPlayers} · максимум {value.maximumPlayers}</p>
+        {value.gathering.recruitment?.belowDesired && value.status !== "Closed" && <p className="gathering-recruitment-summary">{value.gathering.recruitment.text}</p>}
+        <p className="capacity-caption">Для начала: {plural(value.minimumPlayers, "игрок", "игрока", "игроков")}{value.desiredPlayers !== value.minimumPlayers && <> · собираем {value.desiredPlayers}</>}</p>
       </div>
+      {formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes) && <p className="gathering-duration"><GameFact kind="duration" label="Длительность">{formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes)}</GameFact></p>}
       <p className="gathering-rules">{value.gathering.rulesText}</p>
+      {community.mode === "Camp" && !value.hasStarted && value.status !== "Cancelled" && value.provider?.warning && <p className="gathering-box-warning">{value.provider.warning}</p>}
       {!readOnly && (value.canJoin || value.canLeave) && <div className="gathering-participation" aria-label="Участие в сборе">
         {value.canJoin && <button className="primary" disabled={working} onClick={() => action("join")}>{busy ? "Сохраняем…" : freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}
         {value.canLeave && <><Badge tone={participationStatusTone(value.currentUserStatus)}>{value.currentUserStatus === "Waitlisted" ? `Ваше место в очереди: ${value.waitlistPosition ?? "—"}` : "Вы записаны на сбор"}</Badge><button className="danger" disabled={working} onClick={() => action("leave")}>{value.currentUserStatus === "Waitlisted" ? "Выйти из листа ожидания" : "Отказаться от места"}</button></>}
@@ -325,7 +336,7 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
       {!readOnly && value.canManageGuests && <div className="inline-form guest-form"><input value={guestName} maxLength={80} placeholder="Имя или описание гостя" onChange={event => setGuestName(event.target.value)} /><button disabled={working || !guestName.trim()} onClick={() => guestAction("POST", undefined, guestName)}>Добавить гостя</button></div>}
       {value.waitlistedParticipants.length > 0 && <section className="gathering-waitlist"><h3>Лист ожидания <span>{value.waitlistedParticipants.length}</span></h3><ol>{value.waitlistedParticipants.map(participant => <li key={participant.id ?? `${participant.position}-${participant.name}`}><span>{participant.position}</span><ContactLink url={participant.contactUrl}>{participant.name}</ContactLink></li>)}</ol></section>}
     </section>
-    {community.mode === "Camp" && value.provider && <section className="content-section gathering-provider"><h2>Коробка</h2><Notice kind={value.provider.isConfirmed ? "success" : "warning"}>{value.provider.providers.length ? value.provider.providers.map(p => <div key={p.participantId}>{p.displayName} — <span className={`provider-status${p.commitment === "Bringing" ? " success" : ""}`}>{p.commitment === "Bringing" ? "привезёт" : "может привезти"}</span></div>) : value.provider.summary}</Notice>{!readOnly && value.provider.canBring && !value.hasStarted && <button className="primary" disabled={working} onClick={() => action("bring")}>Я привезу</button>}</section>}
+    {community.mode === "Camp" && value.provider && (value.provider.providers.length > 0 || !readOnly && value.provider.canBring && !value.hasStarted) && <section className="content-section gathering-provider"><h2>Коробка</h2><Notice kind={value.provider.isConfirmed ? "success" : "warning"}>{value.provider.providers.length ? value.provider.providers.map(p => <div key={p.participantId}>{p.displayName} — <span className={`provider-status${p.commitment === "Bringing" ? " success" : ""}`}>{p.commitment === "Bringing" ? "привезёт" : "может привезти"}</span></div>) : value.provider.summary}</Notice>{!readOnly && value.provider.canBring && !value.hasStarted && <button className="primary" disabled={working} onClick={() => action("bring")}>Я привезу</button>}</section>}
     {value.canRecordPlay && <div className="gathering-play-section"><PlayPanel community={community} id={id} onSaved={state.reload} /></div>}
     <Card className="gathering-game-info">
       <details>

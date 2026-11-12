@@ -16,7 +16,7 @@ public sealed class BoardGameGeekClient(
     IOptions<BggOptions> options,
     IMemoryCache? cache = null,
     ILogger<BoardGameGeekClient>? logger = null)
-    : IBoardGameGeekClient
+    : IBoardGameGeekClient, IBggRatingSource
 {
     private const int CollectionAcceptedAttempts = 5;
     private const int TransientAttempts = 3;
@@ -26,6 +26,23 @@ public sealed class BoardGameGeekClient(
     private static readonly TimeSpan TransientRetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan TransientRetryJitter = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan ThingBatchDelay = TimeSpan.FromSeconds(5);
+
+    public async Task<IReadOnlyDictionary<long, decimal?>> GetRatingsAsync(IReadOnlyCollection<long> ids, CancellationToken ct)
+    {
+        var result = new Dictionary<long, decimal?>();
+        var batches = ids.Where(id => id > 0).Distinct().Chunk(ThingBatchSize).ToArray();
+        for (var i = 0; i < batches.Length; i++)
+        {
+            if (i > 0) await Task.Delay(ThingBatchDelay, ct);
+            var document = await GetXmlAsync($"/xmlapi2/thing?id={string.Join(',', batches[i])}&stats=1", ct,
+                acceptedAttempts: ThingAttempts, transientAttempts: ThingAttempts);
+            // A missing item is not a successful 'unrated' result; leave it retryable.
+            foreach (var item in document.Root?.Elements("item") ?? [])
+                if (ReadLongAttribute(item, "id") is { } id && batches[i].Contains(id)
+                    && BggRatingParser.TryRead(item, out var rating)) result[id] = rating;
+        }
+        return result;
+    }
 
     public async Task<IReadOnlyList<BggBaseGameSearchResult>> SearchAsync(
         string query,

@@ -6,6 +6,7 @@ namespace oyinQ.Bot.Data;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    public DbSet<BggRatingCacheEntry> BggRatingCache => Set<BggRatingCacheEntry>();
     public DbSet<CampBringRequest> CampBringRequests => Set<CampBringRequest>();
     public DbSet<CampBringRequester> CampBringRequesters => Set<CampBringRequester>();
     public DbSet<GameWish> GameWishes => Set<GameWish>();
@@ -42,6 +43,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<BggRatingCacheEntry>(b =>
+        {
+            b.ToTable("BggRatingCache", t => t.HasCheckConstraint("CK_BggRatingCache_Rating", "\"Rating\" IS NULL OR (\"Rating\" >= 1 AND \"Rating\" <= 10)"));
+            b.HasKey(x => x.BggId);
+            b.Property(x => x.BggId).ValueGeneratedNever();
+            b.Property(x => x.Rating).HasPrecision(10, 6);
+            b.HasIndex(x => new { x.RefreshRequested, x.RefreshAfter });
+        });
         modelBuilder.Entity<DeletedProfile>(b =>
         {
             b.HasKey(x => x.TelegramUserId);

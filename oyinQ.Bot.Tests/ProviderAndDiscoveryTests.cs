@@ -45,10 +45,15 @@ public sealed class ProviderAndDiscoveryTests
             OrganizerParticipant = f.Me, Status = GatheringStatus.Recruiting, MinimumPlayers = 1, DesiredPlayers = 2, MaximumPlayers = 3,
             GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(new(GatheringGameSnapshot.CurrentVersion, 42, "Игра", null, null, 1, 8, null, [], "catalog", [])) };
         f.Db.GameGatherings.Add(g); await f.Db.SaveChangesAsync();
+        var cardBefore = new GatheringPresentationService().BuildCard(g, camp.BotChat.ToBotCommunity(),
+            (await providers.ForGatheringsAsync([g], f.Me.Id, default))[g.PublicId]);
+        Assert.Equal("Коробка пока не подтверждена", cardBefore.BoxWarning);
         await providers.BringAsync(g, f.Me.Id, default); await providers.ForGatheringAsync(g, f.Me.Id, default);
         var contribution = Assert.Single(f.Db.CampGameContributions);
         Assert.Equal(camp.Id, contribution.CampId); Assert.Equal(CampBringCommitment.Bringing, contribution.Commitment);
         Assert.Equal(GameProviderState.ConfirmedParticipantProvider, (await providers.ForGatheringAsync(g, f.Me.Id, default)).State);
+        Assert.Null(new GatheringPresentationService().BuildCard(g, camp.BotChat.ToBotCommunity(),
+            (await providers.ForGatheringsAsync([g], f.Me.Id, default))[g.PublicId]).BoxWarning);
         Assert.Empty((await catalog.ListAsync("other-camp", BotMode.Camp, f.Me.TelegramUserId, new(null, null, [], [], null), default)).Items);
         var nextDay = await providers.ForGameAsync("camp", 42, f.Me.Id, g.StartsAtUtc.AddDays(1), default);
         Assert.Equal(GameProviderState.NoKnownProvider, nextDay.State); Assert.False(nextDay.CanBring);

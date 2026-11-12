@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using oyinQ.Bot.Data;
 using oyinQ.Bot.Data.Entities;
 using oyinQ.Bot.Features.Communities;
+using oyinQ.Bot.Features.Gatherings;
 using oyinQ.Bot.Integrations.Telegram;
 
 namespace oyinQ.Bot.Features.Collections;
@@ -67,8 +68,9 @@ public sealed class CampContributionSelectionService(
                 ? selectedBase.Contains(x.BggId) : selectedExpansions.Contains(x.BggId))
             )
             .ToDictionary(x => (x.BggId, x.ItemType));
-        dbContext.CampGameContributions.RemoveRange(existing.Where(x =>
-            x.Source == CollectionItemSource.BggImport && !desired.ContainsKey((x.BggId, x.ItemType))));
+        var removed = existing.Where(x => x.Source == CollectionItemSource.BggImport
+            && !desired.ContainsKey((x.BggId, x.ItemType))).ToArray();
+        dbContext.CampGameContributions.RemoveRange(removed);
 
         foreach (var item in desired.Values)
         {
@@ -94,6 +96,9 @@ public sealed class CampContributionSelectionService(
             contribution.UpdatedAt = now.ToUniversalTime();
         }
         await dbContext.SaveChangesAsync(cancellationToken);
+        await GatheringPublication.RequestForCampBoxesAsync(dbContext, campId,
+            removed.Where(x => x.ItemType == CollectionItemType.BaseGame && x.Commitment == CampBringCommitment.Bringing)
+                .Select(x => x.BggId).ToArray(), now, cancellationToken);
     }
 
     public async Task AddSoftSkippedCopiesAsync(long campId, long participantId, CampBggImportDraft draft,
@@ -185,6 +190,8 @@ public sealed class CampContributionSelectionService(
             cancellationToken);
         if (contribution is not null) dbContext.Remove(contribution);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (contribution is { ItemType: CollectionItemType.BaseGame, Commitment: CampBringCommitment.Bringing })
+            await GatheringPublication.RequestForCampBoxesAsync(dbContext, campId, [bggId], timeProvider.GetUtcNow(), cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 
@@ -248,7 +255,10 @@ public sealed class CampContributionSelectionService(
         await dbContext.SaveChangesAsync(cancellationToken);
         if (itemType == CollectionItemType.BaseGame && (previousCommitment != commitment
             || !previousDates.SequenceEqual(EffectiveDates(contribution, registrationNow))))
+        {
             await new Features.Notifications.CampWishlistNotifications(dbContext, timeProvider).BoxChangedAsync(campId, participantId, bggId, commitment, cancellationToken);
+            await GatheringPublication.RequestForCampBoxesAsync(dbContext, campId, [bggId], timeProvider.GetUtcNow(), cancellationToken);
+        }
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
     }
 

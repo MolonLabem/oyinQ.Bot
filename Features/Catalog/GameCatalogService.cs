@@ -24,7 +24,8 @@ public sealed record GameListItemResponse(long BggId, string Name, string? Origi
     GameType Type, string TypeName, IReadOnlyList<string> TypeNames,
     int? MinPlayers, int? MaxPlayers, string? BestPlayers,
     string AvailabilitySummary, bool IsDefinitelyAvailable,
-    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null);
+    bool NeedsProviderCoordination, int ScheduledGatherings = 0, int RecordedPlays = 0, bool IsWished = false, bool CanWish = true, IReadOnlyList<ClubCollectionExpansion>? Expansions = null, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null,
+    int? MinPlayTimeMinutes = null, int? MaxPlayTimeMinutes = null, decimal? BggRating = null, int CompletedGatherings = 0);
 public sealed record GameAvailabilityResponse(bool IsInBaseCollection, IReadOnlyList<CampCatalogProvider> Providers,
     bool HasCommittedProvider, bool IsOwned = false);
 public sealed record GameDetailsResponse(long BggId, string Name, string? OriginalName, string? ImageUrl, string? Description,
@@ -33,12 +34,13 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     int? MinPlayTimeMinutes, int? MaxPlayTimeMinutes, int? MinAge,
     IReadOnlyList<LocalizedTaxonomyItem> Categories, IReadOnlyList<LocalizedTaxonomyItem> Mechanics,
     IReadOnlyList<ClubCollectionExpansion> Expansions, string BggUrl, GameAvailabilityResponse Availability, bool IsWished = false, bool CanWish = true,
-    int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null);
+    int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null, decimal? BggRating = null);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
     IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers,
     IReadOnlyList<LocalizedTaxonomyItem>? Mechanics = null, IReadOnlyList<ComplexityInfo>? Complexities = null,
     IReadOnlyList<int>? PlayerCounts = null);
-public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters, int Total = 0);
+public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters, int Total = 0,
+    bool RatingsPending = false, bool RatingsUnavailable = false);
 public sealed record GameDemand(ClubCollectionGame Game, int InterestedParticipants, int ScheduledGatherings, string AvailabilitySummary);
 
 public sealed class GameNotInCollectionException(long bggId)
@@ -47,7 +49,8 @@ public sealed class GameNotInCollectionException(long bggId)
     public long BggId { get; } = bggId;
 }
 
-public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog, TimeProvider? timeProvider = null)
+public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCatalogService campCatalog, TimeProvider? timeProvider = null,
+    BggCatalogRatingService? ratingService = null)
 {
     public async Task<IReadOnlyList<GameDemand>> DemandAsync(string key, BotMode mode, long telegramUserId, CancellationToken ct)
     {
@@ -180,13 +183,26 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         if (countOnly) return new([], new([], [], []), total);
         filtered = matched;
 
+        // Popularity measures past, non-cancelled gatherings that reached the minimum, not recorded plays.
+        var completedSnapshots = await Features.Gatherings.GatheringCapacity.MinimumReached(dbContext.GameGatherings.AsNoTracking()
+                .Where(x => x.CommunityKey == communityKey && x.StartsAtUtc <= now && x.Status != GatheringStatus.Cancelled))
+            .Select(x => x.GameSnapshotJson).ToArrayAsync(cancellationToken);
+        var completed = completedSnapshots.Select(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId)
+            .Where(x => x.HasValue).GroupBy(x => x!.Value).ToDictionary(x => x.Key, x => x.Count());
+        var ratings = ratingService is null ? CatalogRatings.Empty
+            : await ratingService.ReadAsync(effective.Select(x => x.Game.BggId), cancellationToken);
+
         filtered = query.Sort?.ToLowerInvariant() switch
         {
-            "popular" => filtered.OrderByDescending(value => played.GetValueOrDefault(value.Game.BggId)).ThenBy(value => value.Game.Name).ThenBy(value => value.Game.BggId),
-            "players" => filtered.OrderBy(value => value.Game.MinPlayers ?? int.MaxValue).ThenBy(value => value.Game.Name).ThenBy(value => value.Game.BggId),
-            _ => filtered.OrderBy(value => value.Game.Name, StringComparer.OrdinalIgnoreCase).ThenBy(value => value.Game.BggId)
+            "name" => filtered.OrderBy(value => value.Game.Name, StringComparer.OrdinalIgnoreCase).ThenBy(value => value.Game.BggId),
+            "popular" => filtered.OrderByDescending(value => completed.GetValueOrDefault(value.Game.BggId))
+                .ThenBy(value => value.Game.Name, StringComparer.OrdinalIgnoreCase).ThenBy(value => value.Game.BggId),
+            _ => filtered.OrderByDescending(value => ratings.InitialLoadPending ? null : ratings.Values.GetValueOrDefault(value.Game.BggId))
+                .ThenByDescending(value => completed.GetValueOrDefault(value.Game.BggId))
+                .ThenBy(value => value.Game.Name, StringComparer.OrdinalIgnoreCase).ThenBy(value => value.Game.BggId)
         };
-        var items = filtered.Select(x => ToListItem(x, mode) with { ScheduledGatherings = planned.GetValueOrDefault(x.Game.BggId), RecordedPlays = played.GetValueOrDefault(x.Game.BggId) }).ToArray();
+        var items = filtered.Select(x => ToListItem(x, mode) with { ScheduledGatherings = planned.GetValueOrDefault(x.Game.BggId), RecordedPlays = played.GetValueOrDefault(x.Game.BggId),
+            CompletedGatherings = completed.GetValueOrDefault(x.Game.BggId), BggRating = ratings.Values.GetValueOrDefault(x.Game.BggId) }).ToArray();
         var categories = effective.SelectMany(value => value.Game.CategoryItems ?? [])
             .DistinctBy(value => value.BggId).OrderBy(value => BggTaxonomyCatalog.LocalizeCategory(value))
             .Select(value => new LocalizedTaxonomyItem(value.BggId, BggTaxonomyCatalog.LocalizeCategory(value))).ToArray();
@@ -213,7 +229,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             foreach (var best in BggBestPlayerRecommendation.Ranges(value.Game.BestPlayers))
                 playerCounts.UnionWith(Enumerable.Range(best.Minimum, best.Maximum - best.Minimum + 1));
         }
-        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters, mechanics, complexities, playerCounts.ToArray()), total);
+        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters, mechanics, complexities, playerCounts.ToArray()), total,
+            ratings.Pending, ratings.Unavailable);
     }
 
     public async Task<GameDetailsResponse> DetailsAsync(string communityKey, BotMode mode, long telegramUserId,
@@ -231,6 +248,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             .Select(x => x.GameSnapshotJson).ToArrayAsync(cancellationToken);
         var scheduledGatherings = plannedSnapshots.Count(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId == bggId);
         var recordedPlays = playedSnapshots.Count(x => Features.Gatherings.GatheringGameSnapshotSerializer.Deserialize(x).BggId == bggId);
+        var ratings = ratingService is null ? CatalogRatings.Empty : await ratingService.ReadAsync([bggId], cancellationToken);
         return new GameDetailsResponse(game.BggId, game.Name, game.OriginalName,
             game.ImageUrl ?? game.ThumbnailImageUrl,
             game.Description, game.YearPublished, game.Type, presentation.TypeName, presentation.TypeNames,
@@ -241,7 +259,7 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             game.Expansions, BggGameUrl.FromId(game.BggId)!,
             new GameAvailabilityResponse(value.IsInBaseCollection, value.Providers,
                 GameProviderService.Describe(false, value.Providers).IsConfirmed, value.IsOwned), value.IsWished, value.IsBaseGame,
-            scheduledGatherings, recordedPlays, ExpansionRange(game), GameComplexityPresentation.Present(game));
+            scheduledGatherings, recordedPlays, ExpansionRange(game), GameComplexityPresentation.Present(game), ratings.Values.GetValueOrDefault(bggId));
     }
 
     public async Task<IReadOnlyList<EffectiveGame>> LoadAsync(string key, BotMode mode, long telegramUserId,
@@ -321,7 +339,8 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             value.Game.ThumbnailImageUrl,
             value.Game.Type, presentation.TypeName, presentation.TypeNames, value.Game.MinPlayers,
             value.Game.MaxPlayers, value.Game.BestPlayers, summary,
-            committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions, ExpansionPlayerRange: ExpansionRange(value.Game), ComplexityInfo: GameComplexityPresentation.Present(value.Game));
+            committed, coordination, IsWished: value.IsWished, CanWish: value.IsBaseGame, Expansions: value.Game.Expansions, ExpansionPlayerRange: ExpansionRange(value.Game), ComplexityInfo: GameComplexityPresentation.Present(value.Game),
+            MinPlayTimeMinutes: value.Game.MinPlayTimeMinutes, MaxPlayTimeMinutes: value.Game.MaxPlayTimeMinutes);
     }
 
     public static CatalogQuery NormalizeQuery(CatalogQuery query, BotMode mode) => mode == BotMode.Club

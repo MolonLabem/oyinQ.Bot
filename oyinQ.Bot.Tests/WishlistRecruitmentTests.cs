@@ -14,6 +14,23 @@ namespace oyinQ.Bot.Tests;
 public sealed class WishlistRecruitmentTests
 {
     [Fact]
+    public async Task DigestButtonsDistinguishDatesTimesAndSimultaneousTables()
+    {
+        await using var f = new PlanningFixture();
+        var first = f.Gathering("club", f.Clock.Now.AddHours(1));
+        var sameTime = f.Gathering("club", first.StartsAtUtc);
+        var later = f.Gathering("club", first.StartsAtUtc.AddHours(2));
+        var tomorrow = f.Gathering("club", first.StartsAtUtc.AddDays(1));
+        var message = RecruitmentDigestFormatter.Build([first, sameTime, later, tomorrow], "club", "UTC", f.Clock.Now, "TestBot");
+        var buttons = message.Keyboard.InlineKeyboard.SelectMany(x => x).Take(4).ToArray();
+        Assert.Equal(4, buttons.Select(x => x.Text).Distinct().Count());
+        Assert.Contains("09:00", buttons[0].Text); Assert.Contains("№1", buttons[0].Text); Assert.Contains("№1", message.Text);
+        Assert.Contains("№2", buttons[1].Text); Assert.Contains("11:00", buttons[2].Text);
+        Assert.Contains("Завтра 09:00", buttons[3].Text);
+        Assert.Equal(4, buttons.Select(x => x.Url).Distinct().Count());
+    }
+
+    [Fact]
     public async Task WishesAreIdempotentScopedAndIndependentOfOwnershipAndNames()
     {
         await using var f = new PlanningFixture();
@@ -100,12 +117,12 @@ public sealed class WishlistRecruitmentTests
     }
 
     [Theory]
-    [InlineData(1, 0, "Нужны +2")]
-    [InlineData(2, 0, "Нужен +1")]
-    [InlineData(3, 1, "+2 до оптимального")]
-    [InlineData(4, 1, "+1 до оптимального")]
-    [InlineData(5, 2, "Можно ещё +2")]
-    [InlineData(6, 2, "Можно ещё +1")]
+    [InlineData(1, 0, "Нужны ещё 2 игрока для начала")]
+    [InlineData(2, 0, "Нужен ещё 1 игрок для начала")]
+    [InlineData(3, 1, "ждём ещё 2 игроков")]
+    [InlineData(4, 1, "ждём ещё 1 игрока")]
+    [InlineData(5, 2, "Есть 2 места")]
+    [InlineData(6, 2, "Есть 1 место")]
     [InlineData(7, 3, "Состав набран")]
     public void RecruitmentUsesCanonicalSeatsIncludingGuestsExcludingWaitlist(int occupied, int priority, string text)
     {

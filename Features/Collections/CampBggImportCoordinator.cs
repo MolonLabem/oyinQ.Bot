@@ -102,6 +102,11 @@ public sealed class CampBggImportCoordinator(
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // Confirmation can remove a promised box and invalidate gatherings. Match
+        // attendance/withdrawal lock order before locking the import itself.
+        if (campId is { } lockedCampId && dbContext.Database.IsNpgsql())
+            await dbContext.Camps.FromSqlInterpolated($"SELECT * FROM \"Camps\" WHERE \"Id\" = {lockedCampId} FOR UPDATE")
+                .AsNoTracking().SingleAsync(cancellationToken);
         var import = await LockedImportQuery(publicId)
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Импорт не найден.");

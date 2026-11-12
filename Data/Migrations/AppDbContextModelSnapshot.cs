@@ -22,6 +22,43 @@ namespace oyinQ.Bot.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("oyinQ.Bot.Data.Entities.BggRatingCacheEntry", b =>
+                {
+                    b.Property<long>("BggId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("CheckedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Failed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LeaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Rating")
+                        .HasPrecision(10, 6)
+                        .HasColumnType("numeric(10,6)");
+
+                    b.Property<DateTimeOffset>("RefreshAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RefreshRequested")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("BggId");
+
+                    b.HasIndex("RefreshRequested", "RefreshAfter");
+
+                    b.ToTable("BggRatingCache", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BggRatingCache_Rating", "\"Rating\" IS NULL OR (\"Rating\" >= 1 AND \"Rating\" <= 10)");
+                        });
+                });
+
             modelBuilder.Entity("oyinQ.Bot.Data.Entities.Camp", b =>
                 {
                     b.Property<long>("Id")

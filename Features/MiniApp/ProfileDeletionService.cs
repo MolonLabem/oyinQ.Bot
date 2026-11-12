@@ -83,6 +83,9 @@ public sealed class ProfileDeletionService(AppDbContext db, TimeProvider time, G
             foreach (var player in await db.GatheringPlayPlayers.Where(x => x.ParticipantId == id).ToArrayAsync(ct))
                 player.DisplayName = AnonymousName;
 
+            var suppliedBoxes = await db.CampGameContributions.Where(x => x.ParticipantId == id
+                && x.ItemType == CollectionItemType.BaseGame && x.Commitment == CampBringCommitment.Bringing)
+                .Select(x => new { x.CampId, x.BggId }).ToArrayAsync(ct);
             await RemoveAsync(db.ParticipantCollectionItems.Where(x => x.ParticipantId == id), ct);
             await RemoveAsync(db.GameWishes.Where(x => x.ParticipantId == id), ct);
             await RemoveAsync(db.CampGameContributions.Where(x => x.ParticipantId == id), ct);
@@ -114,6 +117,9 @@ public sealed class ProfileDeletionService(AppDbContext db, TimeProvider time, G
                     notice.State = NotificationState.Expired;
             }
             await db.SaveChangesAsync(ct);
+            foreach (var campBoxes in suppliedBoxes.GroupBy(x => x.CampId).OrderBy(x => x.Key))
+                await GatheringPublication.RequestForCampBoxesAsync(db, campBoxes.Key,
+                    campBoxes.Select(x => x.BggId).ToArray(), now, ct);
             foreach (var publicId in cancelled) await notifications.NotifyCancellationAsync(publicId, ct);
             foreach (var withdrawal in withdrawals) await notifications.NotifyWithdrawalAsync(withdrawal, ct);
         }

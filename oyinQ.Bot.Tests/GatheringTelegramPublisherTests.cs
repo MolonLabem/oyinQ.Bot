@@ -55,12 +55,12 @@ public sealed class GatheringTelegramPublisherTests
         var visible = System.Xml.Linq.XElement.Parse("<root>" + html + "</root>").Value;
         Assert.InRange(visible.Length, 1, 1024);
         Assert.Contains("Новое описание", visible);
-        Assert.Contains("10 / 10–12", visible);
+        Assert.Contains("Занято мест: 10 из 12", visible);
         Assert.Contains("гостей: 1", visible);
         Assert.Contains("Выбрано: 10", visible);
-        Assert.Contains(cancelled ? "Сбор отменён" : "Есть места", visible);
+        Assert.Contains(cancelled ? "Сбор отменён" : "Есть 2 места", visible);
         if (cancelled) Assert.Contains("Не набралось достаточно участников", visible);
-        Assert.Contains("Полный состав", visible);
+        Assert.Contains("Состав и дополнения", visible);
         Assert.Equal(777, body.RootElement.GetProperty("message_id").GetInt32());
         Assert.DoesNotContain(handler.Methods, x => x.StartsWith("send", StringComparison.OrdinalIgnoreCase));
     }
@@ -79,7 +79,7 @@ public sealed class GatheringTelegramPublisherTests
             new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC")).HtmlText;
         Assert.True(html.Length > 1024);
         Assert.True(System.Xml.Linq.XElement.Parse("<root>" + html + "</root>").Value.Length <= 1024);
-        Assert.DoesNotContain("Полный состав", html);
+        Assert.DoesNotContain("Состав и дополнения", html);
         Assert.Contains("tg://user?id=1234567899", html);
     }
 

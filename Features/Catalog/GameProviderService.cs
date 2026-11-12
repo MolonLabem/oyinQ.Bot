@@ -13,6 +13,7 @@ public sealed record GameProviderResponse(GameProviderState State, string Summar
     IReadOnlyList<CampCatalogProvider> Providers, bool CanBring = false, bool IsOwned = false)
 {
     public bool IsConfirmed => State is GameProviderState.ClubProvided or GameProviderState.ConfirmedParticipantProvider;
+    public string? Warning => IsConfirmed ? null : "Коробка пока не подтверждена";
 }
 
 public sealed class GameProviderService(AppDbContext db, GameCatalogService catalog,
@@ -32,7 +33,7 @@ public sealed class GameProviderService(AppDbContext db, GameCatalogService cata
                     ? "Вы можете привезти свою коробку" + (providers.Any(x => !x.IsCurrentUser)
                         ? "; можно попросить: " + string.Join(", ", providers.Where(x => !x.IsCurrentUser).Select(x => x.DisplayName)) : "")
                 : providers.Count > 0 ? "Можно попросить: " + string.Join(", ", providers.Select(x => x.DisplayName))
-                : "Никто пока не подтвердил коробку", providers);
+                : "Коробка пока не подтверждена", providers);
     }
 
     public async Task<GameProviderResponse> ForGameAsync(string key, long bggId, long participantId,

@@ -72,6 +72,9 @@ builder.Services.AddSingleton<ITelegramBotClient>(
     _ => new TelegramBotClient(botOptions.Token));
 
 builder.Services.AddSingleton<GatheringPresentationService>();
+builder.Services.AddScoped<IBggRatingSource>(sp => (IBggRatingSource)sp.GetRequiredService<IBoardGameGeekClient>());
+builder.Services.AddScoped<BggCatalogRatingService>();
+builder.Services.AddScoped<BggRatingRefreshService>();
 builder.Services.AddSingleton<MiniAppLinkBuilder>();
 builder.Services.AddScoped<ICommunityMembershipVerifier, TelegramCommunityMembershipVerifier>();
 builder.Services.AddSingleton<IManagedChatValidator, TelegramManagedChatValidator>();
@@ -141,6 +144,7 @@ builder.Services.AddScoped<PrivateChatCapability>();
 builder.Services.AddHostedService<CampBggImportWorker>();
 builder.Services.AddHostedService<CampLifecycleWorker>();
 builder.Services.AddHostedService<ClubMetadataRefreshWorker>();
+builder.Services.AddHostedService<BggRatingRefreshWorker>();
 builder.Services.AddHostedService<ClubBggImportWorker>();
 builder.Services.AddHostedService<GatheringLifecycleWorker>();
 builder.Services.AddHostedService<TelegramMessageCleanupWorker>();

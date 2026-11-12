@@ -25,6 +25,14 @@ public static class GatheringCapacity
     public static bool HasAvailableSeat(GameGathering gathering) =>
         OccupiedSeats(gathering) < gathering.MaximumPlayers;
 
+    public static IQueryable<GameGathering> MinimumReached(IQueryable<GameGathering> query)
+    {
+        var parameter = OccupiedSeatsQuery.Parameters[0];
+        return query.Where(Expression.Lambda<Func<GameGathering, bool>>(
+            Expression.GreaterThanOrEqual(OccupiedSeatsQuery.Body,
+                Expression.Property(parameter, nameof(GameGathering.MinimumPlayers))), parameter));
+    }
+
     public static GameGatheringParticipant? PromoteFirstWaitlisted(GameGathering gathering)
     {
         if (!HasAvailableSeat(gathering)) return null;
