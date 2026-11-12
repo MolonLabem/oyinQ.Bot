@@ -40,26 +40,28 @@ public sealed class GatheringPresentationServiceTests
         Assert.Equal(120, service.BuildDetails(g, community).MaxPlayTimeMinutes);
         var html = service.BuildTelegramAnnouncement(g, community, missing).HtmlText;
         Assert.Contains("90–120 мин", html);
-        Assert.True(html.IndexOf(missing.Warning!, StringComparison.Ordinal) < html.IndexOf("Собирает", StringComparison.Ordinal));
+        Assert.True(html.IndexOf(missing.Warning!, StringComparison.Ordinal) > html.IndexOf("Собирает", StringComparison.Ordinal));
+        Assert.True(html.IndexOf(missing.Warning!, StringComparison.Ordinal) < html.IndexOf("✅ Есть места", StringComparison.Ordinal));
         g.Status = GatheringStatus.Cancelled;
         Assert.Null(service.BuildCard(g, community, missing).BoxWarning);
         Assert.DoesNotContain(missing.Warning!, service.BuildTelegramAnnouncement(g, community, missing).HtmlText);
     }
 
     [Theory]
-    [InlineData(GatheringStatus.Cancelled, "Сбор отменён")]
-    [InlineData(GatheringStatus.Closed, "Запись закрыта")]
+    [InlineData(GatheringStatus.Cancelled, "❌ Сбор отменён")]
+    [InlineData(GatheringStatus.Closed, "🔒 Запись закрыта")]
     [InlineData(GatheringStatus.Completed, "Запись завершена")]
-    public void ClosedOrPastAnnouncementsLeadWithStateAndNeverInviteMorePlayers(GatheringStatus status, string label)
+    public void ClosedOrPastAnnouncementsEndWithStateAndNeverInviteMorePlayers(GatheringStatus status, string label)
     {
         var g = CreateGathering(true); g.Status = status; g.CancellationReason = "Причина <&>";
         var service = new GatheringPresentationService();
         var html = service.BuildTelegramAnnouncement(g, Community).HtmlText;
-        Assert.True(html.IndexOf(label, StringComparison.Ordinal) < html.IndexOf("📅", StringComparison.Ordinal));
+        Assert.True(html.IndexOf(label, StringComparison.Ordinal) > html.IndexOf("⏳ В очереди", StringComparison.Ordinal));
         Assert.Null(service.BuildCard(g, Community).Recruitment); Assert.Null(service.BuildDetails(g, Community).Recruitment);
         Assert.DoesNotContain("ждём", html); Assert.DoesNotContain("для начала", html);
-        Assert.Contains("Занято мест: 2 из 5", html);
+        Assert.Contains("👥 2 из 5", html);
         if (status == GatheringStatus.Cancelled) Assert.Contains("Причина &lt;&amp;&gt;", html);
+        else Assert.EndsWith($"<b>{label}</b>", html.TrimEnd());
     }
 
     private static readonly BotCommunity Community =
@@ -167,6 +169,10 @@ public sealed class GatheringPresentationServiceTests
     {
         var gathering = CreateGathering(canTeachRules: true);
         gathering.Description = new string('а', 150);
+        gathering.Participants.First(x => x.Status == GatheringParticipationStatus.Confirmed).Participant = new() { DisplayName = "Алия" };
+        var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
+        gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
+            { MinPlayTimeMinutes = 90, MaxPlayTimeMinutes = 120, Complexity = GameComplexity.Medium });
         var service = new GatheringPresentationService();
 
         var card = service.BuildCard(gathering, Community);
@@ -174,34 +180,52 @@ public sealed class GatheringPresentationServiceTests
 
         Assert.Equal(120, card.Description?.Length);
         Assert.EndsWith("…", card.Description);
-        Assert.Contains("📖 Правила объясню", announcement.HtmlText);
-        Assert.Contains("🏷 Стратегия", announcement.HtmlText);
-        Assert.Contains("Дополнения:", announcement.HtmlText);
-        Assert.Contains("⏳ Лист ожидания: 1", announcement.HtmlText);
-        Assert.Contains("📅 сб, 5 сентября, 19:00", announcement.HtmlText);
+        var html = announcement.HtmlText;
+        var lines = html.Split('\n').Select(x => x.TrimEnd('\r')).ToArray();
+        Assert.Equal("<b>Terraforming Mars</b> | 🟡 Средняя", lines[0]);
+        Assert.Equal("📅 сб, 5 сентября, 19:00 | ⏱ 90–120 мин", lines[1]);
+        Assert.Equal("👥 2 из 5", lines[2]);
+        var sections = new[] { "📖 Объясню правила", gathering.Description, "Дополнения:", "Собирает", "Участники:", "Алия", "⏳ В очереди: 1", "✅ Есть места" };
+        var previous = -1;
+        foreach (var section in sections)
+        {
+            var position = html.IndexOf(section, StringComparison.Ordinal);
+            Assert.True(position > previous, $"Missing or out of order: {section}");
+            previous = position;
+        }
+        Assert.EndsWith("<b>✅ Есть места</b>", html.TrimEnd());
+        Assert.DoesNotContain("🏷", html);
+        Assert.DoesNotContain("ждём", html);
         Assert.Equal("https://images.example/large.jpg", announcement.ImageUrl);
     }
 
-    [Fact]
-    public void ComplexityUsesSnapshotAndSamePresentationInCardsDetailsAndTelegram()
+    [Theory]
+    [InlineData(GameComplexity.Light, "🟢", "Очень лёгкая")]
+    [InlineData(GameComplexity.MediumLight, "🟢", "Лёгкая")]
+    [InlineData(GameComplexity.Medium, "🟡", "Средняя")]
+    [InlineData(GameComplexity.MediumHeavy, "🔴", "Сложная")]
+    [InlineData(GameComplexity.Heavy, "🔴", "Очень сложная")]
+    public void ComplexityUsesSnapshotAndSamePresentationInCardsDetailsAndTelegram(GameComplexity level, string indicator, string label)
     {
         var gathering = CreateGathering(true);
         var service = new GatheringPresentationService();
         Assert.Null(service.BuildCard(gathering, Community).ComplexityInfo);
-        Assert.DoesNotContain("⚖️", service.BuildTelegramAnnouncement(gathering, Community).HtmlText);
+        var unknown = service.BuildTelegramAnnouncement(gathering, Community).HtmlText;
+        Assert.Equal("<b>Terraforming Mars</b>", unknown.Split('\n')[0].TrimEnd('\r'));
+        Assert.DoesNotContain("⏱", unknown);
         var snapshot = GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
         gathering.GameSnapshotJson = GatheringGameSnapshotSerializer.Serialize(snapshot with
-        { ComplexityWeight = 2.1234m, Complexity = GameComplexity.MediumHeavy });
+        { ComplexityWeight = 2.1234m, Complexity = level });
         var card = service.BuildCard(gathering, Community);
-        Assert.Equal("Сложная", card.ComplexityInfo!.DisplayName);
+        Assert.Equal(label, card.ComplexityInfo!.DisplayName);
         Assert.Equal(2.1234m, card.ComplexityInfo.Weight);
         Assert.Equal(card.ComplexityInfo, service.BuildDetails(gathering, Community).ComplexityInfo);
-        Assert.Contains("⚖️ Сложная", service.BuildTelegramAnnouncement(gathering, Community).HtmlText);
+        Assert.StartsWith($"<b>Terraforming Mars</b> | {indicator} {label}", service.BuildTelegramAnnouncement(gathering, Community).HtmlText);
         gathering.Description = new string('x', 220);
         for (var index = 0; index < 30; index++)
             gathering.Guests.Add(new GameGatheringGuest { DisplayName = new string('я', 100) });
         var html = service.BuildTelegramAnnouncement(gathering, Community).HtmlText;
-        Assert.Contains("⚖️ Сложная", html);
+        Assert.StartsWith($"<b>Terraforming Mars</b> | {indicator} {label}", html);
         var visible = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", ""));
         Assert.True(visible.Length <= 1024);
     }

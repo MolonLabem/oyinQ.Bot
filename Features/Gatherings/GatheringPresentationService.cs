@@ -125,28 +125,28 @@ public sealed class GatheringPresentationService
         GameGathering gathering, BotCommunity community, GameProviderResponse? provider, bool compact)
     {
         var game = ResolveSnapshot(gathering);
-        var metadata = Features.Collections.BggTaxonomyCatalog.Present(game);
         var text = new StringBuilder();
-        text.AppendLine($"🎲 <b>{WebUtility.HtmlEncode(compact ? Truncate(game.Name, 160) : game.Name)}</b>");
-        if (gathering.Status is GatheringStatus.Cancelled or GatheringStatus.Closed or GatheringStatus.Completed)
-        {
-            text.AppendLine($"<b>{StatusText(gathering)}</b>");
-            if (gathering.Status == GatheringStatus.Cancelled && !string.IsNullOrWhiteSpace(gathering.CancellationReason))
-                text.AppendLine($"Причина: {WebUtility.HtmlEncode(Truncate(gathering.CancellationReason, compact ? 120 : 500))}");
-        }
-        text.AppendLine($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
-        if (GameDurationPresentation.Format(game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes) is { } duration)
-            text.AppendLine($"⏱ {duration}");
-        text.AppendLine($"👥 Занято мест: {GatheringCapacity.OccupiedSeats(gathering)} из {gathering.MaximumPlayers}");
-        if (Recruitment(gathering) is { } recruitment) text.AppendLine(recruitment.Text);
-        if (community.Mode == BotMode.Camp && !GatheringLifecycle.IsTerminal(gathering.Status) && provider?.Warning is { } warning)
-            text.AppendLine($"📦 {warning}");
-        text.AppendLine($"Собирает {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
-        text.AppendLine(gathering.CanTeachRules ? "📖 Правила объясню" : "🎯 Опыт с игрой желателен");
+        text.Append($"<b>{WebUtility.HtmlEncode(compact ? Truncate(game.Name, 160) : game.Name)}</b>");
         if (GameComplexityPresentation.Present(game) is { } complexity)
-            text.AppendLine($"⚖️ {complexity.DisplayName}");
-        if (!compact && metadata.TypeNames.FirstOrDefault() is { } typeName)
-            text.AppendLine($"🏷 {WebUtility.HtmlEncode(typeName)}");
+        {
+            var indicator = complexity.Level switch
+            {
+                GameComplexity.Light or GameComplexity.MediumLight => "🟢",
+                GameComplexity.Medium => "🟡",
+                _ => "🔴"
+            };
+            text.Append($" | {indicator} {complexity.DisplayName}");
+        }
+        text.AppendLine();
+        text.Append($"📅 {WebUtility.HtmlEncode(FormatLocalDateTime(gathering.StartsAtUtc, community.TimeZoneId))}");
+        if (GameDurationPresentation.Format(game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes) is { } duration)
+            text.Append($" | ⏱ {duration}");
+        text.AppendLine();
+        text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} из {gathering.MaximumPlayers}");
+        text.AppendLine();
+        text.AppendLine(gathering.CanTeachRules ? "📖 Объясню правила" : "📖 Опыт с игрой желателен");
+        var description = Truncate(gathering.Description, compact ? 120 : AnnouncementDescriptionLength);
+        if (description is not null) text.AppendLine(WebUtility.HtmlEncode(description));
 
         if (gathering.Expansions.Count > 0)
         {
@@ -159,12 +159,13 @@ public sealed class GatheringPresentationService
             }
         }
 
+        text.AppendLine();
+        text.AppendLine($"Собирает {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
         var confirmed = gathering.Participants.Where(value => value.Status == GatheringParticipationStatus.Confirmed
                 && value.Participant is not null)
             .OrderBy(value => value.JoinedAt).ThenBy(value => value.Id).ToArray();
         if (confirmed.Length > 0 || gathering.Guests.Count > 0)
         {
-            text.AppendLine();
             text.AppendLine("Участники:");
             if (compact) text.AppendLine($"Игроков без организатора: {confirmed.Length}, гостей: {gathering.Guests.Count}");
             else
@@ -181,17 +182,16 @@ public sealed class GatheringPresentationService
         if (waitlistedCount > 0)
         {
             text.AppendLine();
-            text.AppendLine($"⏳ Лист ожидания: {waitlistedCount}");
+            text.AppendLine($"⏳ В очереди: {waitlistedCount}");
         }
 
-        var description = Truncate(gathering.Description, compact ? 120 : AnnouncementDescriptionLength);
-        if (description is not null)
-        {
-            text.AppendLine();
-            text.AppendLine(WebUtility.HtmlEncode(description));
-        }
-
-        if (compact) text.Append("\nСостав и дополнения — в сборе.");
+        if (compact) text.AppendLine("\nСостав и дополнения — в сборе.");
+        text.AppendLine();
+        if (community.Mode == BotMode.Camp && !GatheringLifecycle.IsTerminal(gathering.Status) && provider?.Warning is { } warning)
+            text.AppendLine($"📦 {warning}");
+        text.AppendLine($"<b>{StatusText(gathering)}</b>");
+        if (gathering.Status == GatheringStatus.Cancelled && !string.IsNullOrWhiteSpace(gathering.CancellationReason))
+            text.AppendLine($"Причина: {WebUtility.HtmlEncode(Truncate(gathering.CancellationReason, compact ? 120 : 500))}");
         return new GatheringAnnouncement(
             text.ToString(),
             game.ImageUrl ?? game.ThumbnailImageUrl,

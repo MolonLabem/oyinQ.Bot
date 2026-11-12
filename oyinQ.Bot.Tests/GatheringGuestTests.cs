@@ -143,7 +143,7 @@ public sealed class GatheringGuestTests
         var announcement = new GatheringPresentationService().BuildTelegramAnnouncement(gathering,
             new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC"));
 
-        Assert.Contains("👥 Занято мест: 2 из", announcement.HtmlText);
+        Assert.Contains("👥 2 из", announcement.HtmlText);
         Assert.Contains("&lt;Гость&gt;", announcement.HtmlText);
         Assert.Contains("(гость)", announcement.HtmlText);
         Assert.DoesNotContain("tg://user", announcement.HtmlText.Split("&lt;Гость&gt;")[1]);

@@ -55,12 +55,14 @@ public sealed class GatheringTelegramPublisherTests
         var visible = System.Xml.Linq.XElement.Parse("<root>" + html + "</root>").Value;
         Assert.InRange(visible.Length, 1, 1024);
         Assert.Contains("Новое описание", visible);
-        Assert.Contains("Занято мест: 10 из 12", visible);
+        Assert.Contains("👥 10 из 12", visible);
         Assert.Contains("гостей: 1", visible);
         Assert.Contains("Выбрано: 10", visible);
-        Assert.Contains(cancelled ? "Сбор отменён" : "Есть 2 места", visible);
+        Assert.Contains(cancelled ? "Сбор отменён" : "Есть места", visible);
         if (cancelled) Assert.Contains("Не набралось достаточно участников", visible);
         Assert.Contains("Состав и дополнения", visible);
+        Assert.True(visible.IndexOf(cancelled ? "Сбор отменён" : "Есть места", StringComparison.Ordinal)
+            > visible.IndexOf("Состав и дополнения", StringComparison.Ordinal));
         Assert.Equal(777, body.RootElement.GetProperty("message_id").GetInt32());
         Assert.DoesNotContain(handler.Methods, x => x.StartsWith("send", StringComparison.OrdinalIgnoreCase));
     }
