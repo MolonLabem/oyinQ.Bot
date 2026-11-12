@@ -124,19 +124,21 @@ export function CatalogGameList({ items, searching = false, open, offset = 0, li
 }
 
 function GameCard({ game, open }: { game: GameListItem; open: () => void }) {
-  return <button className="card catalog-card" onClick={open}>
+  return <button className="card catalog-card" aria-label={`Открыть игру: ${game.name}`} onClick={open}>
     <Cover src={game.thumbnailImageUrl} name={game.name} />
     <span className="catalog-card-body">
-      <strong className="catalog-title">{game.name}</strong>
+      <span className="catalog-card-heading"><strong className="catalog-title">{game.name}</strong><ComplexityBadge info={game.complexityInfo} /></span>
       <span className="catalog-card-facts">
-        {game.minPlayers && game.maxPlayers && <small>Игроки: {game.minPlayers}–{game.maxPlayers}</small>}
+        {game.minPlayers && game.maxPlayers && <small>{game.expansionPlayerRange ? "Базовая игра" : "Игроки"}: {game.minPlayers}–{game.maxPlayers}</small>}
         {game.bestPlayers && <small>Лучше: {game.bestPlayers}</small>}
         {game.expansionPlayerRange && <small>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</small>}
       </span>
-      {(game.typeName || game.complexityInfo) && <span className="catalog-card-meta">{game.typeName && <small>{game.typeName}</small>}<ComplexityBadge info={game.complexityInfo} /></span>}
-      {game.availabilitySummary && <small className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</small>}
+      {game.typeName && <span className="catalog-card-meta"><small>{game.typeName}</small></span>}
+      {(game.availabilitySummary || Boolean(game.scheduledGatherings)) && <span className="catalog-card-availability">
+        {game.availabilitySummary && <small className={game.needsProviderCoordination ? "availability warning" : game.isDefinitelyAvailable ? "availability success" : "availability"}>{game.availabilitySummary}</small>}
+        {Boolean(game.scheduledGatherings) && <small className="catalog-activity">Сборов: {game.scheduledGatherings}</small>}
+      </span>}
     </span>
-    <span className="catalog-card-footer"><small className="catalog-activity">{game.scheduledGatherings ? `Запланировано: ${game.scheduledGatherings}` : ""}</small><span>Подробнее <span aria-hidden>→</span></span></span>
   </button>;
 }
 
@@ -157,7 +159,7 @@ function GameDetail({ community, bggId, attendanceDate, back, createGathering, o
         <h1>{game.name}</h1>
         <div className="game-overview-meta"><ComplexityBadge info={game.complexityInfo} /><a href={game.bggUrl} target="_blank" rel="noreferrer">Открыть на BGG</a></div>
       </header></div>
-      <div className="game-overview-facts">{game.minPlayers && game.maxPlayers && <span>Игроки: {game.minPlayers}–{game.maxPlayers}</span>}{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{time && <span>{time}</span>}{game.minAge != null && <span>{game.minAge}+</span>}{game.expansionPlayerRange && <span>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}</div>
+      <div className="game-overview-facts">{game.minPlayers && game.maxPlayers && <span>{game.expansionPlayerRange ? "Базовая игра" : "Игроки"}: {game.minPlayers}–{game.maxPlayers}</span>}{game.bestPlayers && <span>Лучше: {game.bestPlayers}</span>}{time && <span>{time}</span>}{game.minAge != null && <span>{game.minAge}+</span>}{game.expansionPlayerRange && <span>С дополнениями: {game.expansionPlayerRange.minimum}–{game.expansionPlayerRange.maximum}</span>}</div>
       <div className="game-overview-actions">
         {hasGatherings && <button className="primary" onClick={() => { gatherings.current?.scrollIntoView({ block: "start" }); gatherings.current?.focus({ preventScroll: true }); }}>Посмотреть сборы · {game.scheduledGatherings}</button>}
         {game.canWish !== false && createGathering && <button className={hasGatherings ? "ghost" : "primary"} onClick={() => createGathering(bggId)}>Создать сбор по этой игре</button>}

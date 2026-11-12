@@ -6,6 +6,8 @@ export type CatalogFilterState = {
   communityKey: string;
   search: string;
   players?: number;
+  fromPlayers?: number;
+  toPlayers?: number;
   playerCountMode?: PlayerCountMode;
   fromYear?: number;
   toYear?: number;
@@ -21,8 +23,12 @@ export type CatalogFilterState = {
 export function buildCatalogQuery(state: CatalogFilterState) {
   const params = new URLSearchParams({ community: state.communityKey, sort: state.sort });
   if (state.search.trim()) params.set("search", state.search.trim());
-  if (state.players) params.set("players", String(state.players));
-  if (state.players && state.playerCountMode === "best") params.set("playerCountMode", "best");
+  const hasBounds = state.fromPlayers !== undefined || state.toPlayers !== undefined;
+  if (hasBounds) {
+    if (state.fromPlayers !== undefined) params.set("fromPlayers", String(state.fromPlayers));
+    if (state.toPlayers !== undefined) params.set("toPlayers", String(state.toPlayers));
+  } else if (state.players) params.set("players", String(state.players));
+  if ((hasBounds || state.players) && state.playerCountMode === "best") params.set("playerCountMode", "best");
   if (state.fromYear !== undefined) params.set("fromYear", String(state.fromYear));
   if (state.toYear !== undefined) params.set("toYear", String(state.toYear));
   if (state.types.length) params.set("types", state.types.join(","));

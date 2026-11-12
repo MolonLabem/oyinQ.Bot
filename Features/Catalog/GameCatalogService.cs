@@ -16,7 +16,8 @@ public sealed record CatalogQuery(string? Search, int? Players, IReadOnlyCollect
     string? Planning = null, IReadOnlyCollection<long>? ProviderParticipantIds = null,
     IReadOnlyCollection<GameComplexity>? ComplexityLevels = null, int? MaxDurationMinutes = null,
     IReadOnlyCollection<long>? MechanicIds = null, DateOnly? AttendanceDate = null,
-    int? FromYear = null, int? ToYear = null, CatalogPlayerCountMode PlayerCountMode = CatalogPlayerCountMode.Supported);
+    int? FromYear = null, int? ToYear = null, CatalogPlayerCountMode PlayerCountMode = CatalogPlayerCountMode.Supported,
+    int? FromPlayers = null, int? ToPlayers = null);
 public sealed record LocalizedTaxonomyItem(long BggId, string Name);
 public sealed record CatalogProviderFilter(long ParticipantId, string DisplayName);
 public sealed record GameListItemResponse(long BggId, string Name, string? OriginalName, string? ThumbnailImageUrl,
@@ -35,7 +36,8 @@ public sealed record GameDetailsResponse(long BggId, string Name, string? Origin
     int ScheduledGatherings = 0, int RecordedPlays = 0, PlayerCountRange? ExpansionPlayerRange = null, ComplexityInfo? ComplexityInfo = null);
 public sealed record CatalogFilterOptions(IReadOnlyList<LocalizedTaxonomyItem> Categories,
     IReadOnlyList<KeyValuePair<GameType, string>> Types, IReadOnlyList<CatalogProviderFilter> Providers,
-    IReadOnlyList<LocalizedTaxonomyItem>? Mechanics = null, IReadOnlyList<ComplexityInfo>? Complexities = null);
+    IReadOnlyList<LocalizedTaxonomyItem>? Mechanics = null, IReadOnlyList<ComplexityInfo>? Complexities = null,
+    IReadOnlyList<int>? PlayerCounts = null);
 public sealed record GameCatalogResponse(IReadOnlyList<GameListItemResponse> Items, CatalogFilterOptions Filters, int Total = 0);
 public sealed record GameDemand(ClubCollectionGame Game, int InterestedParticipants, int ScheduledGatherings, string AvailabilitySummary);
 
@@ -113,6 +115,9 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             throw new ArgumentException("Укажите целый год от 1 до 9999.");
         if (query.FromYear > query.ToYear) throw new ArgumentException("Год «От» не должен быть позже года «До».");
         if (!Enum.IsDefined(query.PlayerCountMode)) throw new ArgumentException("Неизвестный режим количества игроков.");
+        var (fromPlayers, toPlayers) = PlayerBounds(query);
+        if (fromPlayers is <= 0 || toPlayers is <= 0) throw new ArgumentException("Число игроков должно быть больше нуля.");
+        if (fromPlayers > toPlayers) throw new ArgumentException("Число игроков «От» не должно быть больше «До».");
         query = NormalizeQuery(query, mode);
         var effective = await LoadAsync(communityKey, mode, telegramUserId, cancellationToken, query.AttendanceDate);
         // Restored filters may reference options removed by a source collection update.
@@ -200,7 +205,15 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             .Select(x => new LocalizedTaxonomyItem(x.BggId, BggTaxonomyCatalog.LocalizeMechanic(x))).OrderBy(x => x.Name).ToArray();
         var complexities = effective.Select(x => GameComplexityPresentation.Present(x.Game)).OfType<ComplexityInfo>()
             .DistinctBy(x => x.Level).OrderBy(x => x.Level).ToArray();
-        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters, mechanics, complexities), total);
+        var playerCounts = new SortedSet<int>();
+        foreach (var value in effective)
+        {
+            var range = PlayerCountRange.Normalize(value.Game.MinPlayers, value.Game.MaxPlayers).WithExpansions(value.Game.Expansions);
+            if (!range.WasDefaulted) playerCounts.UnionWith(Enumerable.Range(range.Minimum, range.Maximum - range.Minimum + 1));
+            foreach (var best in BggBestPlayerRecommendation.Ranges(value.Game.BestPlayers))
+                playerCounts.UnionWith(Enumerable.Range(best.Minimum, best.Maximum - best.Minimum + 1));
+        }
+        return new GameCatalogResponse(items, new CatalogFilterOptions(categories, types, providerFilters, mechanics, complexities, playerCounts.ToArray()), total);
     }
 
     public async Task<GameDetailsResponse> DetailsAsync(string communityKey, BotMode mode, long telegramUserId,
@@ -322,6 +335,11 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
         return !basic.WasDefaulted && expanded != basic ? expanded : null;
     }
 
+    // Existing clients send one exact count; new bounds take precedence when present.
+    private static (int? From, int? To) PlayerBounds(CatalogQuery query) =>
+        query.FromPlayers.HasValue || query.ToPlayers.HasValue
+            ? (query.FromPlayers, query.ToPlayers) : (query.Players, query.Players);
+
     public static bool Matches(ClubCollectionGame game, CatalogQuery query)
     {
         if (query.FromYear.HasValue || query.ToYear.HasValue)
@@ -336,16 +354,17 @@ public sealed class GameCatalogService(AppDbContext dbContext, EffectiveCampCata
             if (duration is not > 0 || duration > maximum) return false;
         }
         if (query.MechanicIds is { Count: > 0 } mechanics && !mechanics.All(id => game.Mechanics?.Any(x => x.BggId == id) == true)) return false;
-        if (query.Players is { } players)
+        var (fromPlayers, toPlayers) = PlayerBounds(query);
+        if (fromPlayers.HasValue || toPlayers.HasValue)
         {
             if (query.PlayerCountMode == CatalogPlayerCountMode.Best)
             {
-                if (!BggBestPlayerRecommendation.Matches(game.BestPlayers, players)) return false;
+                if (!BggBestPlayerRecommendation.Matches(game.BestPlayers, fromPlayers, toPlayers)) return false;
             }
             else
             {
                 var range = PlayerCountRange.Normalize(game.MinPlayers, game.MaxPlayers).WithExpansions(game.Expansions);
-                if (range.WasDefaulted || players < range.Minimum || players > range.Maximum) return false;
+                if (range.WasDefaulted || fromPlayers > range.Maximum || toPlayers < range.Minimum) return false;
             }
         }
         if (query.Types.Count > 0 && !BggTaxonomyCatalog.ResolveTypes(game.Type, game.Subdomains,

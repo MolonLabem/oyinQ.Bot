@@ -11,6 +11,14 @@ const game = (bggId: number, name: string, expansions: GameListItem["expansions"
 });
 
 describe("catalog collection grouping", () => {
+  it("shows base capacity separately from the available expansion capacity", () => {
+    const markup = renderToStaticMarkup(<CatalogGameList open={() => {}} items={[{
+      ...game(1, "База", [{ bggId: 2, name: "Дополнение", minPlayers: 1, maxPlayers: 6 }]),
+      minPlayers: 1, maxPlayers: 4, expansionPlayerRange: { minimum: 1, maximum: 6 }
+    }]} />).replace(/<[^>]+>/g, "");
+    expect(markup).toContain("Базовая игра: 1–4");
+    expect(markup).toContain("С дополнениями: 1–6");
+  });
   it("shows an expansion once under its base and leaves orphans visible", () => {
     const markup = renderToStaticMarkup(<CatalogGameList open={() => {}} items={[
       game(1, "Базовая игра", [{ bggId: 2, name: "Дополнение" }]), game(2, "Дополнение"), game(3, "Отдельное дополнение")

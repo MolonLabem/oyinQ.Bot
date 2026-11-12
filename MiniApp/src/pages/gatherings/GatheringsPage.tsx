@@ -70,12 +70,12 @@ function GatheringList({ community, listState, setListState, open, create, hasDr
           <button className="card gathering-card" onClick={() => open(item.card.publicId)}>
             <Cover src={item.card.imageUrl} name={item.card.gameName} />
             <div className="gathering-card-body">
-              <div className="gathering-card-top"><time dateTime={item.startsAtUtc}>{time ?? item.card.localDateTime}</time>{item.isOrganizer && <span className="gathering-own">Ваш сбор</span>}</div>
+              <div className="gathering-card-top"><span className="gathering-card-time"><time dateTime={item.startsAtUtc}>{time ?? item.card.localDateTime}</time>{item.isOrganizer && <span className="gathering-own">Ваш сбор</span>}</span><ComplexityBadge info={item.card.complexityInfo} /></div>
               <h3>{item.card.gameName}</h3>
               <p className="gathering-card-organizer">{item.isOrganizer ? "Вы собираете" : `Собирает ${item.card.organizerName}`}</p>
               <p className="gathering-card-seats"><strong>{item.card.occupiedSeats} / {item.card.maximumPlayers}</strong> игроков<span className={`gathering-card-status ${gatheringStatusTone(item.status)}`}>{item.card.statusText}</span></p>
               {item.card.recruitment?.belowDesired && item.status !== "Closed" && <p className="gathering-card-activity">{item.card.recruitment.text}</p>}
-              <div className="gathering-card-meta"><span>{item.card.rulesText}</span><ComplexityBadge info={item.card.complexityInfo} /></div>
+              {item.card.rulesText && <div className="gathering-card-meta">{item.card.rulesText}</div>}
               {item.card.cancellationReason && <p className="gathering-card-cancellation">Причина: {item.card.cancellationReason}</p>}
               <span className="gathering-card-open">Открыть сбор <span aria-hidden>→</span></span>
             </div>

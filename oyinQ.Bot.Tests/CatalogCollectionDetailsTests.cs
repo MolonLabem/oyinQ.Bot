@@ -63,7 +63,7 @@ public sealed class CatalogCollectionDetailsTests
             Participant = participant, BggId = 30, ItemType = CollectionItemType.Expansion,
             Source = CollectionItemSource.Manual, Commitment = CampBringCommitment.Available,
             ParentBggId = 10,
-            SnapshotJson = CollectionItemSnapshotSerializer.Serialize(Snapshot("Brass: Birmingham", [10]))
+            SnapshotJson = CollectionItemSnapshotSerializer.Serialize(Snapshot("Brass: Birmingham", [10]) with { MinPlayers = 1, MaxPlayers = 6 })
         });
         await fixture.Db.SaveChangesAsync();
 
@@ -73,6 +73,12 @@ public sealed class CatalogCollectionDetailsTests
         Assert.True(details.Availability.HasCommittedProvider);
         Assert.Equal("Игрок", Assert.Single(details.Availability.Providers).DisplayName);
         Assert.Equal(30, Assert.Single(details.Expansions).BggId);
+        Assert.Equal(2, details.MinPlayers); Assert.Equal(4, details.MaxPlayers);
+        Assert.Equal(6, details.ExpansionPlayerRange!.Value.Maximum);
+        var list = await fixture.Service.ListAsync("camp", BotMode.Camp, 100,
+            new CatalogQuery(null, null, [], [], null, FromPlayers: 6, ToPlayers: 6), default);
+        Assert.Equal(10, Assert.Single(list.Items).BggId);
+        Assert.Equal([1, 2, 3, 4, 5, 6], list.Filters.PlayerCounts!);
     }
 
     [Fact]
@@ -206,6 +212,72 @@ public sealed class CatalogCollectionDetailsTests
             Assert.Equal(list.Total, preview.Total);
             Assert.Empty(preview.Items);
         }
+    }
+
+    [Theory]
+    [InlineData(BotMode.Club)]
+    [InlineData(BotMode.Camp)]
+    public async Task PlayerBounds_UseFullScopedCatalogAndAvailableExpansionsForOptionsListAndPreview(BotMode mode)
+    {
+        await using var fixture = Fixture.Create();
+        ClubCollectionGame[] games = [
+            Game(10, "Базовая", [new(11, "До шести", MinPlayers: 1, MaxPlayers: 6)]) with { MinPlayers = 1 },
+            Game(20, "На восемь") with { MinPlayers = 8, MaxPlayers = 8, BestPlayers = "8" },
+            Game(30, "На четверых") with { MinPlayers = 4, MaxPlayers = 4, BestPlayers = "2, 4" },
+            Game(40, "Без данных") with { MinPlayers = null, MaxPlayers = null, BestPlayers = null }
+        ];
+        var club = mode == BotMode.Club ? fixture.AddClub("catalog", games) : null;
+        var camp = mode == BotMode.Camp ? fixture.AddCamp("catalog", games) : null;
+        fixture.AddClub("unrelated", Game(99, "Чужой клуб") with { MinPlayers = 12, MaxPlayers = 20 });
+        await fixture.Db.SaveChangesAsync();
+        var all = new CatalogQuery(null, null, [], [], "name");
+        (CatalogQuery Query, long[] Ids)[] cases = [
+            (all with { FromPlayers = 3, ToPlayers = 5 }, [10, 30]),
+            (all with { FromPlayers = 5, ToPlayers = 6 }, [10]),
+            (all with { FromPlayers = 6 }, [10, 20]),
+            (all with { ToPlayers = 1 }, [10]),
+            (all with { FromPlayers = 7, ToPlayers = 7 }, []),
+            (all with { FromPlayers = 8, ToPlayers = 8 }, [20]),
+            (all with { FromPlayers = 3, ToPlayers = 5, PlayerCountMode = CatalogPlayerCountMode.Best }, [10, 30]),
+            (all with { FromPlayers = 5, ToPlayers = 7, PlayerCountMode = CatalogPlayerCountMode.Best }, []),
+            (all with { Search = "До шести", FromPlayers = 6, ToPlayers = 6 }, [10])
+        ];
+        foreach (var (query, expected) in cases)
+        {
+            var list = await fixture.Service.ListAsync("catalog", mode, 100, query, default);
+            var preview = await fixture.Service.ListAsync("catalog", mode, 100, query, default, true);
+            Assert.Equal(expected.Order(), list.Items.Select(x => x.BggId).Order());
+            Assert.Equal(expected.Length, list.Total);
+            Assert.Equal(list.Total, preview.Total);
+            Assert.Equal([1, 2, 3, 4, 5, 6, 8], list.Filters.PlayerCounts!);
+        }
+        var details = await fixture.Service.DetailsAsync("catalog", mode, 100, 10, default);
+        Assert.Equal(1, details.MinPlayers); Assert.Equal(4, details.MaxPlayers);
+        Assert.Equal(1, details.ExpansionPlayerRange!.Value.Minimum);
+        Assert.Equal(6, details.ExpansionPlayerRange.Value.Maximum);
+
+        // A source update removes the extension for both filtering and option generation.
+        games[0] = games[0] with { Expansions = [] };
+        var json = ClubCollectionSerializer.Serialize(new(ClubCollectionDocument.CurrentVersion, games));
+        if (club is not null) club.CollectionJson = json;
+        if (camp is not null) camp.BaseCollectionJson = json;
+        await fixture.Db.SaveChangesAsync();
+        var updated = await fixture.Service.ListAsync("catalog", mode, 100, all with { FromPlayers = 5, ToPlayers = 6 }, default);
+        Assert.Empty(updated.Items);
+        Assert.Equal([1, 2, 3, 4, 8], updated.Filters.PlayerCounts!);
+        Assert.Null((await fixture.Service.DetailsAsync("catalog", mode, 100, 10, default)).ExpansionPlayerRange);
+    }
+
+    [Theory]
+    [InlineData(6, 2)]
+    [InlineData(0, null)]
+    [InlineData(null, -1)]
+    public async Task InvalidPlayerBounds_AreRejectedForListAndPreview(int? from, int? to)
+    {
+        await using var fixture = Fixture.Create();
+        var query = new CatalogQuery(null, null, [], [], null, FromPlayers: from, ToPlayers: to);
+        foreach (var countOnly in new[] { false, true })
+            await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.ListAsync("catalog", BotMode.Club, 100, query, default, countOnly));
     }
 
     [Theory]

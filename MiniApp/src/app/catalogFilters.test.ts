@@ -1,8 +1,25 @@
 import { formatDate } from "./format";
 import { describe, expect, it } from "vitest";
-import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, normalizeFilters, showGames, yearFilterError } from "./catalogFilters";
+import { activeGroups, catalogParams, emptyFilters, filterChips, filterStorageKey, normalizeFilters, showGames, yearFilterError, playerFilterError, playerFilterLabel } from "./catalogFilters";
 const options = { categories: [{ bggId: 2, name: "Экономика" }], types: [{ key: "Strategy" as const, value: "Стратегия" }], providers: [{ participantId: 4, displayName: "Анна" }] };
 describe("contextual catalog filters", () => {
+  it.each([[3, 5, "3–5"], [6, 6, "6"], [3, undefined, "от 3"], [undefined, 5, "до 5"]])("keeps player bounds %s / %s in one group", (fromPlayers, toPlayers, label) => {
+    const f = normalizeFilters({ fromPlayers, toPlayers }, "Club");
+    expect(playerFilterLabel(f)).toBe(label);
+    expect(playerFilterError(f)).toBeUndefined();
+    const query = new URLSearchParams(catalogParams("club", "Club", f, "", "name"));
+    expect(query.get("fromPlayers")).toBe(fromPlayers === undefined ? null : String(fromPlayers));
+    expect(query.get("toPlayers")).toBe(toPlayers === undefined ? null : String(toPlayers));
+    expect(activeGroups(f)).toBe(1);
+    expect(activeGroups(filterChips(f)[0].remove)).toBe(0);
+  });
+  it("keeps explicit new bounds ahead of the legacy exact count and rejects a reversed interval", () => {
+    const f = normalizeFilters({ players: 4, fromPlayers: 6, toPlayers: 2 }, "Camp");
+    expect(f).toMatchObject({ fromPlayers: 6, toPlayers: 2 });
+    expect(playerFilterError(f)).toContain("не должно быть больше");
+    expect(normalizeFilters({ players: 4, fromPlayers: 6 }, "Camp")).toMatchObject({ fromPlayers: 6, toPlayers: undefined });
+  });
+
   it.each([
     [2015, undefined, "От 2015"],
     [undefined, 2015, "До 2015"],
@@ -35,15 +52,17 @@ describe("contextual catalog filters", () => {
     const best = { ...legacy, playerCountMode: "best" as const, fromYear: 2015, toYear: 2020 };
     const params = new URLSearchParams(catalogParams("camp", "Camp", best, "Игра", "players"));
     expect(params.get("playerCountMode")).toBe("best");
-    expect(params.get("players")).toBe("4");
+    expect(params.get("fromPlayers")).toBe("4");
+    expect(params.get("toPlayers")).toBe("4");
+    expect(params.has("players")).toBe(false);
     expect(activeGroups(best)).toBe(2);
     const chip = filterChips(best).find(x => x.key === "players")!;
     expect(chip.label).toBe("Лучше всего: 4");
     expect(chip.remove.playerCountMode).toBe("supported");
-    expect(catalogParams("camp", "Camp", chip.remove, "", "name")).not.toMatch(/players|playerCountMode/);
+    expect(catalogParams("camp", "Camp", chip.remove, "", "name")).not.toMatch(/fromPlayers|toPlayers|playerCountMode/);
     expect(catalogParams("camp", "Camp", legacy, "", "name")).not.toContain("playerCountMode");
     expect(activeGroups({ ...emptyFilters(), playerCountMode: "best" })).toBe(0);
-    expect(catalogParams("camp", "Camp", emptyFilters(), "", "name")).not.toMatch(/players|playerCountMode|fromYear|toYear/);
+    expect(catalogParams("camp", "Camp", emptyFilters(), "", "name")).not.toMatch(/fromPlayers|toPlayers|playerCountMode|fromYear|toYear/);
   });
   it("preserves complexity, mechanics, duration and Camp date through the shared panel query", () => {
     const available = { ...options, complexities: [{ level: "MediumHeavy", displayName: "Сложная", cssClass: "complexity-hard" }], mechanics: [{ bggId: 9, name: "Аукцион" }] };

@@ -12,7 +12,7 @@ import { filterStorageKey } from "../../app/catalogFilters";
 
 let host: HTMLDivElement; let root: Root;
 const community: Community = { key: "camp", mode: "Camp", name: "Кэмп", timeZoneId: "UTC" };
-const options = { categories: Array.from({ length: 20 }, (_, i) => ({ bggId: i + 1, name: `Категория ${i + 1}` })), types: [{ key: "Strategy" as const, value: "Стратегии" }], providers: [{ participantId: 1, displayName: "Анна" }] };
+const options = { playerCounts: [1, 2, 3, 4, 5, 6, 8], categories: Array.from({ length: 20 }, (_, i) => ({ bggId: i + 1, name: `Категория ${i + 1}` })), types: [{ key: "Strategy" as const, value: "Стратегии" }], providers: [{ participantId: 1, displayName: "Анна" }] };
 const result = (total = 8): CatalogResponse => ({ total, items: total ? [{ bggId: 1, name: "Игра", type: "Strategy", typeName: "Стратегия", typeNames: [], availabilitySummary: "", isDefinitelyAvailable: false, needsProviderCoordination: false }] : [], filters: options });
 async function mount(c = community) { await act(async () => root.render(<GamesPage community={c} bggAvailable={false} />)); }
 async function click(text: string, inDialog = false) {
@@ -22,7 +22,7 @@ async function click(text: string, inDialog = false) {
 }
 async function tick() { await act(async () => { await vi.advanceTimersByTimeAsync(310); }); }
 async function changeField(label: string, value: string) {
-  const field = Array.from(host.querySelectorAll("label")).find(x => (x.querySelector("span")?.textContent ?? x.textContent) === label)!;
+  const field = Array.from(host.querySelectorAll("label")).find(x => (x.querySelector("span")?.textContent ?? x.textContent) === label && (!x.control?.getAttribute("aria-label") || x.control.getAttribute("aria-label") === label))!;
   const input = (field?.control as HTMLInputElement | HTMLSelectElement | null) ?? host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
   await act(async () => {
     const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLSelectElement.prototype;
@@ -30,6 +30,7 @@ async function changeField(label: string, value: string) {
     input.dispatchEvent(new Event(input instanceof HTMLInputElement ? "input" : "change", { bubbles: true }));
   });
 }
+async function selectPlayers(from: string, to = from) { await changeField("Игроков от", from); await changeField("Игроков до", to); }
 const listCalls = () => vi.mocked(api).mock.calls.filter(([url]) => url.startsWith("/catalog?") && !url.includes("countOnly"));
 const status = () => host.querySelector(".catalog-result-status")!.textContent;
 beforeEach(() => {
@@ -44,28 +45,66 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("catalog panel", () => {
+  it("uses catalog-supplied counts for both dropdowns and applies one inclusive range", async () => {
+    await mount(); await click("Фильтры");
+    const from = () => host.querySelector<HTMLSelectElement>('[aria-label="Игроков от"]')!;
+    const to = () => host.querySelector<HTMLSelectElement>('[aria-label="Игроков до"]')!;
+    expect([...from().options].map(x => x.value)).toEqual(["", "1", "2", "3", "4", "5", "6", "8"]);
+    expect(from().closest("details")!.querySelector('input[type="number"]')).toBeNull();
+    await selectPlayers("3", "5"); await tick();
+    await click("Показать 3 игры", true);
+    expect(listCalls().at(-1)![0]).toMatch(/fromPlayers=3&toPlayers=5/);
+    expect(host.querySelector(".catalog-applied")!.textContent).toContain("Игроков: 3–5");
+    await click("Фильтры · 1");
+    expect(from().value).toBe("3"); expect(to().value).toBe("5");
+    // The bound being changed wins; crossing the other bound keeps the interval valid.
+    await changeField("Игроков от", "8"); expect(to().value).toBe("8");
+    await changeField("Игроков до", "2"); expect(from().value).toBe("2");
+    await act(async () => host.querySelector("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true })));
+    await click("Фильтры · 1"); expect(from().value).toBe("3"); expect(to().value).toBe("5");
+  });
+  it("keeps valid options on empty results and changes them when switching collections", async () => {
+    vi.mocked(api).mockImplementation(async path => path.includes("community=other")
+      ? { ...result(1), filters: { ...options, playerCounts: [2, 3] } } : result(0));
+    await mount(); await click("Фильтры");
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="Игроков до"]')!.options.length).toBe(8);
+    await mount({ ...community, key: "other" }); await click("Фильтры");
+    expect([...host.querySelector<HTMLSelectElement>('[aria-label="Игроков до"]')!.options].map(x => x.value)).toEqual(["", "2", "3"]);
+  });
+  it("does not invent counts for an unknown collection and retains explicit saved bounds after updates", async () => {
+    vi.mocked(api).mockResolvedValue({ ...result(1), filters: { ...options, playerCounts: [] } });
+    await mount(); await click("Фильтры");
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="Игроков от"]')!.disabled).toBe(true);
+    await mount({ ...community, key: "other" });
+    sessionStorage.setItem(filterStorageKey("camp", "Camp"), JSON.stringify({ fromPlayers: 6, toPlayers: 2 }));
+    await mount(); await click("Фильтры · 1");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("не должно быть больше");
+    expect(host.querySelector<HTMLButtonElement>(".catalog-filter-actions .primary")!.disabled).toBe(true);
+    await changeField("Игроков до", "6"); await tick();
+    expect(host.querySelector<HTMLButtonElement>(".catalog-filter-actions .primary")!.disabled).toBe(false);
+  });
   it("uses the same year/best-player parameters for preview, apply, persistence and reset", async () => {
     await mount(); await click("Фильтры");
     await changeField("От", "2015"); await changeField("До", "2020");
-    await changeField("Подбор по числу игроков", "best"); await click("4", true); await tick();
+    await changeField("Подбор по числу игроков", "best"); await selectPlayers("4"); await tick();
     const previewUrl = vi.mocked(api).mock.calls.filter(([url]) => url.includes("countOnly")).at(-1)![0];
     const previewParams = new URLSearchParams(previewUrl.split("?")[1]);
-    expect(Object.fromEntries(previewParams)).toMatchObject({ fromYear: "2015", toYear: "2020", players: "4", playerCountMode: "best", countOnly: "true" });
+    expect(Object.fromEntries(previewParams)).toMatchObject({ fromYear: "2015", toYear: "2020", fromPlayers: "4", toPlayers: "4", playerCountMode: "best", countOnly: "true" });
     await click("Показать 3 игры", true);
     previewParams.delete("countOnly");
     expect(listCalls().at(-1)![0]).toBe(`/catalog?${previewParams}`);
     expect(host.querySelector(".catalog-applied")!.textContent).toContain("Лучше всего: 4");
     expect(host.textContent).toContain("Фильтры · 2");
-    expect(JSON.parse(sessionStorage.getItem(filterStorageKey("camp", "Camp"))!)).toMatchObject({ fromYear: 2015, toYear: 2020, players: 4, playerCountMode: "best" });
+    expect(JSON.parse(sessionStorage.getItem(filterStorageKey("camp", "Camp"))!)).toMatchObject({ fromYear: 2015, toYear: 2020, fromPlayers: 4, toPlayers: 4, playerCountMode: "best" });
     await mount({ ...community, key: "other" }); await mount();
     expect(listCalls().at(-1)![0]).toBe(`/catalog?${previewParams}`);
     await click("Фильтры · 2"); await click("Сбросить", true); await tick(); await click("Показать 3 игры", true);
-    expect(listCalls().at(-1)![0]).not.toMatch(/fromYear|toYear|players|playerCountMode/);
+    expect(listCalls().at(-1)![0]).not.toMatch(/fromYear|toYear|fromPlayers|toPlayers|playerCountMode/);
     expect(host.querySelector(".catalog-applied")).toBeNull();
   });
   it("restores old player-only session filters as supported mode", async () => {
     sessionStorage.setItem(filterStorageKey("camp", "Camp"), JSON.stringify({ players: 4 }));
-    await mount(); expect(listCalls().at(-1)![0]).toContain("players=4");
+    await mount(); expect(listCalls().at(-1)![0]).toContain("fromPlayers=4");
     expect(listCalls().at(-1)![0]).not.toContain("playerCountMode");
     await click("Фильтры · 1");
     const mode = Array.from(host.querySelectorAll("select")).find(x => x.textContent?.includes("Лучше всего для"))!;
@@ -88,7 +127,7 @@ describe("catalog panel", () => {
     expect(host.querySelector('[role="alert"]')!.textContent).toContain("не должен быть позже");
     expect(host.querySelector<HTMLButtonElement>(".catalog-filter-actions .primary")!.disabled).toBe(true);
     expect(vi.mocked(api).mock.calls).toHaveLength(before);
-    await changeField("От", "0"); await click("4", true); await tick();
+    await changeField("От", "0"); await selectPlayers("4"); await tick();
     expect(host.querySelector('[role="alert"]')!.textContent).toContain("целый год");
     expect(vi.mocked(api).mock.calls).toHaveLength(before);
     await changeField("От", "2015"); await tick();
@@ -179,7 +218,7 @@ describe("catalog panel", () => {
     let finish!: (value: { total: number }) => void;
     vi.mocked(api).mockImplementation(path => path.includes("countOnly") ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(result()));
     await mount(); await click("Фильтры"); await tick();
-    await click("4", true);
+    await selectPlayers("4");
     await act(async () => finish({ total: 99 }));
     expect(host.querySelector("dialog")!.textContent).not.toContain("Показать 99");
     expect(host.querySelector("dialog")!.textContent).toContain("Считаем");
@@ -210,19 +249,19 @@ describe("catalog panel", () => {
     await act(async () => resolve(result(99))); expect(status()).toBe("2 игры");
   });
   it("applies without a preview count, keeps choices on list failure, and resets zero results", async () => {
-    await mount(); await click("Фильтры"); await click("4", true);
+    await mount(); await click("Фильтры"); await selectPlayers("4");
     vi.mocked(api).mockRejectedValueOnce(new Error("Сбой подсчёта")); await tick();
     expect(host.querySelector("dialog")!.textContent).toContain("Не удалось посчитать");
     vi.mocked(api).mockRejectedValue(new Error("Нет сети")); await click("Показать игры", true);
     expect(status()).toContain("Не удалось"); expect(host.querySelector(".catalog-applied")!.textContent).toContain("Игроков: 4");
     vi.mocked(api).mockResolvedValue(result(0)); await click("Повторить");
     expect(status()).toBe("0 игр"); expect(host.textContent).toContain("Ничего не найдено");
-    await click("Сбросить поиск и фильтры"); expect(listCalls().at(-1)![0]).not.toContain("players");
+    await click("Сбросить поиск и фильтры"); expect(listCalls().at(-1)![0]).not.toMatch(/fromPlayers|toPlayers/);
   });
   it("shows loading during Apply and ignores the older filter response", async () => {
-    await mount(); await click("Фильтры"); await click("4", true); await tick();
+    await mount(); await click("Фильтры"); await selectPlayers("4"); await tick();
     let old!: (value: CatalogResponse) => void;
-    vi.mocked(api).mockImplementation(path => path.includes("players=4") ? new Promise(resolve => { old = resolve; }) : Promise.resolve(result(2)));
+    vi.mocked(api).mockImplementation(path => path.includes("fromPlayers=4") ? new Promise(resolve => { old = resolve; }) : Promise.resolve(result(2)));
     await click("Показать 3 игры", true); expect(status()).toContain("Обновляем");
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Убрать фильтр: Игроков: 4"]')!.click());
     await act(async () => old(result(99))); expect(status()).toBe("2 игры");
@@ -231,7 +270,7 @@ describe("catalog panel", () => {
   it("does not reuse the old count when draft returns to an earlier selection", async () => {
     await mount(); await click("Фильтры"); await tick();
     expect(host.querySelector("dialog")!.textContent).toContain("Показать 3 игры");
-    await click("4", true); await click("4", true);
+    await selectPlayers("4"); await selectPlayers("");
     expect(host.querySelector("dialog")!.textContent).not.toContain("Показать 3 игры");
     expect(host.querySelector("dialog")!.textContent).toContain("Считаем");
     await tick(); expect(host.querySelector("dialog")!.textContent).toContain("Показать 3 игры");

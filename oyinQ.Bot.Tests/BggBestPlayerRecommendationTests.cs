@@ -5,6 +5,19 @@ namespace oyinQ.Bot.Tests;
 public sealed class BggBestPlayerRecommendationTests
 {
     [Theory]
+    [InlineData("2–4, 6, 8–10", 3, 5, true)]
+    [InlineData("2–4, 6, 8–10", 5, 5, false)]
+    [InlineData("2–4, 6, 8–10", 5, 7, true)]
+    [InlineData("2–4, 6, 8–10", 11, null, false)]
+    [InlineData("2–4, 6, 8–10", null, 1, false)]
+    [InlineData("2–4, 6, 8–10", null, 2, true)]
+    [InlineData("2–4, broken", 3, 5, false)]
+    [InlineData("2–4,", 3, 5, false)]
+    [InlineData("2–4", 5, 3, false)]
+    public void Matches_BoundsOverlapKnownCountsWithoutFillingRecommendationGaps(string value, int? from, int? to, bool expected) =>
+        Assert.Equal(expected, BggBestPlayerRecommendation.Matches(value, from, to));
+
+    [Theory]
     [InlineData("4", 4, true)]
     [InlineData("14", 4, false)]
     [InlineData("2–4", 2, true)]
