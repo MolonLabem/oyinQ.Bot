@@ -56,13 +56,12 @@ public sealed class GatheringTelegramPublisherTests
         Assert.InRange(visible.Length, 1, 1024);
         Assert.Contains("Новое описание", visible);
         Assert.Contains("👥 10 из 12", visible);
-        Assert.Contains("гостей: 1", visible);
-        Assert.Contains("Выбрано: 10", visible);
-        Assert.Contains(cancelled ? "Сбор отменён" : "Есть места", visible);
+        Assert.Contains("— в сборе", visible);
+        Assert.Contains("Дополнений: 10 · список в сборе", visible);
+        Assert.Contains(cancelled ? "Сбор отменён" : "Набрано · есть места", visible);
         if (cancelled) Assert.Contains("Не набралось достаточно участников", visible);
-        Assert.Contains("Состав и дополнения", visible);
-        Assert.True(visible.IndexOf(cancelled ? "Сбор отменён" : "Есть места", StringComparison.Ordinal)
-            > visible.IndexOf("Состав и дополнения", StringComparison.Ordinal));
+        Assert.True(visible.IndexOf(cancelled ? "Сбор отменён" : "Набрано · есть места", StringComparison.Ordinal)
+            > visible.IndexOf("Собирает", StringComparison.Ordinal));
         Assert.Equal(777, body.RootElement.GetProperty("message_id").GetInt32());
         Assert.DoesNotContain(handler.Methods, x => x.StartsWith("send", StringComparison.OrdinalIgnoreCase));
     }
@@ -71,18 +70,18 @@ public sealed class GatheringTelegramPublisherTests
     public void HtmlMarkupLengthDoesNotPrematurelyHideRoster()
     {
         var gathering = Gathering();
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < 4; i++)
             gathering.Participants.Add(new GameGatheringParticipant
             {
                 Status = GatheringParticipationStatus.Confirmed,
-                Participant = new Participant { TelegramUserId = 1234567890 + i, DisplayName = "Игрок <&> " + new string('&', 10) }
+                Participant = new Participant { TelegramUserId = 1234567890 + i, DisplayName = "Игрок <&> " + new string('&', 35) }
             });
         var html = new GatheringPresentationService().BuildTelegramAnnouncement(gathering,
             new BotCommunity("club", "Клуб", -1001, BotMode.Club, "UTC")).HtmlText;
         Assert.True(html.Length > 1024);
         Assert.True(System.Xml.Linq.XElement.Parse("<root>" + html + "</root>").Value.Length <= 1024);
         Assert.DoesNotContain("Состав и дополнения", html);
-        Assert.Contains("tg://user?id=1234567899", html);
+        Assert.Contains("tg://user?id=1234567893", html);
     }
 
     [Fact]

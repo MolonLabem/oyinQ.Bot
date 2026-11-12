@@ -15,8 +15,8 @@ public static class GatheringRecruitment
         var free = Math.Max(0, g.MaximumPlayers - occupied);
         var minimum = g.MinimumPlayers - occupied;
         var desired = g.DesiredPlayers - occupied;
-        return minimum > 0 ? new(0, $"{(IsOne(minimum) ? "Нужен" : "Нужны")} ещё {minimum} {Plural(minimum, "игрок", "игрока", "игроков")} для начала", free, true)
-            : desired > 0 ? new(1, $"Можно играть · ждём ещё {desired} {(IsOne(desired) ? "игрока" : "игроков")}", free, true)
+        return minimum > 0 ? new(0, $"Нужен +{minimum}", free, true)
+            : desired > 0 ? new(1, $"Набрано · +{desired} до оптимального", free, true)
             : free > 0 ? new(2, $"Есть {free} {Plural(free, "место", "места", "мест")}", free, false)
             : new(3, "Состав набран", 0, false);
     }

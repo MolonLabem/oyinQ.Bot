@@ -281,11 +281,11 @@ export function GatheringDetails({ community, id, onBack, onCancelled, editRegis
       <div className="gathering-summary">
         <div className="gathering-seat-summary"><strong>{value.gathering.occupiedSeats} из {value.maximumPlayers} игроков</strong><span className={statusTone === "danger" ? "danger-text" : "muted"}>{value.gathering.statusText}</span></div>
         <div className={`seat-meter ${statusTone}`} role="progressbar" aria-label="Занятые места" aria-valuemin={0} aria-valuemax={value.maximumPlayers} aria-valuenow={value.gathering.occupiedSeats}><span style={{ width: `${occupiedPercent}%` }} /></div>
-        {value.gathering.recruitment?.belowDesired && value.status !== "Closed" && <p className="gathering-recruitment-summary">{value.gathering.recruitment.text}</p>}
+        {value.gathering.recruitment?.belowDesired && value.status === "Ready" && <p className="gathering-recruitment-summary">{value.gathering.recruitment.text}</p>}
         <p className="capacity-caption">Для начала: {plural(value.minimumPlayers, "игрок", "игрока", "игроков")}{value.desiredPlayers !== value.minimumPlayers && <> · собираем {value.desiredPlayers}</>}</p>
       </div>
       {formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes) && <p className="gathering-duration"><GameFact kind="duration" label="Длительность">{formatDuration(value.gathering.minPlayTimeMinutes, value.gathering.maxPlayTimeMinutes)}</GameFact></p>}
-      <p className="gathering-rules">{value.gathering.rulesText}</p>
+      {value.gathering.rulesText && <p className="gathering-rules">{value.gathering.rulesText}</p>}
       {community.mode === "Camp" && !value.hasStarted && value.status !== "Cancelled" && value.provider?.warning && <p className="gathering-box-warning">{value.provider.warning}</p>}
       {!readOnly && (value.canJoin || value.canLeave) && <div className="gathering-participation" aria-label="Участие в сборе">
         {value.canJoin && <button className="primary" disabled={working} onClick={() => action("join")}>{busy ? "Сохраняем…" : freeSeats > 0 ? "Занять место" : "Встать в лист ожидания"}</button>}

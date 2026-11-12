@@ -58,7 +58,11 @@ public sealed record ProfileGatheringPresentation(Guid PublicId, string Communit
 public sealed class GatheringPresentationService
 {
     private const int CardDescriptionLength = 120;
-    private const int AnnouncementDescriptionLength = 220;
+    private const int AnnouncementRosterLimit = 4;
+    private sealed record AnnouncementLayout(int RosterLimit = AnnouncementRosterLimit,
+        bool SummarizeExpansions = false, bool CompactNames = false,
+        int DescriptionLength = GatheringRules.DescriptionMaxLength,
+        int CancellationReasonLength = 160);
     private static readonly CultureInfo RussianCulture = CultureInfo.GetCultureInfo("ru-RU");
 
     public GatheringCardPresentation BuildCard(GameGathering gathering, BotCommunity community, GameProviderResponse? provider = null)
@@ -115,18 +119,42 @@ public sealed class GatheringPresentationService
         GameGathering gathering,
         BotCommunity community, GameProviderResponse? provider = null)
     {
-        var full = BuildTelegramAnnouncement(gathering, community, provider, compact: false);
-        // Telegram counts caption characters after parsing entities, not HTML markup or link URLs.
-        var visible = WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(full.HtmlText, "<[^>]+>", ""));
-        return visible.Length <= 1024 ? full : BuildTelegramAnnouncement(gathering, community, provider, compact: true);
+        var layout = new AnnouncementLayout();
+        var announcement = BuildTelegramAnnouncement(gathering, community, provider, layout);
+        if (FitsCaption(announcement)) return announcement;
+
+        // Reduce lists before prose, retaining short rosters when another block needs the space.
+        layout = layout with { SummarizeExpansions = true };
+        announcement = BuildTelegramAnnouncement(gathering, community, provider, layout);
+        if (FitsCaption(announcement)) return announcement;
+        layout = layout with { CompactNames = true };
+        announcement = BuildTelegramAnnouncement(gathering, community, provider, layout);
+        if (FitsCaption(announcement)) return announcement;
+        for (var count = AnnouncementRosterLimit - 1; count >= 0; count--)
+        {
+            layout = layout with { RosterLimit = count };
+            announcement = BuildTelegramAnnouncement(gathering, community, provider, layout);
+            if (FitsCaption(announcement)) return announcement;
+        }
+        layout = layout with { CancellationReasonLength = 120 };
+        announcement = BuildTelegramAnnouncement(gathering, community, provider, layout);
+        if (FitsCaption(announcement)) return announcement;
+        return BuildTelegramAnnouncement(gathering, community, provider, layout with { DescriptionLength = 120 });
+    }
+
+    private static bool FitsCaption(GatheringAnnouncement announcement)
+    {
+        // Telegram counts characters after parsing entities, not markup or link URLs.
+        var visible = WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(announcement.HtmlText, "<[^>]+>", ""));
+        return visible.Length <= 1024;
     }
 
     private GatheringAnnouncement BuildTelegramAnnouncement(
-        GameGathering gathering, BotCommunity community, GameProviderResponse? provider, bool compact)
+        GameGathering gathering, BotCommunity community, GameProviderResponse? provider, AnnouncementLayout layout)
     {
         var game = ResolveSnapshot(gathering);
         var text = new StringBuilder();
-        text.Append($"<b>{WebUtility.HtmlEncode(compact ? Truncate(game.Name, 160) : game.Name)}</b>");
+        text.Append($"<b>{WebUtility.HtmlEncode(layout.CompactNames ? Truncate(game.Name, 160) : game.Name)}</b>");
         if (GameComplexityPresentation.Present(game) is { } complexity)
         {
             var indicator = complexity.Level switch
@@ -142,60 +170,71 @@ public sealed class GatheringPresentationService
         if (GameDurationPresentation.Format(game.MinPlayTimeMinutes, game.MaxPlayTimeMinutes) is { } duration)
             text.Append($" | ⏱ {duration}");
         text.AppendLine();
-        text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} из {gathering.MaximumPlayers}");
-        text.AppendLine();
-        text.AppendLine(gathering.CanTeachRules ? "📖 Объясню правила" : "📖 Опыт с игрой желателен");
-        var description = Truncate(gathering.Description, compact ? 120 : AnnouncementDescriptionLength);
-        if (description is not null) text.AppendLine(WebUtility.HtmlEncode(description));
+        text.AppendLine($"👥 {GatheringCapacity.OccupiedSeats(gathering)} из {gathering.MaximumPlayers} игроков");
 
         if (gathering.Expansions.Count > 0)
         {
             text.AppendLine();
-            text.AppendLine("Дополнения:");
-            if (compact) text.AppendLine($"Выбрано: {gathering.Expansions.Count}");
-            else foreach (var expansion in gathering.Expansions.OrderBy(value => value.Name))
+            var expansions = gathering.Expansions.OrderBy(value => value.Name).Select(value => value.Name).ToArray();
+            var names = string.Join(", ", expansions);
+            if (layout.SummarizeExpansions || expansions.Length > 3 || names.Length > 180)
+                text.AppendLine($"Дополнений: {expansions.Length} · список в сборе");
+            else if (expansions.Length <= 2 && names.Length <= 90)
+                text.AppendLine($"Дополнения: {WebUtility.HtmlEncode(names)}");
+            else
             {
-                text.AppendLine($"• {WebUtility.HtmlEncode(expansion.Name)}");
+                text.AppendLine("Дополнения:");
+                foreach (var name in expansions) text.AppendLine($"• {WebUtility.HtmlEncode(name)}");
             }
         }
 
+        if (gathering.CanTeachRules || !string.IsNullOrWhiteSpace(gathering.Description))
+        {
+            text.AppendLine();
+            if (gathering.CanTeachRules) text.AppendLine($"📖 {RulesText(true)}");
+            AppendProse(text, gathering.Description, layout.DescriptionLength);
+        }
+
         text.AppendLine();
-        text.AppendLine($"Собирает {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, compact ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
+        text.AppendLine($"Собирает {ParticipantPresentation.ToHtmlLink(gathering.OrganizerParticipant, layout.CompactNames ? 80 : null, GatheringParticipantNames.GetDisplayName(gathering, gathering.OrganizerParticipant))}");
         var confirmed = gathering.Participants.Where(value => value.Status == GatheringParticipationStatus.Confirmed
                 && value.Participant is not null)
             .OrderBy(value => value.JoinedAt).ThenBy(value => value.Id).ToArray();
-        if (confirmed.Length > 0 || gathering.Guests.Count > 0)
+        var roster = confirmed.Select(participant => ParticipantPresentation.ToHtmlLink(participant.Participant,
+                layout.CompactNames ? 80 : null, GatheringParticipantNames.GetDisplayName(participant)))
+            .Concat(gathering.Guests.OrderBy(value => value.CreatedAt).ThenBy(value => value.Id)
+                .Select(guest => $"{WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>"))
+            .ToArray();
+        if (roster.Length > 0)
         {
-            text.AppendLine("Участники:");
-            if (compact) text.AppendLine($"Игроков без организатора: {confirmed.Length}, гостей: {gathering.Guests.Count}");
-            else
-            {
-                foreach (var participant in confirmed)
-                    text.AppendLine($"• {ParticipantPresentation.ToHtmlLink(participant.Participant, displayName: GatheringParticipantNames.GetDisplayName(participant))}");
-                foreach (var guest in gathering.Guests.OrderBy(value => value.CreatedAt).ThenBy(value => value.Id))
-                    text.AppendLine($"• {WebUtility.HtmlEncode(guest.DisplayName)} <i>(гость)</i>");
-            }
+            if (layout.RosterLimit > 0) text.AppendLine("Участники:");
+            foreach (var entry in roster.Take(layout.RosterLimit)) text.AppendLine($"• {entry}");
+            if (roster.Length > layout.RosterLimit)
+                text.AppendLine($"Ещё {roster.Length - layout.RosterLimit} — в сборе");
         }
 
         var waitlistedCount = gathering.Participants.Count(value =>
             value.Status == GatheringParticipationStatus.Waitlisted);
         if (waitlistedCount > 0)
-        {
-            text.AppendLine();
             text.AppendLine($"⏳ В очереди: {waitlistedCount}");
-        }
 
-        if (compact) text.AppendLine("\nСостав и дополнения — в сборе.");
         text.AppendLine();
         if (community.Mode == BotMode.Camp && !GatheringLifecycle.IsTerminal(gathering.Status) && provider?.Warning is { } warning)
             text.AppendLine($"📦 {warning}");
         text.AppendLine($"<b>{StatusText(gathering)}</b>");
         if (gathering.Status == GatheringStatus.Cancelled && !string.IsNullOrWhiteSpace(gathering.CancellationReason))
-            text.AppendLine($"Причина: {WebUtility.HtmlEncode(Truncate(gathering.CancellationReason, compact ? 120 : 500))}");
+            AppendProse(text, gathering.CancellationReason, layout.CancellationReasonLength, "Причина: ");
         return new GatheringAnnouncement(
             text.ToString(),
             game.ImageUrl ?? game.ThumbnailImageUrl,
             BggGameUrl.FromId(game.BggId));
+    }
+
+    private static void AppendProse(StringBuilder text, string? value, int maximumLength, string prefix = "")
+    {
+        if (Truncate(value, maximumLength) is not { } excerpt) return;
+        text.AppendLine(prefix + WebUtility.HtmlEncode(excerpt));
+        if (value!.Length > maximumLength) text.AppendLine("Продолжение — в сборе");
     }
 
     public ProfileGatheringPresentation BuildProfileSchedule(GameGathering gathering, BotCommunity community,
@@ -218,7 +257,7 @@ public sealed class GatheringPresentationService
         => GatheringGameSnapshotSerializer.Deserialize(gathering.GameSnapshotJson);
 
     private static string RulesText(bool canTeachRules) =>
-        canTeachRules ? "Правила объясню" : "Опыт с игрой желателен";
+        canTeachRules ? "Могу объяснить правила" : string.Empty;
 
     public static GatheringParticipationPresentation BuildParticipation(GameGathering gathering, long participantId)
     {
@@ -243,9 +282,9 @@ public sealed class GatheringPresentationService
 
     private static string StatusText(GameGathering gathering) => gathering.Status switch
     {
-        GatheringStatus.Recruiting => "🟡 Идёт набор",
-        GatheringStatus.Ready => "✅ Есть места",
-        GatheringStatus.Full => "🔒 Свободных мест нет",
+        GatheringStatus.Recruiting => $"🟡 {GatheringRecruitment.Describe(gathering).Text}",
+        GatheringStatus.Ready => "✅ Набрано · есть места",
+        GatheringStatus.Full => "⏳ Мест нет · можно в очередь",
         GatheringStatus.Closed => "🔒 Запись закрыта",
         GatheringStatus.Completed => "Запись завершена",
         GatheringStatus.Cancelled => "❌ Сбор отменён",

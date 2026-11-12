@@ -11,7 +11,7 @@ export function GameGatherings({ communityKey, bggId, open, preserveScroll = fal
     <Tabs scrollActiveIntoView={!preserveScroll} label="Сборы по игре" active={selection.scope} onChange={scope => setSelection({ scope, page: 1 })} items={[{ id: "upcoming", label: "Предстоящие" }, { id: "history", label: "История" }]} />
     {state.loading ? <Loading /> : state.error ? <ErrorState message={state.error} retry={state.reload} /> : <>
       {!state.data?.items.length && <Empty>Сборов пока нет.</Empty>}
-      <div className="stack">{state.data?.items.map(item => <button className="card" key={item.card.publicId} onClick={() => open(item.card.publicId)}><strong>{item.card.localDateTime}</strong><p>{item.card.statusText} · {item.card.occupiedSeats}/{item.card.maximumPlayers}</p>{item.card.recruitment?.text && <p>{item.card.recruitment.text}</p>}</button>)}</div>
+      <div className="stack">{state.data?.items.map(item => <button className="card" key={item.card.publicId} onClick={() => open(item.card.publicId)}><strong>{item.card.localDateTime}</strong><p>{item.card.statusText} · {item.card.occupiedSeats}/{item.card.maximumPlayers}</p>{item.status === "Ready" && item.card.recruitment?.belowDesired && <p>{item.card.recruitment.text}</p>}</button>)}</div>
       <Pagination page={selection.page} hasPrevious={Boolean(state.data?.hasPrevious)} hasNext={Boolean(state.data?.hasNext)} onChange={page => setSelection({ ...selection, page })} label="Страницы сборов по игре" />
     </>}
   </section>;

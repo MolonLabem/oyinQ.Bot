@@ -117,10 +117,10 @@ public sealed class WishlistRecruitmentTests
     }
 
     [Theory]
-    [InlineData(1, 0, "Нужны ещё 2 игрока для начала")]
-    [InlineData(2, 0, "Нужен ещё 1 игрок для начала")]
-    [InlineData(3, 1, "ждём ещё 2 игроков")]
-    [InlineData(4, 1, "ждём ещё 1 игрока")]
+    [InlineData(1, 0, "Нужен +2")]
+    [InlineData(2, 0, "Нужен +1")]
+    [InlineData(3, 1, "Набрано · +2 до оптимального")]
+    [InlineData(4, 1, "Набрано · +1 до оптимального")]
     [InlineData(5, 2, "Есть 2 места")]
     [InlineData(6, 2, "Есть 1 место")]
     [InlineData(7, 3, "Состав набран")]
