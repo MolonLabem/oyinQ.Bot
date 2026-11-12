@@ -395,8 +395,8 @@ body.game-picker-open { overflow: hidden; }.game-picker { position: relative; }.
 .game-fact-value { min-width: 0; overflow-wrap: anywhere; }
 .game-facts { display: block; width: 100%; min-width: 0; container: game-facts / inline-size; }
 .game-facts-row { display: grid; align-items: baseline; min-width: 0; }
-.game-facts-row.paired { grid-template-columns: fit-content(60%) minmax(0, max-content); justify-content: start; gap: var(--space-3); }
-.game-facts-row > .game-fact + .game-fact { border-inline-start: var(--surface-border); padding-inline-start: var(--space-3); }
+.game-facts-row.paired { grid-template-columns: fit-content(60%) minmax(0, max-content); justify-content: start; gap: var(--space-2); }
+.game-facts-row > .game-fact + .game-fact { border-inline-start: var(--surface-border); padding-inline-start: var(--space-2); }
 .game-card .availability { color: var(--muted); font-weight: 400; line-height: 1.4; }
 .game-card .availability.warning { color: var(--color-attention); }
 .catalog-card-availability { font-weight: 400; }
