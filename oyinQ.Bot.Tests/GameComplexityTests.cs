@@ -166,5 +166,13 @@ public sealed class GameComplexityTests
         Assert.Equal(CollectionItemSource.Manual, owned.Source);
         Assert.Equal(4.1234m, owned.ReadSnapshot().ComplexityWeight);
         Assert.Equal(GameComplexity.MediumHeavy, owned.ReadSnapshot().Complexity);
+        await service.UpsertAsync(1, [item with { Snapshot = item.Snapshot with
+            { Name = "Fresh metadata without BGG votes", ComplexityWeight = null, Complexity = null } }],
+            CollectionItemSource.BggImport, DateTimeOffset.UtcNow, default);
+        db.ChangeTracker.Clear();
+        var incomplete = (await db.ParticipantCollectionItems.SingleAsync()).ReadSnapshot();
+        Assert.Equal("Fresh metadata without BGG votes", incomplete.Name);
+        Assert.Equal(4.1234m, incomplete.ComplexityWeight);
+        Assert.Equal(GameComplexity.MediumHeavy, incomplete.Complexity);
     }
 }

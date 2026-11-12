@@ -31,8 +31,14 @@ public sealed class ParticipantCollectionService(AppDbContext dbContext)
             }
             // Import refreshes metadata but never takes ownership of a manual entry or removes anything.
             if (source == CollectionItemSource.Manual) row.Source = source;
+            var snapshot = item.Snapshot;
+            if (!string.IsNullOrEmpty(row.SnapshotJson) && GameComplexityPresentation.Present(snapshot) is null)
+            {
+                var saved = row.ReadSnapshot();
+                snapshot = snapshot with { ComplexityWeight = saved.ComplexityWeight, Complexity = saved.Complexity };
+            }
             row.ParentBggId = item.ParentBggId;
-            row.SnapshotJson = CollectionItemSnapshotSerializer.Serialize(item.Snapshot with
+            row.SnapshotJson = CollectionItemSnapshotSerializer.Serialize(snapshot with
             { ParentBggIds = item.ParentBggIds ?? item.Snapshot.ParentBggIds
                 ?? (item.ParentBggId is { } parent ? [parent] : []) });
             row.UpdatedAt = now;

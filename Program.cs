@@ -18,6 +18,12 @@ using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (args.Contains("--refresh-personal-complexity", StringComparer.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await ParticipantCollectionComplexityRefreshCommand.RunAsync(builder.Configuration, args);
+    return;
+}
+
 if (args.Contains("--reconcile-rollmove"))
 {
     Environment.ExitCode = await RollMoveReconciliation.RunAsync(builder.Configuration);
